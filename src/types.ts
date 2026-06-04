@@ -24,4 +24,16 @@ export interface Session {
   level: number;
   /** id of the mob instance this player is fighting, or null */
   target: string | null;
+  /** whether the player is currently poisoned/afflicted (drains hp each tick) */
+  poisoned: boolean;
+  /** currency */
+  gold: number;
+  /** moral standing: positive = virtuous, negative = corrupt */
+  morality: number;
+  /** number of times the player has used dust (drug) */
+  addiction: number;
+  /** stance toward the Cinder Front: "none" | "front" | "ally" */
+  faction: "none" | "front" | "ally";
+  /** whether the player has consciously resisted the tavern's vices */
+  resisted: boolean;
 }
