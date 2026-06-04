@@ -1,4 +1,4 @@
-// Item templates — static game data. Inventories (per player) and ground piles
+// Item templates: static game data. Inventories (per player) and ground piles
 // (per room) are stored as (owner, item, qty) rows in SQLite, referencing these
 // ids. An item is "usable" if it has a `use` effect.
 

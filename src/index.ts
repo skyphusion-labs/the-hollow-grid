@@ -14,7 +14,7 @@ export default {
     }
 
     return new Response(
-      "THE CHROME WASTES — a MUD on Cloudflare Workers.\n" +
+      "THE CHROME WASTES: a MUD on Cloudflare Workers.\n" +
         "Connect a WebSocket to /ws (e.g. `wscat -c ws://localhost:8787/ws`).\n",
       { headers: { "content-type": "text/plain" } },
     );

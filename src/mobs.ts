@@ -1,4 +1,4 @@
-// Mob templates — static game data, like rooms. Each template spawns exactly one
+// Mob templates: static game data, like rooms. Each template spawns exactly one
 // mob instance (id === template key) into its `room`. The dynamic per-instance
 // state (current hp, alive/dead, respawn timer) lives in the SQLite `mobs` table
 // so it survives Durable Object hibernation between alarm ticks.

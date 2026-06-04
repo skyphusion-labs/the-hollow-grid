@@ -23,7 +23,7 @@ const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 /**
- * World — a single Durable Object that holds the whole game. Players route to
+ * World: a single Durable Object that holds the whole game. Players route to
  * the same instance via `getByName("world")` and share one coordinated world.
  *
  * Connections use the WebSocket Hibernation API; per-player state rides on the
@@ -148,7 +148,7 @@ export class World extends DurableObject<Env> {
       [
         "",
         "================================================================",
-        "  THE CHROME WASTES  —  a MUD on Cloudflare Workers",
+        "  THE CHROME WASTES: a MUD on Cloudflare Workers",
         "================================================================",
         "",
         "By what name are you known, wanderer?",
@@ -280,7 +280,7 @@ export class World extends DurableObject<Env> {
 
     if (t.poisonChance && !s.poisoned && Math.random() < t.poisonChance) {
       s.poisoned = true;
-      this.line(ws, "Venom courses through your veins — you are POISONED. Seek an antidote.");
+      this.line(ws, "Venom courses through your veins; you are POISONED. Seek an antidote.");
     }
 
     ws.serializeAttachment(s);
@@ -673,7 +673,7 @@ export class World extends DurableObject<Env> {
       }
       s.poisoned = false;
       this.invRemove(s.name, item, 1);
-      this.line(ws, "The antivenom burns cold down your throat — the venom recedes. You are cured.");
+      this.line(ws, "The antivenom burns cold down your throat; the venom recedes. You are cured.");
     } else if (t.use.effect === "heal") {
       if (s.hp >= s.maxHp) {
         this.line(ws, "You're already at full health.");
@@ -691,7 +691,7 @@ export class World extends DurableObject<Env> {
       s.addiction += 1;
       this.line(
         ws,
-        "The dust hits like a sunrise behind your eyes. Pain forgotten, body humming — " +
+        "The dust hits like a sunrise behind your eyes. Pain forgotten, body humming, " +
           `you feel whole again. (HP ${s.hp}/${s.maxHp})`,
       );
       if (s.addiction >= 3) {
@@ -745,7 +745,7 @@ export class World extends DurableObject<Env> {
       ws,
       'You strike the chains free. The maiden presses a vial into your hands:' +
         NL +
-        '  "Antivenom — for the poison that haunts these wastes. You have my thanks."',
+        '  "Antivenom, for the poison that haunts these wastes. You have my thanks."',
     );
     this.broadcast(s.room, `${s.name} frees the captive maiden!`, ws);
     this.prompt(ws);
@@ -758,7 +758,7 @@ export class World extends DurableObject<Env> {
         this.line(
           ws,
           'The chained maiden whispers: "The warden holds the only key. Free me, and I will give' +
-            ' you antivenom — the wastes are thick with poison."',
+            ' you antivenom; the wastes are thick with poison."',
         );
       } else {
         this.line(ws, 'The freed maiden says: "Stay safe out there. The antivenom is yours when the venom bites."');
@@ -788,7 +788,7 @@ export class World extends DurableObject<Env> {
           'A Cinder Front recruiter bellows from a crate: "The wastes are OURS! Round up every' +
             ' unregistered elf and drive them out!"' +
             NL +
-            'A frightened elf refugee murmurs at your side: "Please — I was born here. Don\'t let them take me."' +
+            'A frightened elf refugee murmurs at your side: "Please, I was born here. Don\'t let them take me."' +
             NL +
             "(You could join the Front, or defend the refugees.)",
         );
@@ -871,14 +871,14 @@ export class World extends DurableObject<Env> {
       s.morality -= 5;
       this.line(
         ws,
-        "The vendor drone shrieks an alarm and snaps at your hand — you come away with nothing but shame.",
+        "The vendor drone shrieks an alarm and snaps at your hand; you come away with nothing but shame.",
       );
       this.broadcast(s.room, `${s.name} is caught with a hand in the till!`, ws);
     } else {
       const take = rand(8, 20);
       s.gold += take;
       s.morality -= 10;
-      this.line(ws, `You palm a pouch from the stall — ${take} gold, and no one the wiser. (gold: ${s.gold})`);
+      this.line(ws, `You palm a pouch from the stall: ${take} gold, and no one the wiser. (gold: ${s.gold})`);
     }
     ws.serializeAttachment(s);
     this.persistPlayer(s);
@@ -931,7 +931,7 @@ export class World extends DurableObject<Env> {
           ? ""
           : NL + "By morning, though, something burns that shouldn't. You've caught the pox. (afflicted)"),
     );
-    s.poisoned = true; // "that nonsense" — an affliction you'll need to cure
+    s.poisoned = true; // "that nonsense": an affliction you'll need to cure
     ws.serializeAttachment(s);
     this.persistPlayer(s);
     this.prompt(ws);

@@ -1,7 +1,7 @@
-# The Chrome Wastes — a MUD on Cloudflare Workers
+# The Chrome Wastes: a MUD on Cloudflare Workers
 
 A small, multiplayer MUD that runs entirely on [Cloudflare Workers](https://developers.cloudflare.com/workers/)
-and [Durable Objects](https://developers.cloudflare.com/durable-objects/) — no
+and [Durable Objects](https://developers.cloudflare.com/durable-objects/): no
 VPS, no long-running process to babysit, and ~$0 when nobody's playing.
 
 This is the **World DO skeleton**: connect, pick a name, walk between linked
@@ -22,7 +22,7 @@ client (wscat / browser) --wss--> Worker (src/index.ts) --> World Durable Object
 - **WebSocket Hibernation API** (`ctx.acceptWebSocket`, `webSocketMessage`,
   `webSocketClose`). Per-connection state (name, room, vitals, combat target) is
   stored on the socket with `serializeAttachment`, so the DO can hibernate while
-  players stay connected — you're not billed for idle duration.
+  players stay connected; you're not billed for idle duration.
 - **Time-based mechanics are driven by a DO alarm.** When a player engages a mob
   (or gets poisoned), the DO schedules an `alarm()` that each tick respawns due
   mobs, drains HP from poisoned players, and resolves one combat round per active
@@ -37,15 +37,15 @@ client (wscat / browser) --wss--> Worker (src/index.ts) --> World Durable Object
 - **SQLite** persists each player's room/HP/XP/level and every mob's state, so
   players resume where they left off and the world keeps its memory.
 - **The world map lives in `src/rooms.ts`** as plain data. An exit exists only if
-  it's declared, and movement to an undeclared direction returns a clear message
-  — there are no silent no-op exits, so nobody gets trapped. (Yes, this is a
+  it's declared, and movement to an undeclared direction returns a clear message;
+  there are no silent no-op exits, so nobody gets trapped. (Yes, this is a
   pointed design choice.)
 
 ## Run it locally
 
 ```bash
 npm install
-npm run dev          # wrangler dev — serves on http://localhost:8787
+npm run dev          # wrangler dev: serves on http://localhost:8787
 ```
 
 Then connect with [`wscat`](https://github.com/websockets/wscat)
@@ -95,34 +95,34 @@ the warden (the Holding Pit).
 
 ### Poison & the maiden's quest
 
-The rad-scorpion in the Sump **poisons** you on sting — once poisoned, you lose
+The rad-scorpion in the Sump **poisons** you on sting; once poisoned, you lose
 HP every alarm tick (in or out of combat) until you're cured. The cure is an
 **antidote**, and the only way to get one is the quest: a captive **maiden** is
 held in the Holding Pit behind **the warden**. Defeat the warden, `free` the
-maiden, and she rewards you with the antidote — `use antidote` to purge the
+maiden, and she rewards you with the antidote (`use antidote`) to purge the
 venom. (Dying also burns the venom out, the hard way.)
 
 ### Moral choices
 
 Every character carries a hidden **morality** score and a pile of **gold**, both
-revealed in `status` as your *standing* — from "a beacon of the wastes" to
+revealed in `status` as your *standing*: from "a beacon of the wastes" to
 "reviled." The wastes keep tempting you to trade one for the other:
 
 - **Theft vs. honest work** (Scrap Market): `sell` your salvage for clean coin,
-  or `steal` from the vendor — quick gold, but it corrupts you, and you might get
+  or `steal` from the vendor: quick gold, but it corrupts you, and you might get
   caught empty-handed.
 - **Drugs** (The Rusted Tankard): `buy dust` and `use` it for a free full heal
-  that feels incredible — at the cost of your morality and a deepening addiction.
+  that feels incredible, at the cost of your morality and a deepening addiction.
   Or never touch it.
 - **The tavern wench** (The Rusted Tankard): `carouse` to spend coin and an hour
-  in the back (fade to black) — and risk catching "the pox," an affliction that
+  in the back (fade to black), and risk catching "the pox," an affliction that
   drains you like venom until cured. Or `resist` the temptation entirely.
 - **The Cinder Front** (Scrap Market): a nativist movement is rallying to round up
   and expel the "unregistered elves." You can `join` them for blood money and a
-  ruined conscience — or `defend` the refugees, take the moral high ground, and
+  ruined conscience, or `defend` the refugees, take the moral high ground, and
   earn their gratitude. It's a one-time, sticky choice.
 
-None of this gates the game — it's about who your character *is*. Standing is the
+None of this gates the game; it's about who your character *is*. Standing is the
 sum of what you chose to do when no one was making you.
 
 ## Deploy
@@ -135,7 +135,7 @@ Then `wscat -c wss://<your-worker>.workers.dev/ws`.
 
 ## Where to grow next
 
-- More rooms (`src/rooms.ts`), mobs (`src/mobs.ts`), and items (`src/items.ts`) —
+- More rooms (`src/rooms.ts`), mobs (`src/mobs.ts`), and items (`src/items.ts`):
   all plain data the engine already supports.
 - More quests, NPC dialogue trees, and item effects (buffs, equipment, currency).
 - Skills/abilities, mob AI (wandering, aggro), and out-of-combat HP regen on the

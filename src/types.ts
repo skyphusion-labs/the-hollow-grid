@@ -8,7 +8,7 @@ export interface Env {
  * Per-connection state stored on the WebSocket itself via
  * `ws.serializeAttachment()`. This is the key to hibernation: the DO can be
  * evicted from memory while sockets stay open, so we must NOT keep connection
- * state in plain instance fields — it would be lost. The attachment survives
+ * state in plain instance fields; it would be lost. The attachment survives
  * hibernation and comes back with the socket.
  */
 export interface Session {

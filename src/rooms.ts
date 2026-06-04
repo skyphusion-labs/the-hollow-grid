@@ -4,7 +4,7 @@
 //
 // Design rule that fixes the bug that started this whole project: an exit only
 // exists if it's declared here. Movement either follows a declared exit or
-// returns a clear "you can't go that way" — there are no silent no-ops, so a
+// returns a clear "you can't go that way"; there are no silent no-ops, so a
 // player can never get trapped by a phantom direction.
 
 export interface Room {
@@ -89,9 +89,9 @@ export const ROOMS: Record<string, Room> = {
 export const HOLDING_PIT = "holding_pit";
 /** The mob whose defeat unlocks the maiden. */
 export const WARDEN_ID = "warden";
-/** The bar — site of the drug and tavern-companion temptations. */
+/** The bar: site of the drug and tavern-companion temptations. */
 export const TAVERN = "tavern";
-/** The public square — site of theft and the Cinder Front rally. */
+/** The public square: site of theft and the Cinder Front rally. */
 export const MARKET = "market";
 
 const DIR_ALIASES: Record<string, string> = {
