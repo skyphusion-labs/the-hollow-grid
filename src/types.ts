@@ -16,4 +16,12 @@ export interface Session {
   name: string;
   /** room id the player is currently in */
   room: string;
+  /** current / maximum hit points */
+  hp: number;
+  maxHp: number;
+  /** experience and level */
+  xp: number;
+  level: number;
+  /** id of the mob instance this player is fighting, or null */
+  target: string | null;
 }

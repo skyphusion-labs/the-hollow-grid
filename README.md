@@ -20,13 +20,20 @@ client (wscat / browser) --wss--> Worker (src/index.ts) --> World Durable Object
 - **One `World` Durable Object** holds the whole game. Every player routes to the
   same instance via `getByName("world")`, so they share one coordinated world.
 - **WebSocket Hibernation API** (`ctx.acceptWebSocket`, `webSocketMessage`,
-  `webSocketClose`). Per-connection state (name + current room) is stored on the
-  socket with `serializeAttachment`, so the DO can hibernate while players stay
-  connected — you're not billed for idle duration.
+  `webSocketClose`). Per-connection state (name, room, vitals, combat target) is
+  stored on the socket with `serializeAttachment`, so the DO can hibernate while
+  players stay connected — you're not billed for idle duration.
+- **Combat is driven by a DO alarm.** When a player engages a mob, the DO
+  schedules an `alarm()` that resolves one combat round per active fight every
+  few seconds (player hits, mob hits back), handles death, and respawns slain
+  mobs on a timer. The alarm reschedules only while there's combat or a pending
+  respawn, then lets the DO hibernate. Mob state + player vitals live in SQLite,
+  so a tick still works correctly even after the DO was evicted from memory.
 - **Room membership is derived**, not stored separately: who's in a room comes
   from scanning `ctx.getWebSockets()` and reading each socket's attachment. This
   survives hibernation for free.
-- **SQLite** persists each player's last room so they resume where they left off.
+- **SQLite** persists each player's room/HP/XP/level and every mob's state, so
+  players resume where they left off and the world keeps its memory.
 - **The world map lives in `src/rooms.ts`** as plain data. An exit exists only if
   it's declared, and movement to an undeclared direction returns a clear message
   — there are no silent no-op exits, so nobody gets trapped. (Yes, this is a
@@ -54,12 +61,19 @@ see each other move and `say` things in the same room.
 
 | Command | Does |
 |---|---|
-| `look` / `l` | describe your surroundings |
+| `look` / `l` | describe your surroundings (shows mobs and players present) |
 | `north`/`south`/… (`n s e w ne nw se sw u d`), or `go <dir>` | move |
+| `attack <mob>` / `kill` / `k` | engage a mob (combat resolves every few seconds) |
+| `flee` / `f` | break off combat |
+| `hp` / `status` | show your HP, level, and XP |
 | `say <msg>` / `'<msg>` | speak to everyone in the room |
 | `who` | list survivors online |
 | `help` / `?` | command list |
 | `quit` | disconnect |
+
+There are mobs to fight in the Service Tunnels (a glow-rat), the Scrap Market (a
+feral scavenger), and the Rusted Rooftop (a malfunctioning drone). They hit back,
+they can kill you (you respawn at the Nexus), and they respawn on a timer.
 
 ## Deploy
 
@@ -71,9 +85,11 @@ Then `wscat -c wss://<your-worker>.workers.dev/ws`.
 
 ## Where to grow next
 
-- More rooms / zones in `src/rooms.ts` (the data model already supports it).
-- Combat + mobs, with **DO alarms** driving tick loops (regen, respawns).
-- Persistent characters (stats, inventory) in additional SQLite tables.
+- More rooms / zones in `src/rooms.ts` and more mobs in `src/mobs.ts` (both are
+  plain data — the engine already supports them).
+- Items, inventory, and loot drops in additional SQLite tables.
+- Skills/abilities, mob AI (wandering, aggro), and out-of-combat HP regen on the
+  same alarm tick.
 - Shard by zone (one DO per area) once a single World DO isn't enough.
 
 ## License
