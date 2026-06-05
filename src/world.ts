@@ -111,6 +111,19 @@ export class World extends DurableObject<Env> {
           PRIMARY KEY (room, item)
         )
       `);
+
+      // The Grid: the dead network's persistent memory of what happened where.
+      // Passings, deaths, oaths, and kills leave an echo tied to a node and
+      // outlive the people who made them -- query a node with `ping`.
+      sql.exec(`
+        CREATE TABLE IF NOT EXISTS grid_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          node TEXT NOT NULL,
+          at INTEGER NOT NULL,
+          kind TEXT NOT NULL,
+          text TEXT NOT NULL
+        )
+      `);
     });
   }
 
@@ -309,6 +322,7 @@ export class World extends DurableObject<Env> {
     );
     this.line(ws, `You have slain ${t.name}!  (+${t.xp} xp)`);
     this.broadcast(mob.room, `${s.name} has slain ${t.name}.`, ws);
+    this.recordTrace(mob.room, "slain", `${s.name} slew ${t.name} here.`);
 
     // Roll loot onto the ground.
     for (const drop of t.loot ?? []) {
@@ -350,6 +364,7 @@ export class World extends DurableObject<Env> {
     // compound into an unrecoverable spiral (the lesson from watching a bot rot
     // from 30 max HP to 14 and die faster each time). If you ever add a death
     // penalty, make it temporary and bounded -- never a permanent stat loss.
+    this.recordTrace(s.room, "death", `${this.tagged(s)} fell here, and did not get up.`);
     s.target = null;
     s.poisoned = false; // death burns the venom out
     s.room = START_ROOM;
@@ -558,6 +573,9 @@ export class World extends DurableObject<Env> {
         ws.send(this.who());
         this.prompt(ws);
         break;
+      case "ping":
+        this.gridPing(ws, s);
+        break;
       case "help":
       case "?":
         ws.send(this.help());
@@ -605,6 +623,7 @@ export class World extends DurableObject<Env> {
     this.persistPlayer(s);
     const mark = this.brand(s);
     this.broadcast(destId, mark ? `${s.name}, ${mark}, arrives.` : `${s.name} arrives.`, ws);
+    this.recordTrace(destId, "passage", `${this.tagged(s)} passed through.`);
     this.sendRoom(ws, s);
     this.prompt(ws);
   }
@@ -1038,6 +1057,7 @@ export class World extends DurableObject<Env> {
           " money on you as the elf refugee bolts in terror.",
       );
       this.broadcast(s.room, `${s.name} has joined the Cinder Front.`, ws);
+      this.recordTrace(s.room, "oath", `${s.name} swore themselves to the Cinder Front here.`);
     } else {
       s.faction = "ally";
       s.morality += 25;
@@ -1049,6 +1069,7 @@ export class World extends DurableObject<Env> {
           " with thanks.",
       );
       this.broadcast(s.room, `${s.name} stands with the elves against the Cinder Front.`, ws);
+      this.recordTrace(s.room, "oath", `${s.name} stood with the free folk here.`);
     }
     this.emitAffects(ws, s);
     ws.serializeAttachment(s);
@@ -1178,6 +1199,54 @@ export class World extends DurableObject<Env> {
     return label ? `${s.name} (${label})` : s.name;
   }
 
+  // --- The Grid: the dead network's memory ----------------------------------
+  // Record a trace at a node. The Grid keeps a long memory, but we cap each node
+  // to its most recent entries so it stays bounded without feeling forgetful.
+  private recordTrace(node: string, kind: string, text: string): void {
+    const sql = this.ctx.storage.sql;
+    sql.exec("INSERT INTO grid_log (node, at, kind, text) VALUES (?, ?, ?, ?)", node, Date.now(), kind, text);
+    sql.exec(
+      "DELETE FROM grid_log WHERE node = ? AND id NOT IN " +
+        "(SELECT id FROM grid_log WHERE node = ? ORDER BY id DESC LIMIT 50)",
+      node,
+      node,
+    );
+  }
+
+  private ago(at: number): string {
+    const sec = Math.max(0, Math.floor((Date.now() - at) / 1000));
+    if (sec < 60) return "moments ago";
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min} minute${min === 1 ? "" : "s"} ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
+    const day = Math.floor(hr / 24);
+    return `${day} day${day === 1 ? "" : "s"} ago`;
+  }
+
+  // `ping` the dead Grid at your node: it replays what it remembers happening
+  // here, even for players long gone. The signature mechanic of The Hollow Grid.
+  private gridPing(ws: WebSocket, s: Session): void {
+    const rows = this.ctx.storage.sql
+      .exec<{ at: number; kind: string; text: string }>(
+        "SELECT at, kind, text FROM grid_log WHERE node = ? ORDER BY id DESC LIMIT 6",
+        s.room,
+      )
+      .toArray();
+
+    if (rows.length === 0) {
+      this.line(ws, "You key into the dead Grid. Static, a cold hum... but this node remembers nothing. Not yet.");
+    } else {
+      this.line(ws, "You key into the dead Grid. Static, then it remembers:");
+      for (const r of rows) this.line(ws, `  - ${r.text} (${this.ago(r.at)})`);
+    }
+    this.event(ws, "grid.echo", {
+      node: s.room,
+      traces: rows.map((r) => ({ at: r.at, kind: r.kind, text: r.text })),
+    });
+    this.prompt(ws);
+  }
+
   private inventoryView(s: Session): string {
     const rows = this.ctx.storage.sql
       .exec<{ item: string; qty: number }>("SELECT item, qty FROM inventory WHERE player = ?", s.name)
@@ -1222,6 +1291,7 @@ export class World extends DurableObject<Env> {
         "  hp / status           show health, level, xp, gold, and standing",
         "  say <message> (')     speak to everyone in the room",
         "  who                   list survivors online",
+        "  ping                  query the dead Grid here for what it remembers",
         "  help (?)              this message",
         "  quit                  disconnect",
       ].join(NL) + NL

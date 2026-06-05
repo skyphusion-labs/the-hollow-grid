@@ -134,6 +134,17 @@ check(finalVit?.data.inCombat === false, "vitals show inCombat=false after the f
 // The death-floor lesson, observed: the player survives a starter mob easily.
 check(finalVit?.data.hp > 0, `player survived the glow-rat (hp=${finalVit?.data.hp})`);
 
+// The Grid remembers: ping the node where we just killed and hear it echoed back.
+events.length = 0;
+ws.send("ping");
+await sleep(500);
+const echo = last("grid.echo");
+check(!!echo, "ping returns a grid.echo event");
+check(
+  Array.isArray(echo?.data.traces) && echo.data.traces.some((t) => /slew|glow-rat/i.test(t.text)),
+  "the Grid remembers the kill that just happened at this node",
+);
+
 ws.close();
 
 // --- Phase 2: the world remembers. Side with the Cinder Front, and it sticks. ---
@@ -166,7 +177,15 @@ const seen = B.last("room.info")?.data.players?.find((p) => p.name === aName);
 check(!!seen, "a second player sees the collaborator in the room");
 check(seen?.standing === "Cinder Front", `the world brands them to others (got ${JSON.stringify(seen?.standing)})`);
 
+// The Grid remembers what people forget: A logs off, but the oath stays. B pings
+// the market and the dead network still names who swore to the Cinder Front here.
 A.sock.close();
+await sleep(400);
+B.send("ping");
+await sleep(500);
+const oath = B.last("grid.echo")?.data.traces?.find((t) => /Cinder Front/i.test(t.text) && t.text.includes(aName));
+check(!!oath, "the Grid still remembers the Cinder Front oath after the collaborator has gone");
+
 B.sock.close();
 
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nSMOKE TEST PASSED");
