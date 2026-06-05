@@ -4,7 +4,7 @@ import { mapFor, START_ROOM, HOLDING_PIT, WARDEN_ID, TAVERN, MARKET, normalizeDi
 import { mobsFor, type MobTemplate } from "./mobs";
 import { ITEM_TEMPLATES, itemMatches, EQUIP_SLOTS } from "./items";
 import type { GridTrace, GridCast, CharSheet, WorldInfo } from "../shared/grid";
-import { BANNER_LINES } from "./banner";
+import { bannerFor } from "./banner";
 
 const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 
@@ -113,6 +113,9 @@ export class World extends DurableObject<Env> {
   // so the by-id lookups below are stable; only the creatures' flavor differs.
   private readonly mobTemplates: MobTemplate[];
   private readonly mobById: Record<string, MobTemplate>;
+  // This deployment's login banner (same WORLD_MAP key), so each world greets you
+  // in its own title and palette.
+  private readonly banner: string[];
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -120,6 +123,7 @@ export class World extends DurableObject<Env> {
     this.rooms = mapFor(env.WORLD_MAP);
     this.mobTemplates = mobsFor(env.WORLD_MAP);
     this.mobById = Object.fromEntries(this.mobTemplates.map((m) => [m.template, m]));
+    this.banner = bannerFor(env.WORLD_MAP);
     ctx.blockConcurrencyWhile(async () => {
       const sql = this.ctx.storage.sql;
 
@@ -274,7 +278,7 @@ export class World extends DurableObject<Env> {
     server.serializeAttachment(session);
 
     server.send(
-      [...BANNER_LINES, "", "By what name are you known, wanderer?"].join(NL) + NL,
+      [...this.banner, "", "By what name are you known, wanderer?"].join(NL) + NL,
     );
 
     return new Response(null, { status: 101, webSocket: pair[0] });

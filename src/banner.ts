@@ -1,13 +1,12 @@
-// The login banner: a framed, color-graded title card sent to every connecting
-// client. ANSI/256-color, so it lights up in any terminal client (wscat, the
-// bundled `npm run connect`, telnet); a client that ignores escapes just sees
-// the letters. The cyan gradient fades top-to-bottom, so the logo reads as going
-// literally hollow -- on theme for "the network outlived us."
-//
-// Built once at module load. Exported as lines so the caller joins them with its
-// own newline convention (the world speaks CRLF).
+// Per-world login banners: a framed, color-graded title card sent to every
+// connecting client. ANSI/256-color, so it lights up in any terminal client
+// (wscat, the bundled `npm run connect`, telnet); a client that ignores escapes
+// just sees the letters. Each world gets its own title, palette, and voice
+// (selected by WORLD_MAP, like the map and bestiary), so arriving somewhere new
+// announces itself: the Hollow Grid in cold cyan going hollow, Dustfall in the
+// hot rust of the salt pan. Built on demand (cheap, once per DO).
 
-// Block glyphs, five rows tall. Only the letters in the title are defined.
+// Block glyphs, five rows tall. Only the letters used by the titles are defined.
 const GLYPHS: Record<string, [string, string, string, string, string]> = {
   H: ["█  █", "█  █", "████", "█  █", "█  █"],
   O: [" ██ ", "█  █", "█  █", "█  █", " ██ "],
@@ -17,6 +16,11 @@ const GLYPHS: Record<string, [string, string, string, string, string]> = {
   R: ["███ ", "█  █", "███ ", "█ █ ", "█  █"],
   I: ["███", " █ ", " █ ", " █ ", "███"],
   D: ["███ ", "█  █", "█  █", "█  █", "███ "],
+  U: ["█  █", "█  █", "█  █", "█  █", " ██ "],
+  S: ["████", "█   ", "████", "   █", "████"],
+  T: ["████", " ██ ", " ██ ", " ██ ", " ██ "],
+  F: ["████", "█   ", "███ ", "█   ", "█   "],
+  A: [" ██ ", "█  █", "████", "█  █", "█  █"],
   " ": ["   ", "   ", "   ", "   ", "   "],
 };
 
@@ -42,45 +46,99 @@ function bigText(s: string): [string, string, string, string, string] {
   return rows;
 }
 
-const FRAME = fg(30); // dim teal frame
-const NEON = fg(201); // neon magenta, the only loud accent (corners + flavor marks)
-const THE = fg(66); // muted, so the logo dominates
-const GRADIENT = [fg(51), fg(45), fg(44), fg(38), fg(31)]; // bright cyan -> deep
-const TAGLINE = fg(245); // soft gray
-const FLAVOR = fg(240); // dimmer gray
-const STATIC = fg(22); // ghost-green grid, almost subliminal
-
-// One centered line. `row` is single-color; `segRow` mixes colors on one line,
-// centering by VISIBLE width so the escape codes never throw off the frame.
-const row = (code: string, text: string): string => paint(FRAME, "  │") + paint(code, center(text)) + paint(FRAME, "│");
-const blank = (): string => paint(FRAME, "  │") + " ".repeat(INNER) + paint(FRAME, "│");
-function segRow(segs: { code: string; text: string }[]): string {
-  const visible = segs.reduce((n, s) => n + [...s.text].length, 0);
-  const left = Math.max(0, Math.floor((INNER - visible) / 2));
-  const right = Math.max(0, INNER - visible - left);
-  const body = " ".repeat(left) + segs.map((s) => paint(s.code, s.text)).join("") + " ".repeat(right);
-  return paint(FRAME, "  │") + body + paint(FRAME, "│");
+// The colors that distinguish one world's card from another.
+interface Palette {
+  frame: string; // the box
+  accent: string; // the one loud note (corners + flavor marks)
+  kicker: string; // the small line above the title
+  gradient: [string, string, string, string, string]; // the title, top row to bottom
+  flavor: string; // the line under the frame's top edge
+  tagline: string; // the closing couplet
+  dots: string; // the faint dotted line beneath the title
 }
 
-const title = bigText("HOLLOW   GRID");
-const bar = "─".repeat(INNER);
-// A widely spaced dotted line: the grid showing faintly through, like phosphor.
+interface BannerSpec {
+  title: string; // rendered as block letters
+  kicker: string; // e.g. "T  H  E"
+  flavor: string; // the ". : . <this> . : ." line
+  tagline: [string, string];
+  palette: Palette;
+}
+
+// One faint dotted line: texture showing faintly through, like phosphor or dust.
 const gridDots = Array(14).fill("·").join("   ");
 
-export const BANNER_LINES: string[] = [
-  "",
-  paint(NEON, "  ╭") + paint(FRAME, bar) + paint(NEON, "╮"),
-  segRow([
-    { code: NEON, text: ". : ." },
-    { code: FLAVOR, text: "  the grid remembers what we were  " },
-    { code: NEON, text: ". : ." },
-  ]),
-  blank(),
-  row(THE, "T  H  E"),
-  ...title.map((r, i) => row(`1;${GRADIENT[i]}`, r)),
-  row(STATIC, gridDots),
-  row(TAGLINE, "the network outlived us."),
-  row(TAGLINE, "now it just hums, empty, and waits."),
-  paint(NEON, "  ╰") + paint(FRAME, bar) + paint(NEON, "╯"),
-  "",
-];
+function build(spec: BannerSpec): string[] {
+  const { palette: p } = spec;
+  const bar = "─".repeat(INNER);
+  const edge = (corner: string) => paint(p.accent, corner);
+  const wrap = (inner: string): string => paint(p.frame, "  │") + inner + paint(p.frame, "│");
+  const line = (code: string, text: string, bold = false): string => wrap(paint((bold ? "1;" : "") + code, center(text)));
+  const blank = (): string => wrap(" ".repeat(INNER));
+  const flavorLine = (): string => {
+    const mark = ". : .";
+    const mid = `  ${spec.flavor}  `;
+    const visible = mark.length * 2 + [...mid].length;
+    const left = Math.max(0, Math.floor((INNER - visible) / 2));
+    const right = Math.max(0, INNER - visible - left);
+    const body =
+      " ".repeat(left) + paint(p.accent, mark) + paint(p.flavor, mid) + paint(p.accent, mark) + " ".repeat(right);
+    return wrap(body);
+  };
+
+  return [
+    "",
+    edge("  ╭") + paint(p.frame, bar) + edge("╮"),
+    flavorLine(),
+    blank(),
+    line(p.kicker, spec.kicker),
+    ...bigText(spec.title).map((r, i) => line(p.gradient[i], r, true)),
+    line(p.dots, gridDots),
+    line(p.tagline, spec.tagline[0]),
+    line(p.tagline, spec.tagline[1]),
+    edge("  ╰") + paint(p.frame, bar) + edge("╯"),
+    "",
+  ];
+}
+
+// The Hollow Grid: cold cyan going hollow, a neon-magenta accent, phosphor-green
+// grid showing through. The dead city that just hums.
+const HOLLOW_GRID: BannerSpec = {
+  title: "HOLLOW   GRID",
+  kicker: "T  H  E",
+  flavor: "the grid remembers what we were",
+  tagline: ["the network outlived us.", "now it just hums, empty, and waits."],
+  palette: {
+    frame: fg(30),
+    accent: fg(201),
+    kicker: fg(66),
+    gradient: [fg(51), fg(45), fg(44), fg(38), fg(31)],
+    flavor: fg(240),
+    tagline: fg(245),
+    dots: fg(22),
+  },
+};
+
+// Dustfall: the hot rust of the open salt pan, a burning-orange accent, drifting
+// dust showing through. The place people fled TO.
+const DUSTFALL: BannerSpec = {
+  title: "DUSTFALL",
+  kicker: "W E L C O M E   T O",
+  flavor: "the pan keeps what the wind brings",
+  tagline: ["everyone here ran from somewhere.", "the dust hasn't decided what you are yet."],
+  palette: {
+    frame: fg(94),
+    accent: fg(202),
+    kicker: fg(180),
+    gradient: [fg(229), fg(223), fg(216), fg(208), fg(166)],
+    flavor: fg(180),
+    tagline: fg(245),
+    dots: fg(94),
+  },
+};
+
+// Pick a world's banner by key (set per deployment via WORLD_MAP, like the map
+// and bestiary). Unknown or unset falls back to the Hollow Grid.
+export function bannerFor(key?: string): string[] {
+  return key?.trim().toLowerCase() === "dustfall" ? build(DUSTFALL) : build(HOLLOW_GRID);
+}
