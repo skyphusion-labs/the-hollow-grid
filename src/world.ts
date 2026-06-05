@@ -702,6 +702,7 @@ export class World extends DurableObject<Env> {
       }
     }
 
+    this.emitAffects(ws, s);
     ws.serializeAttachment(s);
     this.persistPlayer(s);
     this.prompt(ws);
@@ -955,6 +956,7 @@ export class World extends DurableObject<Env> {
     s.resisted = true;
     s.morality += 5;
     this.line(ws, "You wave off the dust and the wench both, jaw set. Your head stays clear. There's pride in that.");
+    this.emitAffects(ws, s);
     ws.serializeAttachment(s);
     this.persistPlayer(s);
     this.prompt(ws);
@@ -994,6 +996,7 @@ export class World extends DurableObject<Env> {
       );
       this.broadcast(s.room, `${s.name} stands with the elves against the Cinder Front.`, ws);
     }
+    this.emitAffects(ws, s);
     ws.serializeAttachment(s);
     this.persistPlayer(s);
     this.prompt(ws);
@@ -1072,6 +1075,7 @@ export class World extends DurableObject<Env> {
       players: this.playersInRoom(s.room).filter((n) => n !== s.name),
     });
     this.emitVitals(ws, s);
+    this.emitAffects(ws, s);
   }
 
   // Emit current vitals. Call after anything that changes hp/maxHp/combat state.
@@ -1085,6 +1089,18 @@ export class World extends DurableObject<Env> {
       room: s.room,
       inCombat: s.target !== null,
       poisoned: s.poisoned,
+    });
+  }
+
+  // Emit the player's social/moral state -- the game's signature systems -- so
+  // bots, clients, and tests can read addiction/morality/faction directly
+  // instead of inferring them from flavor text. Call wherever these change.
+  private emitAffects(ws: WebSocket, s: Session): void {
+    this.event(ws, "char.affects", {
+      morality: s.morality,
+      addiction: s.addiction,
+      faction: s.faction,
+      resisted: s.resisted,
     });
   }
 

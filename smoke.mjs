@@ -55,6 +55,13 @@ check(!!vit, "received a char.vitals event");
 check(vit?.data.hp > 0 && vit?.data.maxHp > 0, `vitals carry hp/maxHp (${vit?.data.hp}/${vit?.data.maxHp})`);
 check(vit?.data.inCombat === false, "vitals report inCombat=false out of combat");
 
+const aff = last("char.affects");
+check(!!aff, "received a char.affects event");
+check(
+  aff?.data.addiction === 0 && aff?.data.faction === "none" && aff?.data.resisted === false,
+  `fresh character starts clean (addiction=${aff?.data.addiction}, faction=${JSON.stringify(aff?.data.faction)})`,
+);
+
 // Move and confirm the structured room graph tracks us.
 events.length = 0;
 ws.send("north");
