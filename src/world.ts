@@ -1,8 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env, Session } from "./types";
-import { mapFor, START_ROOM, HOLDING_PIT, WARDEN_ID, TAVERN, MARKET, normalizeDir, type Room } from "./rooms";
+import { mapFor, introFor, START_ROOM, HOLDING_PIT, WARDEN_ID, TAVERN, MARKET, normalizeDir, type Room } from "./rooms";
 import { mobsFor, type MobTemplate } from "./mobs";
-import { ITEM_TEMPLATES, itemMatches, EQUIP_SLOTS } from "./items";
+import { ITEM_TEMPLATES, itemMatches, EQUIP_SLOTS, waresFor, starterFor, type Ware } from "./items";
 import type { GridTrace, GridCast, CharSheet, WorldInfo } from "../shared/grid";
 import { bannerFor } from "./banner";
 
@@ -79,16 +79,10 @@ const condition = (o: { hp: number; maxHp: number }): string => {
   return r >= 0.95 ? "in good shape" : r >= 0.6 ? "scuffed up" : r >= 0.3 ? "bloodied" : "barely standing";
 };
 
-// The Tinker's Workshop gear shop: item id -> price in gold. `list` shows it,
+// The workshop gear shop is per-world data now (see items.ts waresFor): the
+// Tinker's Workshop (Hollow Grid) and the Grease Pit (Dustfall) sell from the
+// same `workshop` room but stock their own region's gear. `list` shows it,
 // `buy <item>` purchases it (the tavern still sells only dust).
-const WORKSHOP_WARES: { item: string; price: number }[] = [
-  { item: "shiv", price: 12 },
-  { item: "helm", price: 14 },
-  { item: "antidote", price: 14 },
-  { item: "radcell", price: 16 },
-  { item: "plating", price: 18 },
-  { item: "rebar", price: 45 },
-];
 
 /**
  * World: a single Durable Object that holds the whole game. Players route to
@@ -116,6 +110,12 @@ export class World extends DurableObject<Env> {
   // This deployment's login banner (same WORLD_MAP key), so each world greets you
   // in its own title and palette.
   private readonly banner: string[];
+  // This deployment's shop stock, starter weapon, and the "where you wake" line
+  // of the welcome (same WORLD_MAP key), so a world hands out its own gear and
+  // reads as its own place from the first breath.
+  private readonly wares: Ware[];
+  private readonly starter: string;
+  private readonly intro: string;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -124,6 +124,9 @@ export class World extends DurableObject<Env> {
     this.mobTemplates = mobsFor(env.WORLD_MAP);
     this.mobById = Object.fromEntries(this.mobTemplates.map((m) => [m.template, m]));
     this.banner = bannerFor(env.WORLD_MAP);
+    this.wares = waresFor(env.WORLD_MAP);
+    this.starter = starterFor(env.WORLD_MAP);
+    this.intro = introFor(env.WORLD_MAP);
     ctx.blockConcurrencyWhile(async () => {
       const sql = this.ctx.storage.sql;
 
@@ -618,10 +621,10 @@ export class World extends DurableObject<Env> {
     // goal and how to learn every command, and promise that nothing is gated
     // behind secret words (the anti-"hidden search gate" lesson, in-voice).
     if (!row) {
-      this.invAdd(name, "shiv", 1); // a starter weapon: you wake clutching it
+      this.invAdd(name, this.starter, 1); // a starter weapon: you wake clutching it
       ws.send(
         [
-          `Welcome to the wastes, ${name}. You wake in the ruins of the Grid with a rusted shiv in your fist and little else.`,
+          `Welcome to the wastes, ${name}. You wake ${this.intro}, ${ITEM_TEMPLATES[this.starter].name} in your fist and little else.`,
           "Survive, explore, and decide what the wastes make of you. Nothing here is hidden",
           "behind secret commands: type 'help' (or '?') for everything you can do, and 'look'",
           "to take in your surroundings. The exits of each room are always listed.",
@@ -1356,7 +1359,7 @@ export class World extends DurableObject<Env> {
         this.prompt(ws);
         return;
       }
-      const ware = WORKSHOP_WARES.find((w) => itemMatches(w.item, arg));
+      const ware = this.wares.find((w) => itemMatches(w.item, arg));
       if (!ware) {
         this.line(ws, `The tinker doesn't stock any "${arg}". (try 'list')`);
         this.prompt(ws);
@@ -1388,7 +1391,7 @@ export class World extends DurableObject<Env> {
       return;
     }
     const lines = ["The tinker's wares (buy <item>):"];
-    for (const w of WORKSHOP_WARES) {
+    for (const w of this.wares) {
       lines.push(`  ${String(w.price).padStart(3)}g  ${ITEM_TEMPLATES[w.item].name}`);
     }
     lines.push(`  -- you have ${s.gold} gold.`);
