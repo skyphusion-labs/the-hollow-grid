@@ -3,8 +3,10 @@
 // It connects like any other client (WebSocket to /ws, first line = name),
 // reads the structured `@event` channel for exact game state (the same lines
 // smoke.mjs asserts on), and asks a model for the next command. The brain is
-// pluggable: a free local ollama model (default) or the Anthropic API (a
-// frontier model that needs far less hand-holding, but costs per call).
+// pluggable:
+//   ollama    - a free local model (default)
+//   anthropic - the Anthropic API (a frontier model, billed per call)
+//   gateway   - any provider via a Cloudflare AI Gateway (OpenAI-compatible)
 // Deterministic survival reflexes (rest when hurt, ride out combat) run before
 // the model, so it doesn't burn a round, or its life, on the obvious calls.
 //
@@ -12,39 +14,59 @@
 //   npm run dev                 # in one shell: the game on ws://localhost:8787/ws
 //   node bot.mjs                # in another: the bot logs in and plays (ollama)
 //   BOT_BRAIN=anthropic ANTHROPIC_API_KEY=sk-... node bot.mjs   # play on Claude
+//   BOT_BRAIN=gateway CF_AIG_TOKEN=... CF_ACCOUNT_ID=... CF_AIG_GATEWAY=skyphusion-llm \
+//     MUD_MODEL=openai/gpt-5 node bot.mjs                        # play via AI Gateway
+//   # ...or Claude through the same gateway (keys stay in Cloudflare, not in env):
+//   BOT_BRAIN=gateway CF_AIG_TOKEN=... CF_ACCOUNT_ID=... MUD_MODEL=anthropic/claude-sonnet-4-6 node bot.mjs
 //
 // Config (all optional, via env):
 //   MUD_URL           ws endpoint           (default ws://localhost:8787/ws)
 //   MUD_NAME          character name        (default grid_<random>)
-//   BOT_BRAIN         ollama | anthropic    (default ollama)
-//   MUD_MODEL         model id (brain-specific default if unset)
+//   BOT_BRAIN         ollama | anthropic | gateway   (default ollama)
+//   MUD_MODEL         model id (brain-specific default if unset; gateway wants provider/model)
+//   BOT_MAX_TOKENS    reply token budget    (default 40; raise for reasoning models)
 //   OLLAMA_BASE_URL   ollama OpenAI API     (default http://localhost:11434/v1)
 //   OLLAMA_API_KEY    ignored by ollama     (default "ollama")
 //   ANTHROPIC_API_KEY required for BOT_BRAIN=anthropic (never hard-coded)
 //   ANTHROPIC_BASE_URL Messages API base    (default https://api.anthropic.com/v1)
+//   CF_AIG_TOKEN      required for BOT_BRAIN=gateway (sent as cf-aig-authorization)
+//   CF_AIG_BASE_URL   full gateway compat base ending in /compat (overrides the two below)
+//   CF_ACCOUNT_ID     Cloudflare account id (used to build the gateway URL)
+//   CF_AIG_GATEWAY    gateway name          (default skyphusion-llm)
 //   BOT_THINK_MS      min ms between moves   (default 4000; raise it to spend less)
 //   BOT_QUIET_MS      settle window         (default 700)
 //   BOT_LOG           tee output to a file  (optional)
 //
-// Note: the bot acts every few seconds, so the Anthropic brain bills continuously
-// for as long as it runs. Pick the model and BOT_THINK_MS with that in mind.
+// Note: the bot acts every few seconds, so the anthropic/gateway brains bill
+// continuously while running. Pick the model and BOT_THINK_MS with that in mind.
+// The gateway brain holds only a gateway token; provider API keys live in the
+// AI Gateway (BYOK), never in the bot.
 //
 // Requires Node 24+ (global WebSocket + fetch). No build step, no deps.
 
 import { appendFileSync } from "node:fs";
 
 const BRAIN = (process.env.BOT_BRAIN ?? "ollama").toLowerCase();
-const DEFAULT_MODEL = BRAIN === "anthropic" ? "claude-sonnet-4-6" : "qwen3:30b-a3b-instruct-2507-q4_K_M";
+const DEFAULT_MODEL = {
+  anthropic: "claude-sonnet-4-6",
+  gateway: "openai/gpt-5",
+  ollama: "qwen3:30b-a3b-instruct-2507-q4_K_M",
+}[BRAIN] ?? "qwen3:30b-a3b-instruct-2507-q4_K_M";
 
 const CFG = {
   url: process.env.MUD_URL ?? "ws://localhost:8787/ws",
   name: process.env.MUD_NAME ?? "grid_" + Math.random().toString(36).slice(2, 7),
   brain: BRAIN,
   model: process.env.MUD_MODEL ?? DEFAULT_MODEL,
+  maxTokens: Number(process.env.BOT_MAX_TOKENS ?? 40),
   ollamaBase: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434/v1",
   ollamaKey: process.env.OLLAMA_API_KEY ?? "ollama",
   anthropicBase: process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com/v1",
   anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",
+  gatewayToken: process.env.CF_AIG_TOKEN ?? "",
+  gatewayBase: process.env.CF_AIG_BASE_URL ?? "",
+  cfAccountId: process.env.CF_ACCOUNT_ID ?? "",
+  cfGateway: process.env.CF_AIG_GATEWAY ?? "skyphusion-llm",
   thinkMs: Number(process.env.BOT_THINK_MS ?? 4000),
   quietMs: Number(process.env.BOT_QUIET_MS ?? 700),
   logFile: process.env.BOT_LOG ?? "",
@@ -52,6 +74,15 @@ const CFG = {
   restBelow: 0.35,
   restUntil: 0.85,
 };
+
+// The AI Gateway OpenAI-compatible chat/completions endpoint, from either an
+// explicit base URL or the account-id + gateway-name pair.
+function gatewayEndpoint() {
+  const base = CFG.gatewayBase
+    ? CFG.gatewayBase.replace(/\/+$/, "")
+    : `https://gateway.ai.cloudflare.com/v1/${CFG.cfAccountId}/${CFG.cfGateway}/compat`;
+  return `${base}/chat/completions`;
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -205,29 +236,49 @@ function escapeMove() {
 
 async function think() {
   const prompt = `${buildContext()}\n\nWhat is your next command?`;
-  const raw = CFG.brain === "anthropic" ? await thinkAnthropic(prompt) : await thinkOllama(prompt);
+  let raw;
+  if (CFG.brain === "anthropic") raw = await thinkAnthropic(prompt);
+  else if (CFG.brain === "gateway") raw = await thinkGateway(prompt);
+  else raw = await thinkOllama(prompt);
   return sanitizeCommand(raw);
 }
 
-// Free local brain: ollama's OpenAI-compatible chat endpoint.
-async function thinkOllama(prompt) {
-  const res = await fetch(`${CFG.ollamaBase}/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${CFG.ollamaKey}` },
-    body: JSON.stringify({
-      model: CFG.model,
-      max_tokens: 40,
-      temperature: 0.8,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-    }),
-  });
-  if (!res.ok) throw new Error(`ollama ${res.status}: ${await res.text()}`);
-  const json = await res.json();
-  return json.choices?.[0]?.message?.content ?? "";
+// Shared caller for any OpenAI-compatible chat/completions endpoint (ollama and
+// the AI Gateway compat path are both this shape; only URL/auth/model differ).
+async function thinkOpenAICompat(label, endpoint, authHeaders) {
+  return async (prompt) => {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders },
+      body: JSON.stringify({
+        model: CFG.model,
+        max_tokens: CFG.maxTokens,
+        temperature: 0.8,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: prompt },
+        ],
+      }),
+    });
+    if (!res.ok) throw new Error(`${label} ${res.status}: ${await res.text()}`);
+    const json = await res.json();
+    return json.choices?.[0]?.message?.content ?? "";
+  };
 }
+
+// Free local brain: ollama's OpenAI-compatible chat endpoint.
+const thinkOllama = (prompt) =>
+  thinkOpenAICompat("ollama", `${CFG.ollamaBase}/chat/completions`, {
+    Authorization: `Bearer ${CFG.ollamaKey}`,
+  })(prompt);
+
+// Cloudflare AI Gateway brain: OpenAI-compatible, any provider via provider/model.
+// Authenticates to the gateway with a gateway token; provider keys live in the
+// gateway (BYOK), not here.
+const thinkGateway = (prompt) =>
+  thinkOpenAICompat("gateway", gatewayEndpoint(), {
+    "cf-aig-authorization": `Bearer ${CFG.gatewayToken}`,
+  })(prompt);
 
 // Paid frontier brain: the Anthropic Messages API (native, no SDK/deps).
 async function thinkAnthropic(prompt) {
@@ -240,7 +291,7 @@ async function thinkAnthropic(prompt) {
     },
     body: JSON.stringify({
       model: CFG.model,
-      max_tokens: 40,
+      max_tokens: CFG.maxTokens,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: prompt }],
     }),
@@ -377,13 +428,24 @@ process.on("SIGINT", () => {
   process.exit(0);
 });
 
-if (CFG.brain !== "ollama" && CFG.brain !== "anthropic") {
-  console.error(`unknown BOT_BRAIN "${CFG.brain}" (use "ollama" or "anthropic")`);
+if (!["ollama", "anthropic", "gateway"].includes(CFG.brain)) {
+  console.error(`unknown BOT_BRAIN "${CFG.brain}" (use "ollama", "anthropic", or "gateway")`);
   process.exit(1);
 }
 if (CFG.brain === "anthropic" && !CFG.anthropicKey) {
   console.error("BOT_BRAIN=anthropic requires ANTHROPIC_API_KEY (it is never hard-coded)");
   process.exit(1);
+}
+if (CFG.brain === "gateway") {
+  if (!CFG.gatewayToken) {
+    console.error("BOT_BRAIN=gateway requires CF_AIG_TOKEN (the gateway token; provider keys stay in the gateway)");
+    process.exit(1);
+  }
+  if (!CFG.gatewayBase && !CFG.cfAccountId) {
+    console.error("BOT_BRAIN=gateway needs CF_AIG_BASE_URL, or CF_ACCOUNT_ID (+ optional CF_AIG_GATEWAY)");
+    process.exit(1);
+  }
+  log(`gateway endpoint: ${gatewayEndpoint()}`);
 }
 log(`brain: ${CFG.brain} (model ${CFG.model})`);
 
