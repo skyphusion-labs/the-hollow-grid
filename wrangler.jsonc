@@ -13,13 +13,11 @@
     "WORLD_URL": "ws://localhost:8787/ws"
   },
   "durable_objects": {
-    "bindings": [
-      { "name": "WORLD", "class_name": "World" },
-      { "name": "GRIDHUB", "class_name": "GridHub" }
-    ]
+    "bindings": [{ "name": "WORLD", "class_name": "World" }]
   },
-  "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["World"] },
-    { "tag": "v2", "new_sqlite_classes": ["GridHub"] }
-  ]
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["World"] }],
+  // The federation backend lives in its own Worker (grid-hub/); we reach it over
+  // an RPC service binding to its GridHubService entrypoint. This is what lets a
+  // separate deployment share the Grid. (See docs/federation.md.)
+  "services": [{ "binding": "GRID", "service": "grid-hub", "entrypoint": "GridHubService" }]
 }

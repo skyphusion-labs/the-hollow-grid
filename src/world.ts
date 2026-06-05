@@ -3,7 +3,7 @@ import type { Env, Session } from "./types";
 import { ROOMS, START_ROOM, HOLDING_PIT, WARDEN_ID, TAVERN, MARKET, normalizeDir } from "./rooms";
 import { MOB_TEMPLATES, MOB_BY_ID } from "./mobs";
 import { ITEM_TEMPLATES, itemMatches, EQUIP_SLOTS } from "./items";
-import type { GridTrace, GridCast, CharSheet, WorldInfo } from "./gridhub";
+import type { GridTrace, GridCast, CharSheet, WorldInfo } from "../shared/grid";
 
 const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 
@@ -576,7 +576,7 @@ export class World extends DurableObject<Env> {
     // over the local shared fields; keep local-only state (room, hp, inventory).
     // If the hub is down, the local sheet stands -- federation is never required.
     try {
-      const canon = await this.env.GRIDHUB.getByName("grid").loadCharacter(name);
+      const canon = await this.env.GRID.loadCharacter(name);
       session.level = canon.level;
       session.xp = canon.xp;
       session.gold = canon.gold;
@@ -585,9 +585,11 @@ export class World extends DurableObject<Env> {
       session.title = canon.title;
       session.maxHp = BASE_HP + (canon.level - 1) * 10; // max HP follows your level
       // Advertise this world to the federation registry (keeps its entry live).
-      void this.env.GRIDHUB.getByName("grid")
-        .register(WORLD_NAME, this.env.WORLD_URL ?? "ws://localhost:8787/ws")
-        .catch(() => {});
+      // waitUntil so the RPC survives this handler returning -- across the service
+      // binding a bare fire-and-forget can be cancelled before it lands.
+      this.ctx.waitUntil(
+        this.env.GRID.register(WORLD_NAME, this.env.WORLD_URL ?? "ws://localhost:8787/ws").catch(() => {}),
+      );
     } catch {
       /* hub unreachable; the local character stands on its own */
     }
@@ -797,7 +799,7 @@ export class World extends DurableObject<Env> {
         break;
       case "gridcast":
       case "gc":
-        this.gridcast(ws, s, arg);
+        await this.gridcast(ws, s, arg);
         break;
       case "war":
       case "tide":
@@ -1693,9 +1695,10 @@ export class World extends DurableObject<Env> {
     // unreachable, the world runs standalone -- federation is additive, never a
     // dependency (see docs/federation.md).
     try {
-      void this.env.GRIDHUB.getByName("grid")
-        .record(WORLD_NAME, node, kind, text, Date.now())
-        .catch(() => {});
+      // waitUntil keeps this best-effort mirror alive past the current handler
+      // without blocking play; across the service binding an un-tracked promise
+      // can be cancelled before the trace reaches the hub.
+      this.ctx.waitUntil(this.env.GRID.record(WORLD_NAME, node, kind, text, Date.now()).catch(() => {}));
     } catch {
       /* hub binding unavailable; local play is unaffected */
     }
@@ -1706,7 +1709,7 @@ export class World extends DurableObject<Env> {
   // gains; positive = the free folk gain.
   private contributeTide(delta: number): void {
     try {
-      void this.env.GRIDHUB.getByName("grid").shiftTide(delta).catch(() => {});
+      this.ctx.waitUntil(this.env.GRID.shiftTide(delta).catch(() => {}));
     } catch {
       /* hub unavailable; the choice still stands locally */
     }
@@ -1716,16 +1719,18 @@ export class World extends DurableObject<Env> {
   // best-effort. The hub validates the proposal; we never block on it.
   private commitIdentity(s: Session): void {
     try {
-      void this.env.GRIDHUB.getByName("grid")
-        .commitCharacter(s.name, {
-          level: s.level,
-          xp: s.xp,
-          gold: s.gold,
-          faction: s.faction,
-          morality: s.morality,
-          title: s.title ?? "",
-        })
-        .catch(() => {});
+      this.ctx.waitUntil(
+        this.env.GRID
+          .commitCharacter(s.name, {
+            level: s.level,
+            xp: s.xp,
+            gold: s.gold,
+            faction: s.faction,
+            morality: s.morality,
+            title: s.title ?? "",
+          })
+          .catch(() => {}),
+      );
     } catch {
       /* hub unavailable */
     }
@@ -1735,7 +1740,7 @@ export class World extends DurableObject<Env> {
   private async whoami(ws: WebSocket, s: Session): Promise<void> {
     let sheet: CharSheet;
     try {
-      sheet = await this.env.GRIDHUB.getByName("grid").loadCharacter(s.name);
+      sheet = await this.env.GRID.loadCharacter(s.name);
     } catch {
       sheet = { level: s.level, xp: s.xp, gold: s.gold, faction: s.faction, morality: s.morality, title: s.title ?? "" };
       this.line(ws, "(the Grid is unreachable; showing your local self)");
@@ -1758,7 +1763,7 @@ export class World extends DurableObject<Env> {
   private async worldsList(ws: WebSocket, s: Session): Promise<void> {
     let worlds: WorldInfo[] = [];
     try {
-      worlds = await this.env.GRIDHUB.getByName("grid").listWorlds();
+      worlds = await this.env.GRID.listWorlds();
     } catch {
       this.line(ws, "The Grid is silent; you can't see the other worlds from here.");
       this.prompt(ws);
@@ -1794,7 +1799,7 @@ export class World extends DurableObject<Env> {
     }
     let worlds: WorldInfo[] = [];
     try {
-      worlds = await this.env.GRIDHUB.getByName("grid").listWorlds();
+      worlds = await this.env.GRID.listWorlds();
     } catch {
       this.line(ws, "The Grid won't answer; travel is impossible right now.");
       this.prompt(ws);
@@ -1836,7 +1841,7 @@ export class World extends DurableObject<Env> {
   private async warReport(ws: WebSocket): Promise<void> {
     let tide = 0;
     try {
-      tide = await this.env.GRIDHUB.getByName("grid").tide();
+      tide = await this.env.GRID.tide();
     } catch {
       this.line(ws, "The deep Grid is silent; you can't read the war from here.");
       this.prompt(ws);
@@ -1858,7 +1863,7 @@ export class World extends DurableObject<Env> {
   }
 
   // `gridcast`: cast your voice across the entire federation -- every world hears it.
-  private gridcast(ws: WebSocket, s: Session, arg: string): void {
+  private async gridcast(ws: WebSocket, s: Session, arg: string): Promise<void> {
     const msg = arg.trim();
     if (!msg) {
       this.line(ws, "Gridcast what? (gridcast <message> -- the dead network carries it to every world)");
@@ -1866,7 +1871,12 @@ export class World extends DurableObject<Env> {
       return;
     }
     try {
-      void this.env.GRIDHUB.getByName("grid").gridcast(WORLD_NAME, s.name, msg).catch(() => {});
+      // Await the write: the hub is now a separate Worker reached over a service
+      // binding, and a fire-and-forget RPC can be cancelled when this handler
+      // returns -- so the cast must land before we move on, or the relay never
+      // sees it. (As an in-Worker DO call this raced by; across the boundary it
+      // doesn't.)
+      await this.env.GRID.gridcast(WORLD_NAME, s.name, msg);
     } catch {
       this.line(ws, "The Grid swallows your words; the network is unreachable.");
       this.prompt(ws);
@@ -1884,7 +1894,7 @@ export class World extends DurableObject<Env> {
       .one().last_cast;
     let casts: GridCast[] = [];
     try {
-      casts = await this.env.GRIDHUB.getByName("grid").castsSince(since, 20);
+      casts = await this.env.GRID.castsSince(since, 20);
     } catch {
       return; // hub unreachable; try again next tick
     }
@@ -1923,7 +1933,7 @@ export class World extends DurableObject<Env> {
     if (a === "all" || a === "deep" || a === "grid") {
       let feed: GridTrace[] = [];
       try {
-        feed = await this.env.GRIDHUB.getByName("grid").recentAcross(WORLD_NAME, 8);
+        feed = await this.env.GRID.recentAcross(WORLD_NAME, 8);
       } catch {
         this.line(ws, "You reach for the deep Grid, but the wider network is silent. (the hub is unreachable)");
         this.prompt(ws);

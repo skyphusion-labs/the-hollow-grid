@@ -1,10 +1,15 @@
 import type { World } from "./world";
-import type { GridHub } from "./gridhub";
+import type { GridHubApi } from "../shared/grid";
 
 export interface Env {
   WORLD: DurableObjectNamespace<World>;
-  /** The federation backend: the shared Grid ledger (see docs/federation.md). */
-  GRIDHUB: DurableObjectNamespace<GridHub>;
+  /**
+   * The federation backend, reached over a SERVICE BINDING (RPC) rather than a
+   * local DO: a separate Worker (grid-hub/) owns the shared Grid, so any world
+   * that binds it joins the same federation. Typed as the contract it exposes.
+   * (See shared/grid.ts and docs/federation.md.)
+   */
+  GRID: GridHubApi;
   /** Comma-separated player names allowed to `wall` (server-wide announcements). */
   ADMINS?: string;
   /** This world's public WebSocket URL, advertised to the federation registry. */

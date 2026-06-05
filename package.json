@@ -1,16 +1,16 @@
 {
   "name": "the-hollow-grid",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "A MUD built on Cloudflare Workers + Durable Objects",
   "license": "MIT",
   "author": "Conrad Rockenhaus",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "start": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit",
+    "dev": "wrangler dev -c wrangler.jsonc -c grid-hub/wrangler.jsonc",
+    "start": "wrangler dev -c wrangler.jsonc -c grid-hub/wrangler.jsonc",
+    "deploy": "wrangler deploy -c grid-hub/wrangler.jsonc && wrangler deploy",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p grid-hub/tsconfig.json",
     "smoke": "node smoke.mjs",
     "bot": "node bot.mjs",
     "cf-typegen": "wrangler types"

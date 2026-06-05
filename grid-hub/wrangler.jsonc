@@ -1,0 +1,13 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "grid-hub",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-04",
+  "observability": {
+    "enabled": true
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "GRIDHUB", "class_name": "GridHub" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GridHub"] }]
+}
