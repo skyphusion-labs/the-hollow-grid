@@ -3,7 +3,7 @@ import type { Env, Session } from "./types";
 import { ROOMS, START_ROOM, HOLDING_PIT, WARDEN_ID, TAVERN, MARKET, normalizeDir } from "./rooms";
 import { MOB_TEMPLATES, MOB_BY_ID } from "./mobs";
 import { ITEM_TEMPLATES, itemMatches, EQUIP_SLOTS } from "./items";
-import type { GridTrace } from "./gridhub";
+import type { GridTrace, GridCast } from "./gridhub";
 
 const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 
@@ -19,7 +19,6 @@ const POISON_DMG = 1; // hp lost per tick while poisoned
 // not a strobe light): a full day is ~PHASE_TICKS*4 ticks.
 const PHASE_TICKS = 20; // day -> dusk -> night -> dawn, each ~1 minute
 const WEATHER_TICKS = 9; // roll for a weather change ~every 27s
-const TIDE_TICKS = 24; // the faction tide drifts ~every 72s
 const GHOST_TICKS = 4; // the Grid-ghost drifts a room ~every 12s
 
 const PHASES = ["dawn", "day", "dusk", "night"] as const;
@@ -211,9 +210,15 @@ export class World extends DurableObject<Env> {
           phase TEXT NOT NULL DEFAULT 'day',
           weather TEXT NOT NULL DEFAULT 'clear',
           tide INTEGER NOT NULL DEFAULT 0,
-          ghost_room TEXT NOT NULL DEFAULT '${START_ROOM}'
+          ghost_room TEXT NOT NULL DEFAULT '${START_ROOM}',
+          last_cast INTEGER NOT NULL DEFAULT 0
         )
       `);
+      try {
+        sql.exec("ALTER TABLE world ADD COLUMN last_cast INTEGER NOT NULL DEFAULT 0");
+      } catch {
+        // column already exists
+      }
       sql.exec("INSERT OR IGNORE INTO world (id) VALUES (0)");
     });
   }
@@ -339,8 +344,11 @@ export class World extends DurableObject<Env> {
       if (s?.name && s.target) this.resolveRound(ws, s);
     }
 
-    // 4) Advance the living world (time of day, weather, faction tide, ghost).
+    // 4) Advance the living world (time of day, weather, the ghost).
     this.worldTick();
+
+    // 5) Federation: relay any new cross-world gridcasts to our players.
+    await this.pollGridcasts();
 
     await this.scheduleNextTick();
   }
@@ -762,6 +770,14 @@ export class World extends DurableObject<Env> {
         break;
       case "ping":
         await this.gridPing(ws, s, arg);
+        break;
+      case "gridcast":
+      case "gc":
+        this.gridcast(ws, s, arg);
+        break;
+      case "war":
+      case "tide":
+        await this.warReport(ws);
         break;
       case "wall":
       case "announce":
@@ -1387,6 +1403,7 @@ export class World extends DurableObject<Env> {
         this.persistPlayer(s);
         this.emitAffects(ws, s);
         this.recordTrace(s.room, "oath", `${s.name} turned on the Cinder Front at the Ashmonger's own dais.`);
+        this.contributeTide(15);
         this.line(
           ws,
           'You spit at the Ashmonger\'s boots. "I\'m done being your dog." Every soldier in the stronghold turns on you at once' +
@@ -1400,6 +1417,7 @@ export class World extends DurableObject<Env> {
         this.persistPlayer(s);
         this.emitAffects(ws, s);
         this.recordTrace(s.room, "oath", `${s.name} swore themselves to the Cinder Front at the Ashmonger's dais.`);
+        this.contributeTide(-15);
         this.line(ws, 'You kneel and swear yourself to the Front. The Ashmonger\'s hand closes on your shoulder like a trap. "Good. The wastes will be ours."');
       } else {
         this.line(ws, "The Ashmonger only laughs. There's nothing here to decide that your blood hasn't already settled.");
@@ -1430,6 +1448,7 @@ export class World extends DurableObject<Env> {
       );
       this.broadcast(s.room, `${s.name} has joined the Cinder Front.`, ws);
       this.recordTrace(s.room, "oath", `${s.name} swore themselves to the Cinder Front here.`);
+      this.contributeTide(-10);
     } else {
       s.faction = "ally";
       s.morality += 25;
@@ -1442,6 +1461,7 @@ export class World extends DurableObject<Env> {
       );
       this.broadcast(s.room, `${s.name} stands with the elves against the Cinder Front.`, ws);
       this.recordTrace(s.room, "oath", `${s.name} stood with the free folk here.`);
+      this.contributeTide(10);
     }
     this.emitAffects(ws, s);
     ws.serializeAttachment(s);
@@ -1644,6 +1664,88 @@ export class World extends DurableObject<Env> {
     }
   }
 
+  // --- Federation phase 2: the global tide + cross-world chat ----------------
+  // Move the federation-wide faction needle (best-effort). Negative = the Front
+  // gains; positive = the free folk gain.
+  private contributeTide(delta: number): void {
+    try {
+      void this.env.GRIDHUB.getByName("grid").shiftTide(delta).catch(() => {});
+    } catch {
+      /* hub unavailable; the choice still stands locally */
+    }
+  }
+
+  // `war`: read the global Cinder Front vs free-folk tide, shared by every world.
+  private async warReport(ws: WebSocket): Promise<void> {
+    let tide = 0;
+    try {
+      tide = await this.env.GRIDHUB.getByName("grid").tide();
+    } catch {
+      this.line(ws, "The deep Grid is silent; you can't read the war from here.");
+      this.prompt(ws);
+      return;
+    }
+    const state =
+      tide <= -50
+        ? "the Cinder Front is ascendant -- the free folk are being driven under, across every world at once."
+        : tide >= 50
+          ? "the free folk are winning -- the Front is breaking, everywhere."
+          : tide < 0
+            ? "the Front holds the edge, for now."
+            : tide > 0
+              ? "the free folk are holding their ground."
+              : "the war hangs in perfect, brutal balance.";
+    this.line(ws, `Across the whole Grid, the war for the wastes: ${state} (tide ${tide >= 0 ? "+" : ""}${tide})`);
+    this.event(ws, "world.war", { tide });
+    this.prompt(ws);
+  }
+
+  // `gridcast`: cast your voice across the entire federation -- every world hears it.
+  private gridcast(ws: WebSocket, s: Session, arg: string): void {
+    const msg = arg.trim();
+    if (!msg) {
+      this.line(ws, "Gridcast what? (gridcast <message> -- the dead network carries it to every world)");
+      this.prompt(ws);
+      return;
+    }
+    try {
+      void this.env.GRIDHUB.getByName("grid").gridcast(WORLD_NAME, s.name, msg).catch(() => {});
+    } catch {
+      this.line(ws, "The Grid swallows your words; the network is unreachable.");
+      this.prompt(ws);
+      return;
+    }
+    this.line(ws, `You cast your voice into the dead Grid, out across every node: "${msg}"`);
+    this.prompt(ws);
+  }
+
+  // Poll the hub for new cross-world casts and relay them to local players. Runs
+  // each alarm tick; tracks the last relayed cast id in the world row.
+  private async pollGridcasts(): Promise<void> {
+    const since = this.ctx.storage.sql
+      .exec<{ last_cast: number }>("SELECT last_cast FROM world WHERE id = 0")
+      .one().last_cast;
+    let casts: GridCast[] = [];
+    try {
+      casts = await this.env.GRIDHUB.getByName("grid").castsSince(since, 20);
+    } catch {
+      return; // hub unreachable; try again next tick
+    }
+    if (casts.length === 0) return;
+    let maxId = since;
+    for (const c of casts) {
+      maxId = Math.max(maxId, c.id);
+      const line = `[Grid] [${c.world}] ${c.sender}: ${c.text}`;
+      for (const ws of this.ctx.getWebSockets()) {
+        const os = ws.deserializeAttachment() as Session | null;
+        if (!os?.name) continue;
+        ws.send(NL + line + NL + "> ");
+        this.event(ws, "comm.gridcast", { world: c.world, from: c.sender, text: c.text });
+      }
+    }
+    this.ctx.storage.sql.exec("UPDATE world SET last_cast = ? WHERE id = 0", maxId);
+  }
+
   private ago(at: number): string {
     const sec = Math.max(0, Math.floor((Date.now() - at) / 1000));
     if (sec < 60) return "moments ago";
@@ -1791,21 +1893,8 @@ export class World extends DurableObject<Env> {
       }
     }
 
-    if (tick % TIDE_TICKS === 0) {
-      const band = (v: number) => (v <= -50 ? -1 : v >= 50 ? 1 : 0);
-      const before = band(tide);
-      tide = Math.max(-100, Math.min(100, tide + (Math.random() < 0.5 ? -10 : 10)));
-      if (band(tide) !== before) {
-        this.worldBroadcast(
-          band(tide) < 0
-            ? "Word spreads on the wind: the Cinder Front is ascendant in the wastes."
-            : band(tide) > 0
-              ? "Word spreads on the wind: the free folk are gaining ground against the Front."
-              : "The struggle for the wastes settles back into uneasy balance.",
-        );
-        changed = true;
-      }
-    }
+    // (The faction tide is global now -- driven by player choices and shared
+    // across the whole federation via the Grid Hub; see contributeTide / war.)
 
     if (tick % GHOST_TICKS === 0) {
       ghost_room = this.driftGhost(ghost_room);
@@ -2229,6 +2318,8 @@ export class World extends DurableObject<Env> {
         "  who                   list survivors online",
         "  title <text>          set an epithet shown after your name (blank clears it)",
         "  ping [all]            query this node's Grid memory ('ping all' = the whole network)",
+        "  gridcast <message>    speak across EVERY world on the Grid (gc)",
+        "  war / tide            the global Cinder Front vs free-folk war (all worlds)",
         "  wall <message>        broadcast an announcement to everyone (keepers only)",
         "  world / weather       check the time of day and the weather",
         "  help (?)              this message",

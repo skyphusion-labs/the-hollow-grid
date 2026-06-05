@@ -22,6 +22,8 @@ export type GridTrace = {
   at: number;
 };
 
+export type GridCast = { id: number; world: string; sender: string; text: string };
+
 // Echoes seeded from "elsewhere on the Grid" so the federation feed is alive on
 // the very first ping, before any other world has actually connected. (Once real
 // worlds report in, their traces interleave with these.)
@@ -52,6 +54,22 @@ export class GridHub extends DurableObject<Env> {
           sql.exec("INSERT INTO ledger (world, node, kind, text, at) VALUES (?, ?, ?, ?, 0)", e.world, e.node, e.kind, e.text);
         }
       }
+
+      // The global faction tide: one needle the whole federation moves.
+      // Negative = the Cinder Front ascendant; positive = the free folk rising.
+      sql.exec("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v INTEGER NOT NULL)");
+      sql.exec("INSERT OR IGNORE INTO meta (k, v) VALUES ('tide', 0)");
+
+      // Cross-world chat: a shared feed worlds poll and relay to their players.
+      sql.exec(`
+        CREATE TABLE IF NOT EXISTS casts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          world TEXT NOT NULL,
+          sender TEXT NOT NULL,
+          text TEXT NOT NULL,
+          at INTEGER NOT NULL
+        )
+      `);
     });
   }
 
@@ -67,6 +85,31 @@ export class GridHub extends DurableObject<Env> {
   recent(limit: number): GridTrace[] {
     return this.ctx.storage.sql
       .exec<GridTrace>("SELECT world, node, kind, text, at FROM ledger ORDER BY id DESC LIMIT ?", Math.max(1, Math.min(limit, 50)))
+      .toArray();
+  }
+
+  // --- The global faction tide (shared mutable state across all worlds) ------
+  tide(): number {
+    return this.ctx.storage.sql.exec<{ v: number }>("SELECT v FROM meta WHERE k = 'tide'").one().v;
+  }
+
+  shiftTide(delta: number): number {
+    const next = Math.max(-100, Math.min(100, this.tide() + delta));
+    this.ctx.storage.sql.exec("UPDATE meta SET v = ? WHERE k = 'tide'", next);
+    return next;
+  }
+
+  // --- Cross-world chat ------------------------------------------------------
+  gridcast(world: string, sender: string, text: string): void {
+    const sql = this.ctx.storage.sql;
+    sql.exec("INSERT INTO casts (world, sender, text, at) VALUES (?, ?, ?, ?)", world, sender, text, Date.now());
+    sql.exec("DELETE FROM casts WHERE id NOT IN (SELECT id FROM casts ORDER BY id DESC LIMIT 200)");
+  }
+
+  // Worlds poll this each tick for casts newer than the last one they relayed.
+  castsSince(sinceId: number, limit: number): GridCast[] {
+    return this.ctx.storage.sql
+      .exec<GridCast>("SELECT id, world, sender, text FROM casts WHERE id > ? ORDER BY id ASC LIMIT ?", sinceId, Math.max(1, Math.min(limit, 50)))
       .toArray();
   }
 }

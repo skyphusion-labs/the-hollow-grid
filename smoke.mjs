@@ -490,5 +490,43 @@ await sleep(400);
 check(/pledge|ashmonger|front/i.test(F.raw().slice(fmark)), "the Ashmonger answers when you face him");
 F.sock.close();
 
+// --- Phase 10: federation phase 2 -- cross-world chat + the global tide ---
+const GX = mkClient();
+await GX.open();
+await sleep(300);
+const gxName = "caster_" + Math.random().toString(36).slice(2, 6);
+GX.send(gxName);
+await sleep(500);
+const GY = mkClient();
+await GY.open();
+await sleep(300);
+GY.send("hearer_" + Math.random().toString(36).slice(2, 6));
+await sleep(500);
+
+// gridcast goes into the shared hub; the relay reaches every world's players on
+// the alarm tick (so it round-trips through the federation backend, not locally).
+GX.send("gridcast the wastes are listening");
+await sleep(7000); // a couple of alarm ticks for the relay
+const heard = GY.last("comm.gridcast");
+check(
+  heard?.data.from === gxName && /wastes are listening/i.test(heard?.data.text ?? ""),
+  "gridcast crosses the Grid and reaches another player via the hub (comm.gridcast)",
+);
+
+// the global faction tide: a faction choice moves a needle shared by every world.
+GX.send("war");
+await sleep(500);
+const tideBefore = GX.last("world.war")?.data.tide ?? 0;
+GX.send("north"); // nexus -> Scrap Market
+await sleep(500);
+GX.send("defend"); // side with the free folk -> contributes +10 to the GLOBAL tide
+await sleep(900);
+GX.send("war");
+await sleep(600);
+const tideAfter = GX.last("world.war")?.data.tide ?? 0;
+check(tideAfter > tideBefore, `siding with the free folk moved the GLOBAL tide (${tideBefore} -> ${tideAfter})`);
+GX.sock.close();
+GY.sock.close();
+
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nSMOKE TEST PASSED");
 process.exit(failures ? 1 : 0);
