@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env, Session } from "./types";
-import { ROOMS, START_ROOM, HOLDING_PIT, WARDEN_ID, TAVERN, MARKET, normalizeDir } from "./rooms";
+import { mapFor, START_ROOM, HOLDING_PIT, WARDEN_ID, TAVERN, MARKET, normalizeDir, type Room } from "./rooms";
 import { MOB_TEMPLATES, MOB_BY_ID } from "./mobs";
 import { ITEM_TEMPLATES, itemMatches, EQUIP_SLOTS } from "./items";
 import type { GridTrace, GridCast, CharSheet, WorldInfo } from "../shared/grid";
@@ -105,10 +105,15 @@ export class World extends DurableObject<Env> {
   // This deployment's federation identity. Set once from the env so two Workers
   // running this same code register as distinct worlds on the shared Grid.
   private readonly worldName: string;
+  // This deployment's map, chosen per deployment via WORLD_MAP. Same room ids
+  // and exit graph across worlds (the game logic and mobs anchor on ids); only
+  // the prose differs, so arriving somewhere new still feels like somewhere new.
+  private readonly rooms: Record<string, Room>;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.worldName = env.WORLD_NAME?.trim() || DEFAULT_WORLD_NAME;
+    this.rooms = mapFor(env.WORLD_MAP);
     ctx.blockConcurrencyWhile(async () => {
       const sql = this.ctx.storage.sql;
 
@@ -553,7 +558,7 @@ export class World extends DurableObject<Env> {
       .toArray()[0];
 
     let room = row?.room ?? START_ROOM;
-    if (!ROOMS[room]) room = START_ROOM;
+    if (!this.rooms[room]) room = START_ROOM;
 
     const session: Session = {
       name,
@@ -857,7 +862,7 @@ export class World extends DurableObject<Env> {
   }
 
   private async move(ws: WebSocket, s: Session, dir: string): Promise<void> {
-    const room = ROOMS[s.room];
+    const room = this.rooms[s.room];
     const destId = room.exits[dir];
     if (!destId) {
       this.line(ws, `You can't go ${dir} from here.`);
@@ -1512,7 +1517,7 @@ export class World extends DurableObject<Env> {
   // ---- views ---------------------------------------------------------------
 
   private describeRoom(s: Session): string {
-    const room = ROOMS[s.room];
+    const room = this.rooms[s.room];
     const lines = [room.name, room.desc];
 
     const exits = Object.keys(room.exits);
@@ -1619,7 +1624,7 @@ export class World extends DurableObject<Env> {
   // the two channels can never drift apart. Use everywhere a room is shown.
   private sendRoom(ws: WebSocket, s: Session): void {
     ws.send(this.describeRoom(s));
-    const room = ROOMS[s.room];
+    const room = this.rooms[s.room];
     this.event(ws, "room.info", {
       id: room.id,
       name: room.name,
@@ -2083,7 +2088,7 @@ export class World extends DurableObject<Env> {
   // The Grid-ghost drifts one room along an exit, haunting whoever's there and
   // leaving a trace -- the dead network's wanderer (ties the living world to #3).
   private driftGhost(from: string): string {
-    const exits = Object.values(ROOMS[from]?.exits ?? {});
+    const exits = Object.values(this.rooms[from]?.exits ?? {});
     if (exits.length === 0) return START_ROOM;
     const to = exits[Math.floor(Math.random() * exits.length)];
     this.broadcast(to, "A Grid-ghost flickers through, trailing dead static, and is gone.");
@@ -2220,7 +2225,7 @@ export class World extends DurableObject<Env> {
   }
 
   private exitsView(ws: WebSocket, s: Session): void {
-    const exits = Object.keys(ROOMS[s.room].exits);
+    const exits = Object.keys(this.rooms[s.room].exits);
     this.line(ws, exits.length ? `Exits: ${exits.join(", ")}.` : "There are no obvious exits from here.");
     this.prompt(ws);
   }

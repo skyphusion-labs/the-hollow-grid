@@ -218,6 +218,225 @@ export const ROOMS: Record<string, Room> = {
   },
 };
 
+// A SECOND world's map for the same federation (see worlds/dustfall.jsonc). It
+// reuses the Hollow Grid's room ids and exit graph on purpose: the game logic
+// anchors on ids like `market`, `dais`, and `workshop`, and the mobs/items seed
+// by id, so the faction arc, shop, stronghold, and shared Grid all keep working.
+// Only the prose changes, and that is enough to make arriving here feel like
+// somewhere else. Where the Hollow Grid is enclosed neon rot, Dustfall is the
+// open salt pan people FLED TO: sun, wind, canvas, and a scavenger town grown on
+// the bones of a buried relay station. The Cinder Front reaches here too; the
+// tide they move is the same needle in both worlds.
+export const ROOMS_DUSTFALL: Record<string, Room> = {
+  nexus: {
+    id: "nexus",
+    name: "Dustfall Crossing",
+    desc:
+      "The heart of Dustfall: a windswept crossing where four tracks meet around a " +
+      "sand-silted well. Awnings crack in the hot wind, a saloon leans to the west and a " +
+      "mechanic's bay to the east, and a storm drain yawns in the dust underfoot. The " +
+      "trade row runs north.",
+    exits: { north: "market", east: "workshop", down: "tunnels", west: "tavern" },
+  },
+  tavern: {
+    id: "tavern",
+    name: "The Last Drop",
+    desc:
+      "A saloon of canvas and salvaged car doors, dark and merciful out of the glare. Warm " +
+      "beer, warmer rumor, and a one-eyed barkeep who has heard it all. This is where " +
+      "Dustfall comes to forget the road.",
+    exits: { east: "nexus" },
+  },
+  market: {
+    id: "market",
+    name: "The Trade Row",
+    desc:
+      "A double line of stalls under flapping tarps, hawking water, salt, and salvage of " +
+      "dubious origin. A Cinder Front recruiter has dragged a crate out to shout from. A " +
+      "wired-off pen stands to the north.",
+    exits: { south: "nexus", north: "holding_pit" },
+  },
+  holding_pit: {
+    id: "holding_pit",
+    name: "The Stockade",
+    desc:
+      "A pen of driven rebar and chain-link, the floor churned to powder by pacing feet. " +
+      "Names and tally-marks are scratched into every post by those who waited here.",
+    exits: { south: "market" },
+  },
+  workshop: {
+    id: "workshop",
+    name: "The Grease Pit",
+    desc:
+      "A mechanic's bay roofed with a truck tarp, benches buried under gutted engines and " +
+      "stubborn hope. A welded ladder climbs the scaffolding toward a lookout above.",
+    exits: { west: "nexus", up: "roof" },
+  },
+  roof: {
+    id: "roof",
+    name: "The Watch Scaffold",
+    desc:
+      "A swaying tower of scaffold and lashed ladders above the rooftops. From here the salt " +
+      "pan runs out forever, white and trembling in the heat. A catwalk drops north toward " +
+      "the open flats.",
+    exits: { down: "workshop", north: "dunes" },
+  },
+  tunnels: {
+    id: "tunnels",
+    name: "The Storm Drains",
+    desc:
+      "Dry concrete culverts under the town, half-choked with drifted sand and the bones of " +
+      "small things. Something scuttles off ahead of you. The pipe drops away into the dark below.",
+    exits: { up: "nexus", down: "sump" },
+  },
+  sump: {
+    id: "sump",
+    name: "The Silted Cistern",
+    desc:
+      "An old catch-basin packed with sand and stagnant runoff that glows faintly wrong. The " +
+      "air is close and the dark is patient. A buckled hatch gapes lower still, breathing cold.",
+    exits: { up: "tunnels", down: "floodgate" },
+  },
+
+  // --- The buried relay station: Dustfall's drowned-in-sand underworld ---
+  floodgate: {
+    id: "floodgate",
+    name: "The Buried Hatch",
+    desc:
+      "A blast door the size of a truck, half-swallowed by a dune and wedged open. Cold air " +
+      "pours up out of a buried installation below. A stranded operator crouches by a dead " +
+      "console, watching you with wary hope. (try 'talk')",
+    exits: { up: "sump", north: "coldrow" },
+  },
+  coldrow: {
+    id: "coldrow",
+    name: "The Choked Stacks",
+    desc:
+      "Aisle on aisle of server racks drowned in fine sand instead of water, status lights long " +
+      "dark. Something pale slides between them, feeding on whatever stray current is left.",
+    exits: { south: "floodgate", east: "cooling", north: "fiber" },
+  },
+  cooling: {
+    id: "cooling",
+    name: "The Dry Reservoir",
+    desc:
+      "Great square coolant basins drained to cracked scale and rust. A maintenance unit drags " +
+      "itself across the floor on three good legs, still trying to do a job no one needs done.",
+    exits: { west: "coldrow" },
+  },
+  fiber: {
+    id: "fiber",
+    name: "The Trunk Line",
+    desc:
+      "A long vault of severed fiber trunks, thick as your arm, hanging dead and sand-frosted " +
+      "from the ceiling. This carried the whole region's signal once. Something cold still " +
+      "travels the cables, where the light used to.",
+    exits: { south: "coldrow", down: "corelab" },
+  },
+  corelab: {
+    id: "corelab",
+    name: "The Relay Core",
+    desc:
+      "The buried heart of the old relay station. One black slab of a server still hums, " +
+      "impossibly, in the dark, and something has made itself its keeper. It turns toward you. " +
+      "(the Custodian guards it)",
+    exits: { up: "fiber", west: "archive" },
+  },
+  archive: {
+    id: "archive",
+    name: "The Sealed Vault",
+    desc:
+      "A bone-dry strongroom of tape reels and frozen drives, sealed against the sand for a " +
+      "lifetime. Whatever the old network meant to keep forever, it left down here.",
+    exits: { east: "corelab" },
+  },
+
+  // --- The open pan: the surface, where faction standing has teeth ---
+  dunes: {
+    id: "dunes",
+    name: "The Salt Pan",
+    desc:
+      "Open hardpan under a white sky, salt and grey ash drifting in long dunes to the edge of " +
+      "sight. A cracked haul-road runs east, and the shape of a checkpoint wavers to the north " +
+      "in the heat.",
+    exits: { south: "roof", east: "scorch_road", north: "checkpoint" },
+  },
+  scorch_road: {
+    id: "scorch_road",
+    name: "The Bone Road",
+    desc:
+      "A caravan track strung between burned-out hulks and the picked-clean bones of those who " +
+      "traveled it alone. A good place to be robbed, and everyone knows it.",
+    exits: { west: "dunes", east: "waystation" },
+  },
+  checkpoint: {
+    id: "checkpoint",
+    name: "The Front Picket",
+    desc:
+      "Sandbags, coiled wire, and the ash-and-flame banner of the Cinder Front gone grey with " +
+      "dust. An enforcer works the barrier, and the road runs north into the Front's stronghold.",
+    exits: { south: "dunes", north: "gate" },
+  },
+  waystation: {
+    id: "waystation",
+    name: "The Free Camp",
+    desc:
+      "A scatter of tents and lashed tarps where the free folk shelter off the road, downwind " +
+      "and out of sight. A field medic works a cot of the wounded, and every eye marks you the " +
+      "moment you arrive.",
+    exits: { west: "scorch_road" },
+  },
+
+  // --- The Cinder Front stronghold on the pan: the faction arc's climax ---
+  gate: {
+    id: "gate",
+    name: "The Ash Gate",
+    desc:
+      "A rampart of welded scrap and stacked containers, the ash-and-flame banner snapping above " +
+      "it. Troopers track you from the firing slits. The Front holds the whole pan from here.",
+    exits: { south: "checkpoint", north: "muster" },
+  },
+  muster: {
+    id: "muster",
+    name: "The Drill Ground",
+    desc:
+      "A pounded-dirt yard where the Front runs its columns through the dust, barracks crowding " +
+      "every side. Cages line the western fence; the command tent looms to the north.",
+    exits: { south: "gate", west: "cells", north: "warroom" },
+  },
+  cells: {
+    id: "cells",
+    name: "The Pens",
+    desc:
+      "A run of welded cages crammed with elf refugees the Front swept off the flats. They surge " +
+      "to the wire when you enter, hope and terror at war in their faces. (try 'free')",
+    exits: { east: "muster" },
+  },
+  warroom: {
+    id: "warroom",
+    name: "The Command Tent",
+    desc:
+      "A reinforced tent hung with maps of the pan, every free settlement ringed in red " +
+      "grease-pencil. A zealot bends over the plans. A ladder climbs to the warlord's stand above.",
+    exits: { south: "muster", up: "dais" },
+  },
+  dais: {
+    id: "dais",
+    name: "The Warlord's Stand",
+    desc:
+      "A platform of stacked rubble and lashed timber crowned with the Front's banner. The " +
+      "Ashmonger holds it, commander of the Cinder Front across the whole federation, looking " +
+      "out over the pan he means to take.",
+    exits: { down: "warroom" },
+  },
+};
+
+// Pick a world's map by key (set per deployment via the WORLD_MAP var). Unknown
+// or unset falls back to the Hollow Grid, so single-world play is unaffected.
+export function mapFor(key?: string): Record<string, Room> {
+  return key?.trim().toLowerCase() === "dustfall" ? ROOMS_DUSTFALL : ROOMS;
+}
+
 /** The room where the captive maiden is held. */
 export const HOLDING_PIT = "holding_pit";
 /** The mob whose defeat unlocks the maiden. */
