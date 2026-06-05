@@ -41,17 +41,22 @@ pipeline {
 
     stage('Smoke') {
       steps {
-        // Start the full federation (primary :8787 + Dustfall :8788 + hub) in the
-        // background, wait for both world ports to accept connections, then run
-        // the smoke suite against them. The dev scripts override WORLD_URL back to
-        // localhost so the registry/travel assertions hold.
+        // Start both worlds + hub, wait for the ports, run the smoke suite.
+        //
+        // CRITICAL: each world runs under its OWN process group via `setsid`, and
+        // teardown kills exactly those groups (`kill -- -$PGID`). We do NOT use
+        // `npm run dev` (its kill-0 once SIGTERM'd the Jenkins controller) and we
+        // do NOT `pkill wrangler` (rude on a shared controller). WORLD_URL is
+        // overridden back to localhost so the registry/travel assertions hold.
         sh '''
           set -e
           rm -rf .wrangler/state
-          npm run dev > dev.log 2>&1 &
-          echo $! > .devpid
-          # Wait (up to ~90s) for Dustfall's port to come up, using node so we
-          # depend on nothing beyond what the project already needs.
+          setsid ./node_modules/.bin/wrangler dev -c wrangler.jsonc -c grid-hub/wrangler.jsonc --var WORLD_URL:ws://localhost:8787/ws > dev-hollow.log 2>&1 &
+          P1=$!
+          setsid ./node_modules/.bin/wrangler dev -c worlds/dustfall.jsonc --var WORLD_URL:ws://localhost:8788/ws > dev-dustfall.log 2>&1 &
+          P2=$!
+          trap 'kill -- -$P1 -$P2 2>/dev/null || true' EXIT
+          # Wait (up to ~90s) for Dustfall's port, using node (no extra deps).
           node -e '
             const net = require("net");
             const up = () => new Promise((res) => {
@@ -69,10 +74,7 @@ pipeline {
       }
       post {
         always {
-          // Tear down the dev servers regardless of smoke result, and surface logs
-          // on failure for debugging.
-          sh 'pkill -f "[w]rangler" 2>/dev/null || true; rm -f .devpid'
-          archiveArtifacts artifacts: 'dev.log', allowEmptyArchive: true
+          archiveArtifacts artifacts: 'dev-hollow.log,dev-dustfall.log', allowEmptyArchive: true
         }
       }
     }
@@ -88,9 +90,6 @@ pipeline {
   }
 
   post {
-    always {
-      sh 'pkill -f "[w]rangler" 2>/dev/null || true'
-    }
     success {
       echo 'Pipeline green. (Deploy runs only on main.)'
     }
