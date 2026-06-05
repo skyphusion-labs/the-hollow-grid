@@ -3,8 +3,12 @@ import type { Env, Session } from "./types";
 import { ROOMS, START_ROOM, HOLDING_PIT, WARDEN_ID, TAVERN, MARKET, normalizeDir } from "./rooms";
 import { MOB_TEMPLATES, MOB_BY_ID } from "./mobs";
 import { ITEM_TEMPLATES, itemMatches, EQUIP_SLOTS } from "./items";
+import type { GridTrace } from "./gridhub";
 
 const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
+
+// This world's name on the federation. Identifies our traces in the shared Grid.
+const WORLD_NAME = "The Hollow Grid";
 
 const ROUND_MS = 3_000; // combat + poison resolve one tick every 3 seconds
 const BASE_HP = 30;
@@ -757,7 +761,7 @@ export class World extends DurableObject<Env> {
         this.setTitle(ws, s, arg);
         break;
       case "ping":
-        this.gridPing(ws, s);
+        await this.gridPing(ws, s, arg);
         break;
       case "wall":
       case "announce":
@@ -1628,6 +1632,16 @@ export class World extends DurableObject<Env> {
       node,
       node,
     );
+    // Federation: mirror into the shared Grid ledger, best-effort. If the hub is
+    // unreachable, the world runs standalone -- federation is additive, never a
+    // dependency (see docs/federation.md).
+    try {
+      void this.env.GRIDHUB.getByName("grid")
+        .record(WORLD_NAME, node, kind, text, Date.now())
+        .catch(() => {});
+    } catch {
+      /* hub binding unavailable; local play is unaffected */
+    }
   }
 
   private ago(at: number): string {
@@ -1643,7 +1657,30 @@ export class World extends DurableObject<Env> {
 
   // `ping` the dead Grid at your node: it replays what it remembers happening
   // here, even for players long gone. The signature mechanic of The Hollow Grid.
-  private gridPing(ws: WebSocket, s: Session): void {
+  private async gridPing(ws: WebSocket, s: Session, arg: string): Promise<void> {
+    // `ping all` / `ping deep`: reach past your own node into the whole federated
+    // network -- the Grid's collective memory across every connected world.
+    const a = arg.trim().toLowerCase();
+    if (a === "all" || a === "deep" || a === "grid") {
+      let feed: GridTrace[] = [];
+      try {
+        feed = await this.env.GRIDHUB.getByName("grid").recent(8);
+      } catch {
+        this.line(ws, "You reach for the deep Grid, but the wider network is silent. (the hub is unreachable)");
+        this.prompt(ws);
+        return;
+      }
+      if (feed.length === 0) {
+        this.line(ws, "The deep Grid hums, vast and empty. Nothing echoes back from the other nodes -- yet.");
+      } else {
+        this.line(ws, "You key past your own node, into the whole dead network. It remembers, from across the Grid:");
+        for (const t of feed) this.line(ws, `  - [${t.world}] ${t.text}`);
+      }
+      this.event(ws, "grid.federation", { traces: feed });
+      this.prompt(ws);
+      return;
+    }
+
     const rows = this.ctx.storage.sql
       .exec<{ at: number; kind: string; text: string }>(
         "SELECT at, kind, text FROM grid_log WHERE node = ? ORDER BY id DESC LIMIT 6",
@@ -1652,10 +1689,11 @@ export class World extends DurableObject<Env> {
       .toArray();
 
     if (rows.length === 0) {
-      this.line(ws, "You key into the dead Grid. Static, a cold hum... but this node remembers nothing. Not yet.");
+      this.line(ws, "You key into the dead Grid. Static, a cold hum... but this node remembers nothing. Not yet. (try 'ping all')");
     } else {
       this.line(ws, "You key into the dead Grid. Static, then it remembers:");
       for (const r of rows) this.line(ws, `  - ${r.text} (${this.ago(r.at)})`);
+      this.line(ws, "  (say 'ping all' to hear the whole network)");
     }
     this.event(ws, "grid.echo", {
       node: s.room,
@@ -2190,7 +2228,7 @@ export class World extends DurableObject<Env> {
         "  emote <action>        act it out ('emote spits in the dust')",
         "  who                   list survivors online",
         "  title <text>          set an epithet shown after your name (blank clears it)",
-        "  ping                  query the dead Grid here for what it remembers",
+        "  ping [all]            query this node's Grid memory ('ping all' = the whole network)",
         "  wall <message>        broadcast an announcement to everyone (keepers only)",
         "  world / weather       check the time of day and the weather",
         "  help (?)              this message",

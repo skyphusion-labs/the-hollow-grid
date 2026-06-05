@@ -1,7 +1,8 @@
 import type { Env } from "./types";
 
-// The Durable Object class must be exported from the Worker entry module.
+// The Durable Object classes must be exported from the Worker entry module.
 export { World } from "./world";
+export { GridHub } from "./gridhub";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {

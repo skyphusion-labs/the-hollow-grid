@@ -12,10 +12,12 @@
   },
   "durable_objects": {
     "bindings": [
-      { "name": "WORLD", "class_name": "World" }
+      { "name": "WORLD", "class_name": "World" },
+      { "name": "GRIDHUB", "class_name": "GridHub" }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["World"] }
+    { "tag": "v1", "new_sqlite_classes": ["World"] },
+    { "tag": "v2", "new_sqlite_classes": ["GridHub"] }
   ]
 }

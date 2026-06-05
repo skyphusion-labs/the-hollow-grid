@@ -1,7 +1,10 @@
 import type { World } from "./world";
+import type { GridHub } from "./gridhub";
 
 export interface Env {
   WORLD: DurableObjectNamespace<World>;
+  /** The federation backend: the shared Grid ledger (see docs/federation.md). */
+  GRIDHUB: DurableObjectNamespace<GridHub>;
   /** Comma-separated player names allowed to `wall` (server-wide announcements). */
   ADMINS?: string;
 }

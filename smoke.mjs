@@ -132,6 +132,18 @@ ws.send("who");
 await sleep(400);
 check(/the Ash-Walker/.test(raw.slice(wmark)), "title shows after your name in who");
 
+// Federation (phase 1): 'ping all' reaches the shared Grid backend and hears
+// echoes from OTHER worlds on the network. Checked early, before this world has
+// generated traces of its own, so the feed is purely the cross-world seeds.
+ws.send("ping all");
+await sleep(500);
+const fed = last("grid.federation");
+check(!!fed && Array.isArray(fed.data.traces) && fed.data.traces.length > 0, "ping all returns the federation feed (grid.federation)");
+check(
+  fed?.data.traces.some((t) => t.world && t.world !== "The Hollow Grid"),
+  "the feed carries echoes from OTHER worlds on the shared Grid",
+);
+
 // Move into a mob room and confirm the structured room graph tracks us.
 events.length = 0;
 ws.send("down"); // nexus -> tunnels, where the glow-rat lives
