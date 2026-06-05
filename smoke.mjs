@@ -124,6 +124,14 @@ check(last("char.equipment")?.data.weapon === null, "remove clears the weapon sl
 ws.send("wield shiv"); // re-equip for the fight ahead
 await sleep(300);
 
+// Title: set an epithet and confirm it shows after your name in who.
+ws.send("title the Ash-Walker");
+await sleep(400);
+const wmark = raw.length;
+ws.send("who");
+await sleep(400);
+check(/the Ash-Walker/.test(raw.slice(wmark)), "title shows after your name in who");
+
 // Move into a mob room and confirm the structured room graph tracks us.
 events.length = 0;
 ws.send("down"); // nexus -> tunnels, where the glow-rat lives

@@ -102,7 +102,8 @@ export class World extends DurableObject<Env> {
           morality INTEGER NOT NULL DEFAULT 0,
           addiction INTEGER NOT NULL DEFAULT 0,
           faction TEXT NOT NULL DEFAULT 'none',
-          resisted INTEGER NOT NULL DEFAULT 0
+          resisted INTEGER NOT NULL DEFAULT 0,
+          title TEXT NOT NULL DEFAULT ''
         )
       `);
       for (const col of [
@@ -116,6 +117,7 @@ export class World extends DurableObject<Env> {
         "addiction INTEGER NOT NULL DEFAULT 0",
         "faction TEXT NOT NULL DEFAULT 'none'",
         "resisted INTEGER NOT NULL DEFAULT 0",
+        "title TEXT NOT NULL DEFAULT ''",
       ]) {
         try {
           sql.exec(`ALTER TABLE players ADD COLUMN ${col}`);
@@ -513,8 +515,9 @@ export class World extends DurableObject<Env> {
         addiction: number;
         faction: string;
         resisted: number;
+        title: string;
       }>(
-        "SELECT room, hp, max_hp, xp, level, poisoned, gold, morality, addiction, faction, resisted FROM players WHERE name = ?",
+        "SELECT room, hp, max_hp, xp, level, poisoned, gold, morality, addiction, faction, resisted, title FROM players WHERE name = ?",
         name,
       )
       .toArray()[0];
@@ -536,6 +539,7 @@ export class World extends DurableObject<Env> {
       addiction: row?.addiction ?? 0,
       faction: (row?.faction as Session["faction"]) ?? "none",
       resisted: !!row?.resisted,
+      title: row?.title ?? "",
     };
     if (session.hp <= 0) session.hp = session.maxHp;
     ws.serializeAttachment(session);
@@ -730,6 +734,9 @@ export class World extends DurableObject<Env> {
       case "equipment":
       case "eq":
         this.equipmentView(ws, s);
+        break;
+      case "title":
+        this.setTitle(ws, s, arg);
         break;
       case "ping":
         this.gridPing(ws, s);
@@ -1375,7 +1382,8 @@ export class World extends DurableObject<Env> {
   // A player's name tagged with what the world remembers about them.
   private tagged(s: Session): string {
     const label = this.brand(s);
-    return label ? `${s.name} (${label})` : s.name;
+    const t = s.title ? `, ${s.title}` : "";
+    return label ? `${s.name}${t} (${label})` : `${s.name}${t}`;
   }
 
   // --- The Grid: the dead network's memory ----------------------------------
@@ -1903,6 +1911,17 @@ export class World extends DurableObject<Env> {
     this.prompt(ws);
   }
 
+  // title <text>: a custom epithet shown after your name (blank to clear).
+  private setTitle(ws: WebSocket, s: Session, arg: string): void {
+    const t = arg.trim().replace(/[\r\n]/g, "").slice(0, 40);
+    s.title = t;
+    ws.serializeAttachment(s);
+    this.persistPlayer(s);
+    if (t) this.line(ws, `You are known henceforth as ${s.name}, ${t}.`);
+    else this.line(ws, `Your title is stripped away. Just ${s.name} now.`);
+    this.prompt(ws);
+  }
+
   private help(): string {
     return (
       [
@@ -1939,6 +1958,7 @@ export class World extends DurableObject<Env> {
         "  yell <message>        shout to everyone online",
         "  emote <action>        act it out ('emote spits in the dust')",
         "  who                   list survivors online",
+        "  title <text>          set an epithet shown after your name (blank clears it)",
         "  ping                  query the dead Grid here for what it remembers",
         "  wall <message>        broadcast an announcement to everyone (keepers only)",
         "  world / weather       check the time of day and the weather",
@@ -2072,13 +2092,13 @@ export class World extends DurableObject<Env> {
 
   private persistPlayer(s: Session): void {
     this.ctx.storage.sql.exec(
-      `INSERT INTO players (name, room, hp, max_hp, xp, level, poisoned, gold, morality, addiction, faction, resisted)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO players (name, room, hp, max_hp, xp, level, poisoned, gold, morality, addiction, faction, resisted, title)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(name) DO UPDATE SET
          room = excluded.room, hp = excluded.hp, max_hp = excluded.max_hp,
          xp = excluded.xp, level = excluded.level, poisoned = excluded.poisoned,
          gold = excluded.gold, morality = excluded.morality, addiction = excluded.addiction,
-         faction = excluded.faction, resisted = excluded.resisted`,
+         faction = excluded.faction, resisted = excluded.resisted, title = excluded.title`,
       s.name,
       s.room,
       s.hp,
@@ -2091,6 +2111,7 @@ export class World extends DurableObject<Env> {
       s.addiction,
       s.faction,
       s.resisted ? 1 : 0,
+      s.title ?? "",
     );
   }
 }

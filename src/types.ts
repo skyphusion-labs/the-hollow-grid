@@ -42,4 +42,6 @@ export interface Session {
   replyTo?: string;
   /** body position: standing (default) | sitting | resting | sleeping (in-memory) */
   position?: string;
+  /** a custom title shown after the player's name (persisted) */
+  title?: string;
 }
