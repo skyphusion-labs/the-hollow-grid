@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-A text MUD ("The Hollow Grid") that runs entirely on Cloudflare Workers + Durable Objects. Players connect over WebSocket (`wss://.../ws`) and play with plain-text commands, so a raw client like `wscat` works as the game client.
+A text MUD ("The Hollow Grid") that runs entirely on Cloudflare Workers + Durable Objects. Players connect over WebSocket (`wss://.../ws`) and play with plain-text commands, so any raw WebSocket client works as the game client (the repo ships a dependency-free one: `npm run connect`).
 
 ## Commands
 
@@ -16,7 +16,7 @@ npm run deploy      # wrangler deploy (hub, then primary world, then Dustfall)
 
 `npm run dev` runs two worlds as two `wrangler dev` processes (only the first config of a multi-config invocation gets a served port), both binding the one `grid-hub` via wrangler's local dev registry. This mirrors two separate production deployments sharing one backend. See `scripts/dev.sh` and `docs/federation.md`.
 
-Connect locally with `wscat -c ws://localhost:8787/ws` (primary) or `:8788` (Dustfall).
+Connect locally with `npm run connect` (primary world) or `npm run connect -- ws://localhost:8788/ws` (Dustfall). It is a dependency-free client (`scripts/connect.mjs`); `npx wscat -c ws://localhost:8787/ws` also works with no install.
 
 ### Verifying changes (this is the project's test method)
 

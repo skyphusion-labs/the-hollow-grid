@@ -45,18 +45,21 @@ client (wscat / browser) --wss--> Worker (src/index.ts) --> World Durable Object
 
 ```bash
 npm install
-npm run dev          # wrangler dev: serves on http://localhost:8787
+npm run dev          # the federation: primary world :8787 + Dustfall :8788 + a shared hub
+# npm run dev:solo   # or just the primary world + hub on :8787
 ```
 
-Then connect with [`wscat`](https://github.com/websockets/wscat)
-(`npm i -g wscat`):
+Then connect with the bundled, dependency-free client:
 
 ```bash
-wscat -c ws://localhost:8787/ws
+npm run connect                              # primary world (ws://localhost:8787/ws)
+npm run connect -- ws://localhost:8788/ws    # the second world, Dustfall
 ```
 
+(No global install needed; `npx wscat -c ws://localhost:8787/ws` works too.)
+
 You'll be asked for a name, then dropped into **The Cracked Nexus**. Open a
-second `wscat` in another terminal, name it differently, and the two of you can
+second client in another terminal, name it differently, and the two of you can
 see each other move and `say` things in the same room.
 
 ### Commands
@@ -128,10 +131,10 @@ sum of what you chose to do when no one was making you.
 ## Deploy
 
 ```bash
-npm run deploy       # wrangler deploy
+npm run deploy       # wrangler deploy: the hub, then the primary world, then Dustfall
 ```
 
-Then `wscat -c wss://<your-worker>.workers.dev/ws`.
+Then `npm run connect -- wss://<your-worker>.workers.dev/ws` (or `npx wscat -c <url>`).
 
 ## Where to grow next
 
