@@ -19,6 +19,7 @@
   "vars": {
     "ADMINS": "skyphusion",
     "WORLD_NAME": "Dustfall",
+    "WORLD_MAP": "dustfall",
     "WORLD_URL": "ws://localhost:8788/ws"
   },
   // Its own Durable Object namespace (own SQLite, own local rooms/mobs/players);

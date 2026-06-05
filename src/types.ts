@@ -20,6 +20,11 @@ export interface Env {
    * each registering under its own name. (See world.ts worldName.)
    */
   WORLD_NAME?: string;
+  /**
+   * Which room map this deployment serves (e.g. "dustfall"); unset = the Hollow
+   * Grid. Lets one codebase present as different places. (See rooms.ts mapFor.)
+   */
+  WORLD_MAP?: string;
 }
 
 /**
