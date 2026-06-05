@@ -40,4 +40,6 @@ export interface Session {
   resisted: boolean;
   /** name of the last player who `tell`-ed us, for `reply` (in-memory only) */
   replyTo?: string;
+  /** body position: standing (default) | sitting | resting | sleeping (in-memory) */
+  position?: string;
 }

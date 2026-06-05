@@ -46,6 +46,32 @@ type MobRow = {
 const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
+// Body positions. Resting/sleeping regen HP on the alarm tick; you can't do
+// either mid-fight, and attacking from one snaps you to your feet.
+const POS_REGEN: Record<string, number> = { sleeping: 4, resting: 2, sitting: 0, standing: 0 };
+const POS_SELF: Record<string, string> = {
+  resting: "You sink down and rest, letting your wounds knit.",
+  sleeping: "You close your eyes and sleep. The wastes fade away.",
+  sitting: "You sit down on the cracked ground.",
+  standing: "You get to your feet.",
+};
+const POS_OTHERS: Record<string, string> = {
+  resting: "sits down to rest",
+  sleeping: "lies down and falls asleep",
+  sitting: "sits down",
+  standing: "gets to their feet",
+};
+const POS_ALREADY: Record<string, string> = {
+  resting: "already resting",
+  sleeping: "already asleep",
+  sitting: "already sitting",
+  standing: "already on your feet",
+};
+const condition = (o: { hp: number; maxHp: number }): string => {
+  const r = o.maxHp > 0 ? o.hp / o.maxHp : 0;
+  return r >= 0.95 ? "in good shape" : r >= 0.6 ? "scuffed up" : r >= 0.3 ? "bloodied" : "barely standing";
+};
+
 /**
  * World: a single Durable Object that holds the whole game. Players route to
  * the same instance via `getByName("world")` and share one coordinated world.
@@ -262,6 +288,22 @@ export class World extends DurableObject<Env> {
       ws.serializeAttachment(s);
       this.persistPlayer(s);
       this.prompt(ws);
+    }
+
+    // 2.5) Passive HP regen for resting/sleeping players (not fighting/poisoned).
+    for (const ws of this.ctx.getWebSockets()) {
+      const s = ws.deserializeAttachment() as Session | null;
+      if (!s?.name || s.target || s.poisoned || s.hp >= s.maxHp) continue;
+      const regen = POS_REGEN[s.position ?? "standing"] ?? 0;
+      if (regen <= 0) continue;
+      s.hp = Math.min(s.maxHp, s.hp + regen);
+      ws.serializeAttachment(s);
+      this.persistPlayer(s);
+      this.emitVitals(ws, s);
+      if (s.hp >= s.maxHp) {
+        this.line(ws, "Your wounds have closed. You feel whole again.");
+        this.prompt(ws);
+      }
     }
 
     // 3) Combat rounds. Deserialize per ws so kills/deaths this tick are seen.
@@ -534,8 +576,7 @@ export class World extends DurableObject<Env> {
     switch (cmd) {
       case "look":
       case "l":
-        this.sendRoom(ws, s);
-        this.prompt(ws);
+        this.lookAt(ws, s, arg);
         break;
       case "go":
         await this.handleGo(ws, s, arg);
@@ -644,6 +685,27 @@ export class World extends DurableObject<Env> {
       case "con":
         this.consider(ws, s, arg);
         break;
+      case "recall":
+      case "home":
+        this.recall(ws, s);
+        break;
+      case "affects":
+      case "affs":
+        this.affects(ws, s);
+        break;
+      case "rest":
+        this.setPosition(ws, s, "resting");
+        break;
+      case "sleep":
+        this.setPosition(ws, s, "sleeping");
+        break;
+      case "sit":
+        this.setPosition(ws, s, "sitting");
+        break;
+      case "stand":
+      case "wake":
+        this.setPosition(ws, s, "standing");
+        break;
       case "ping":
         this.gridPing(ws, s);
         break;
@@ -725,6 +787,10 @@ export class World extends DurableObject<Env> {
       return;
     }
     const t = MOB_BY_ID[mob.id];
+    if ((s.position ?? "standing") !== "standing") {
+      s.position = "standing";
+      this.line(ws, "You scramble to your feet.");
+    }
     s.target = mob.id;
     ws.serializeAttachment(s);
     this.event(ws, "combat.start", { mob: mob.id, name: t.name });
@@ -1253,6 +1319,7 @@ export class World extends DurableObject<Env> {
       room: s.room,
       inCombat: s.target !== null,
       poisoned: s.poisoned,
+      position: s.position ?? "standing",
     });
   }
 
@@ -1629,14 +1696,101 @@ export class World extends DurableObject<Env> {
     this.prompt(ws);
   }
 
+  // look (no arg = the room; otherwise a player here, then a mob, then items).
+  private lookAt(ws: WebSocket, s: Session, arg: string): void {
+    if (!arg.trim()) {
+      this.sendRoom(ws, s);
+      this.prompt(ws);
+      return;
+    }
+    const a = arg.trim().toLowerCase();
+    const other = this.sessions().find(
+      (o) => o.room === s.room && o.name !== s.name && o.name.toLowerCase().startsWith(a),
+    );
+    if (other) {
+      const pos = (other.position ?? "standing") !== "standing" ? `, ${other.position}` : "";
+      this.line(ws, `${this.tagged(other)} stands before you${pos}, looking ${condition(other)}.`);
+      this.prompt(ws);
+      return;
+    }
+    const mob = this.livingMobsInRoom(s.room).find((m) => this.mobMatches(m.id, arg));
+    if (mob) {
+      this.line(ws, MOB_BY_ID[mob.id].desc);
+      this.prompt(ws);
+      return;
+    }
+    this.examine(ws, s, arg); // fall through to items (inventory or ground)
+  }
+
+  // recall / home: the Grid pulls you back to the Cracked Nexus.
+  private recall(ws: WebSocket, s: Session): void {
+    if (s.target) {
+      this.line(ws, "You can't recall in the middle of a fight.");
+      this.prompt(ws);
+      return;
+    }
+    if (s.room === START_ROOM) {
+      this.line(ws, "You're already at the Cracked Nexus.");
+      this.prompt(ws);
+      return;
+    }
+    const from = s.room;
+    this.broadcast(from, `${s.name} dissolves into grid-static and is gone.`, ws);
+    s.room = START_ROOM;
+    ws.serializeAttachment(s);
+    this.persistPlayer(s);
+    this.recordTrace(from, "recall", `${this.tagged(s)} keyed out on the Grid from here.`);
+    this.line(ws, "You key the recall. The Grid takes hold, the world smears, and resolves at the Cracked Nexus.");
+    this.broadcast(START_ROOM, `${s.name} resolves out of the static.`, ws);
+    this.sendRoom(ws, s);
+    this.prompt(ws);
+  }
+
+  // affects: list what is currently working on you.
+  private affects(ws: WebSocket, s: Session): void {
+    const lines = ["You are affected by:"];
+    if (s.poisoned) lines.push("  Poisoned       venom drains your HP every tick.");
+    if (s.addiction > 0)
+      lines.push(`  Dust craving   addiction at ${s.addiction}${s.addiction >= 3 ? " (your hands won't stop shaking)" : ""}.`);
+    if (s.faction === "front") lines.push("  Cinder Front   you marched against the free folk; they remember.");
+    if (s.faction === "ally") lines.push("  Free Folk ally the elves count you a friend.");
+    const pos = s.position ?? "standing";
+    if (pos === "resting" || pos === "sleeping") lines.push(`  ${cap(pos)}        recovering HP each tick.`);
+    if (lines.length === 1) lines.push("  ...nothing in particular. You feel clear, for once.");
+    this.line(ws, lines.join(NL));
+    this.emitAffects(ws, s);
+    this.prompt(ws);
+  }
+
+  // rest / sleep / sit / stand / wake.
+  private setPosition(ws: WebSocket, s: Session, pos: string): void {
+    if (s.target && pos !== "standing") {
+      this.line(ws, "Not in the middle of a fight, you don't.");
+      this.prompt(ws);
+      return;
+    }
+    if ((s.position ?? "standing") === pos) {
+      this.line(ws, `You're ${POS_ALREADY[pos]}.`);
+      this.prompt(ws);
+      return;
+    }
+    s.position = pos;
+    ws.serializeAttachment(s);
+    this.line(ws, POS_SELF[pos]);
+    this.broadcast(s.room, `${s.name} ${POS_OTHERS[pos]}.`, ws);
+    this.emitVitals(ws, s);
+    this.prompt(ws);
+  }
+
   private help(): string {
     return (
       [
         "",
         "Commands:",
-        "  look (l)              describe your surroundings",
+        "  look (l) [target]     describe the room, or a player/mob/item",
         "  north/south/...       move (n s e w ne nw se sw u d, or 'go <dir>')",
         "  exits                 list the ways out of this room",
+        "  recall / home         key back to the Cracked Nexus",
         "  attack <mob> (k)      start a fight (resolves every few seconds)",
         "  consider <mob> (con)  size up a fight before you start it",
         "  flee (f)              break off combat",
@@ -1654,6 +1808,8 @@ export class World extends DurableObject<Env> {
         "  join / defend         side with the Cinder Front, or the elves (Scrap Market)",
         "  talk                  speak to whoever shares your room",
         "  hp / status           show health, level, xp, gold, and standing",
+        "  affects (affs)        list what's currently affecting you",
+        "  rest/sleep/sit/stand  change position (resting and sleeping heal you)",
         "  say <message> (')     speak to everyone in the room",
         "  tell <player> <msg>   private message (reply with 'reply <msg>')",
         "  yell <message>        shout to everyone online",

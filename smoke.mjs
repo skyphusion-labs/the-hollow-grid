@@ -134,6 +134,10 @@ check(
   /sweat|odds are yours|even match|gut you|quiet way to die|tussle/i.test(raw.slice(mark)),
   "consider sizes up the mob",
 );
+mark = raw.length;
+ws.send("look rat");
+await sleep(300);
+check(/rodent|luminous/i.test(raw.slice(mark)), "look <mob> shows its description");
 
 // Critical path: a full fight, asserted entirely on the combat.* channel.
 events.length = 0;
@@ -177,6 +181,28 @@ check(
   Array.isArray(echo?.data.traces) && echo.data.traces.some((t) => /slew|glow-rat/i.test(t.text)),
   "the Grid remembers the kill that just happened at this node",
 );
+
+// Positions: rest, and confirm the alarm regenerates HP over a couple of ticks.
+events.length = 0;
+ws.send("rest");
+await sleep(500);
+const hpRest = last("char.vitals")?.data.hp ?? 0;
+check(last("char.vitals")?.data.position === "resting", "rest sets position to resting (char.vitals)");
+await sleep(7500); // ~2-3 alarm ticks of +2 regen
+const hpAfter = last("char.vitals")?.data.hp ?? 0;
+check(hpAfter > hpRest, `resting regenerates HP over time (${hpRest} -> ${hpAfter})`);
+
+// affects: a clean character reports nothing in particular.
+mark = raw.length;
+ws.send("affects");
+await sleep(300);
+check(/affected by|clear/i.test(raw.slice(mark)), "affects lists current effects");
+
+// recall: key back to the Nexus from the tunnels.
+events.length = 0;
+ws.send("recall");
+await sleep(600);
+check(last("room.info")?.data.id === "nexus", "recall returns you to the Cracked Nexus");
 
 ws.close();
 
@@ -289,6 +315,12 @@ await sleep(500);
 P.send("emote kicks at the dust");
 await sleep(400);
 check(new RegExp(`${pName} kicks at the dust`).test(Q.raw()), "emote is seen by others in the room");
+
+// look at another player in the room
+const pmark = P.raw().length;
+P.send(`look ${qName}`);
+await sleep(400);
+check(/stands before you/i.test(P.raw().slice(pmark)), "look <player> describes another player");
 
 // P sides with the free folk (gets an elven charm), then hands it to Q.
 P.send("defend");
