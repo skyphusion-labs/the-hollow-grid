@@ -254,47 +254,83 @@ export const MOB_BY_ID: Record<string, MobTemplate> = Object.fromEntries(
 // wide enemy in both worlds. Overrides keep this DRY: anything not named here is
 // identical to the Hollow Grid version. template + room are intentionally not
 // overridable, so the ids and placement can never drift.
+// Overrides reskin the regional life AND swap its drops to Dustfall's own gear
+// (see items.ts): radcell->waterskin, shiv->machete, rebar->spear,
+// plating->hide, helm->wrap, gland->saltbrick. Shared drops the federation
+// cares about stay put: the warden's keycard, the Custodian's quest shard, the
+// Ashmonger's cleaver (the Ashmonger isn't overridden, so he is identical).
 const DUSTFALL_OVERRIDES: Record<string, Partial<Omit<MobTemplate, "template" | "room">>> = {
   rat: {
     name: "a salt-tick",
     desc: "A swollen tick the size of a fist, mouthparts crusted white with the salt it drinks from anything still warm.",
+    loot: [{ item: "waterskin", chance: 0.25 }],
   },
   scav: {
     name: "a salt-crazed scavenger",
     desc: "A sun-blistered wanderer with cracked lips and a wild stare, already pricing the boots off your feet.",
+    loot: [
+      { item: "machete", chance: 0.4 },
+      { item: "hide", chance: 0.3 },
+    ],
   },
   drone: {
     name: "a derelict survey drone",
     desc: "A sand-pitted survey quadcopter still flying a long-dead mapping route, rotors screaming, gun pod twitching toward anything that moves.",
     maxHp: 22,
+    loot: [
+      { item: "waterskin", chance: 0.5 },
+      { item: "hide", chance: 0.3 },
+    ],
   },
   scorpion: {
     name: "a salt-scorpion",
     desc: "A pallid, dog-sized scorpion bleached bone-white by the pan, tail hooked high and beading venom.",
     maxDmg: 4,
+    loot: [
+      { item: "waterskin", chance: 1 },
+      { item: "saltbrick", chance: 1 },
+    ],
   },
   warden: {
     name: "the stockade boss",
     desc: "A slab of a man in a welded mask, the stockade keys swinging at his belt, bored and cruel in equal measure.",
+    loot: [
+      { item: "keycard", chance: 1 },
+      { item: "waterskin", chance: 0.5 },
+    ],
   },
   leech: {
     name: "a sand-leech",
     desc: "A pale, boneless thing fused to a half-buried rack, bloated on the last trickle of current. It turns toward your heat.",
+    loot: [{ item: "waterskin", chance: 0.3 }],
   },
   maint: {
     name: "a seized maintenance unit",
     desc: "A three-legged service drone half-fused with rust and grit, grinding through its final work-order on a loop. It resents the interruption.",
+    loot: [
+      { item: "hide", chance: 0.5 },
+      { item: "wrap", chance: 0.25 },
+    ],
   },
   wraith: {
     name: "a grid-wraith",
     desc: "A smear of cold light walking the dead trunk lines, almost person-shaped, mouthing signals to a network that stopped listening a long time ago.",
+    loot: [{ item: "waterskin", chance: 0.4 }],
   },
   custodian: {
     desc: "A knot of salvaged servo-arms and server blades hunched over the last living core, guarding the buried relay with the patience of a machine that has forgotten why.",
+    loot: [
+      { item: "shard", chance: 1 },
+      { item: "spear", chance: 1 },
+    ],
   },
   raider: {
     name: "a bone-road raider",
     desc: "A scarred marauder in plate cut from road-signs and bone, blade already drawn, doing the math on whether you're worth the trouble.",
+    loot: [
+      { item: "machete", chance: 0.4 },
+      { item: "waterskin", chance: 0.3 },
+    ],
   },
 };
 

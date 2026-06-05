@@ -437,6 +437,14 @@ export function mapFor(key?: string): Record<string, Room> {
   return key?.trim().toLowerCase() === "dustfall" ? ROOMS_DUSTFALL : ROOMS;
 }
 
+// The "where you wake" clause in a new character's welcome, so onboarding reads
+// as the right world. Keyed by WORLD_MAP, same as the map.
+export function introFor(key?: string): string {
+  return key?.trim().toLowerCase() === "dustfall"
+    ? "on the open salt pan, the wind already in your teeth and grit in everything"
+    : "in the ruins of the Grid";
+}
+
 /** The room where the captive maiden is held. */
 export const HOLDING_PIT = "holding_pit";
 /** The mob whose defeat unlocks the maiden. */
