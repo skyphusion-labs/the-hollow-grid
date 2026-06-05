@@ -333,6 +333,11 @@ export class World extends DurableObject<Env> {
     this.line(ws, "Your vision whites out and you crumple into the dust...");
     this.broadcast(s.room, `${s.name} collapses, lifeless.`, ws);
 
+    // Death has a FLOOR. The player respawns at the start, fully healed, with
+    // NO lost levels/xp/gold and NO reduction to max HP. Deaths must never
+    // compound into an unrecoverable spiral (the lesson from watching a bot rot
+    // from 30 max HP to 14 and die faster each time). If you ever add a death
+    // penalty, make it temporary and bounded -- never a permanent stat loss.
     s.target = null;
     s.poisoned = false; // death burns the venom out
     s.room = START_ROOM;
@@ -342,6 +347,9 @@ export class World extends DurableObject<Env> {
 
     this.line(ws, "...and wake, gasping, back at The Cracked Nexus.");
     this.broadcast(START_ROOM, `${s.name} staggers in, pale and shaking.`, ws);
+    // Death is observable on the structured channel; the room.info + char.vitals
+    // from sendRoom below confirm the full-HP respawn at the start room.
+    this.event(ws, "char.died", { respawnRoom: START_ROOM, hp: s.hp, maxHp: s.maxHp });
     this.sendRoom(ws, s);
     this.prompt(ws);
   }
