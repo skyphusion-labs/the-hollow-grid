@@ -15,7 +15,16 @@ export interface ItemTemplate {
   use?: ItemEffect;
   /** gold the market vendor will pay for it; 0 = unsellable */
   value?: number;
+  /** equipment slot this item occupies, if it can be worn/wielded */
+  slot?: EquipSlot;
+  /** weapon: bonus to attack damage */
+  damage?: number;
+  /** armor: flat reduction to incoming damage */
+  armor?: number;
 }
+
+export type EquipSlot = "weapon" | "head" | "body" | "hands" | "feet";
+export const EQUIP_SLOTS: EquipSlot[] = ["weapon", "head", "body", "hands", "feet"];
 
 export const ITEM_TEMPLATES: Record<string, ItemTemplate> = {
   antidote: {
@@ -36,12 +45,16 @@ export const ITEM_TEMPLATES: Record<string, ItemTemplate> = {
     name: "a rusted shiv",
     desc: "Sharp enough, if the tetanus doesn't get you first.",
     value: 5,
+    slot: "weapon",
+    damage: 3,
   },
   plating: {
     id: "plating",
     name: "a sheet of scrap plating",
-    desc: "Buckled salvage. Heavy, dull, occasionally useful.",
+    desc: "Buckled salvage. Heavy, dull, and just about wearable as a chestpiece.",
     value: 3,
+    slot: "body",
+    armor: 2,
   },
   gland: {
     id: "gland",
@@ -65,6 +78,22 @@ export const ITEM_TEMPLATES: Record<string, ItemTemplate> = {
     id: "charm",
     name: "an elven charm",
     desc: "A woven token of knotted grass and wire, pressed into your hand by grateful refugees.",
+  },
+  rebar: {
+    id: "rebar",
+    name: "a length of rebar",
+    desc: "A meter of rusted reinforcing bar. Crude and heavy, and it caves skulls just fine.",
+    value: 10,
+    slot: "weapon",
+    damage: 6,
+  },
+  helm: {
+    id: "helm",
+    name: "a dented scrap helm",
+    desc: "A welded pot that's taken worse hits than you have. It'll do.",
+    value: 6,
+    slot: "head",
+    armor: 1,
   },
 };
 

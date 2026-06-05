@@ -110,6 +110,20 @@ check(
 );
 const worldTick0 = w0?.data.tick ?? -1;
 
+// Equipment: new characters wake clutching a shiv. Wield it, check the slot, swap it off.
+let invMark = raw.length;
+ws.send("inventory");
+await sleep(300);
+check(/shiv/i.test(raw.slice(invMark)), "new character starts with a shiv in inventory");
+ws.send("wield shiv");
+await sleep(400);
+check(last("char.equipment")?.data.weapon === "shiv", "wield puts the shiv in the weapon slot (char.equipment)");
+ws.send("remove shiv");
+await sleep(400);
+check(last("char.equipment")?.data.weapon === null, "remove clears the weapon slot");
+ws.send("wield shiv"); // re-equip for the fight ahead
+await sleep(300);
+
 // Move into a mob room and confirm the structured room graph tracks us.
 events.length = 0;
 ws.send("down"); // nexus -> tunnels, where the glow-rat lives

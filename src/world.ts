@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import type { Env, Session } from "./types";
 import { ROOMS, START_ROOM, HOLDING_PIT, WARDEN_ID, TAVERN, MARKET, normalizeDir } from "./rooms";
 import { MOB_TEMPLATES, MOB_BY_ID } from "./mobs";
-import { ITEM_TEMPLATES, itemMatches } from "./items";
+import { ITEM_TEMPLATES, itemMatches, EQUIP_SLOTS } from "./items";
 
 const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 
@@ -159,6 +159,16 @@ export class World extends DurableObject<Env> {
           item TEXT NOT NULL,
           qty INTEGER NOT NULL,
           PRIMARY KEY (room, item)
+        )
+      `);
+
+      // Worn/wielded gear: one item per slot per player.
+      sql.exec(`
+        CREATE TABLE IF NOT EXISTS equipment (
+          player TEXT NOT NULL,
+          slot TEXT NOT NULL,
+          item TEXT NOT NULL,
+          PRIMARY KEY (player, slot)
         )
       `);
 
@@ -358,8 +368,9 @@ export class World extends DurableObject<Env> {
       return;
     }
 
-    // Player strikes first.
-    const pdmg = rand(3, 7) + (s.level - 1) * 2;
+    // Player strikes first (wielded gear adds to the swing).
+    const bonus = this.equipBonuses(s.name);
+    const pdmg = rand(3, 7) + (s.level - 1) * 2 + bonus.damage;
     const mobHp = Math.max(0, mob.hp - pdmg);
     this.ctx.storage.sql.exec("UPDATE mobs SET hp = ? WHERE id = ?", mobHp, mob.id);
     this.line(ws, `You hit ${t.name} for ${pdmg}. (${mobHp}/${mob.max_hp})`);
@@ -369,8 +380,8 @@ export class World extends DurableObject<Env> {
       return;
     }
 
-    // Mob hits back, possibly envenomating.
-    const mdmg = rand(t.minDmg, t.maxDmg);
+    // Mob hits back (worn armor soaks some), possibly envenomating.
+    const mdmg = Math.max(1, rand(t.minDmg, t.maxDmg) - bonus.armor);
     s.hp = Math.max(0, s.hp - mdmg);
     this.line(ws, `${cap(t.name)} hits you for ${mdmg}. (HP ${s.hp}/${s.maxHp})`);
 
@@ -534,9 +545,10 @@ export class World extends DurableObject<Env> {
     // goal and how to learn every command, and promise that nothing is gated
     // behind secret words (the anti-"hidden search gate" lesson, in-voice).
     if (!row) {
+      this.invAdd(name, "shiv", 1); // a starter weapon: you wake clutching it
       ws.send(
         [
-          `Welcome to the wastes, ${name}. You wake in the ruins of the Grid with nothing but your wits.`,
+          `Welcome to the wastes, ${name}. You wake in the ruins of the Grid with a rusted shiv in your fist and little else.`,
           "Survive, explore, and decide what the wastes make of you. Nothing here is hidden",
           "behind secret commands: type 'help' (or '?') for everything you can do, and 'look'",
           "to take in your surroundings. The exits of each room are always listed.",
@@ -705,6 +717,19 @@ export class World extends DurableObject<Env> {
       case "stand":
       case "wake":
         this.setPosition(ws, s, "standing");
+        break;
+      case "wear":
+      case "wield":
+      case "equip":
+        this.equip(ws, s, arg);
+        break;
+      case "remove":
+      case "unwield":
+        this.unequip(ws, s, arg);
+        break;
+      case "equipment":
+      case "eq":
+        this.equipmentView(ws, s);
         break;
       case "ping":
         this.gridPing(ws, s);
@@ -1782,6 +1807,102 @@ export class World extends DurableObject<Env> {
     this.prompt(ws);
   }
 
+  // --- Equipment: worn gear with stat bonuses --------------------------------
+  private equipped(player: string): Record<string, string> {
+    const rows = this.ctx.storage.sql
+      .exec<{ slot: string; item: string }>("SELECT slot, item FROM equipment WHERE player = ?", player)
+      .toArray();
+    const out: Record<string, string> = {};
+    for (const r of rows) out[r.slot] = r.item;
+    return out;
+  }
+
+  private equipBonuses(player: string): { damage: number; armor: number } {
+    let damage = 0;
+    let armor = 0;
+    for (const item of Object.values(this.equipped(player))) {
+      const t = ITEM_TEMPLATES[item];
+      if (t?.damage) damage += t.damage;
+      if (t?.armor) armor += t.armor;
+    }
+    return { damage, armor };
+  }
+
+  private emitEquipment(ws: WebSocket, player: string): void {
+    const eq = this.equipped(player);
+    this.event(ws, "char.equipment", Object.fromEntries(EQUIP_SLOTS.map((sl) => [sl, eq[sl] ?? null])));
+  }
+
+  // wear / wield / equip: move an item from inventory into its slot.
+  private equip(ws: WebSocket, s: Session, arg: string): void {
+    if (!arg.trim()) {
+      this.line(ws, "Wear or wield what?  (equip <item>)");
+      this.prompt(ws);
+      return;
+    }
+    const item = this.invItems(s.name).find((id) => itemMatches(id, arg));
+    if (!item) {
+      this.line(ws, `You aren't carrying "${arg}".`);
+      this.prompt(ws);
+      return;
+    }
+    const t = ITEM_TEMPLATES[item];
+    if (!t.slot) {
+      this.line(ws, `You can't wear or wield ${t.name}.`);
+      this.prompt(ws);
+      return;
+    }
+    const current = this.equipped(s.name)[t.slot];
+    if (current) {
+      // Swap: stow whatever's already in that slot.
+      this.invAdd(s.name, current, 1);
+      this.ctx.storage.sql.exec("DELETE FROM equipment WHERE player = ? AND slot = ?", s.name, t.slot);
+    }
+    this.invRemove(s.name, item, 1);
+    this.ctx.storage.sql.exec("INSERT OR REPLACE INTO equipment (player, slot, item) VALUES (?, ?, ?)", s.name, t.slot, item);
+    const verb = t.slot === "weapon" ? "wield" : "wear";
+    this.line(ws, `You ${verb} ${t.name}.${current ? ` (You stop using ${ITEM_TEMPLATES[current].name}.)` : ""}`);
+    this.broadcast(s.room, `${s.name} ${verb}s ${t.name}.`, ws);
+    this.emitEquipment(ws, s.name);
+    this.prompt(ws);
+  }
+
+  // remove / unwield: move an equipped item back to inventory.
+  private unequip(ws: WebSocket, s: Session, arg: string): void {
+    if (!arg.trim()) {
+      this.line(ws, "Remove what?  (remove <item>)");
+      this.prompt(ws);
+      return;
+    }
+    const eq = this.equipped(s.name);
+    const slot = Object.keys(eq).find((sl) => itemMatches(eq[sl], arg));
+    if (!slot) {
+      this.line(ws, `You aren't using any "${arg}".`);
+      this.prompt(ws);
+      return;
+    }
+    const item = eq[slot];
+    this.ctx.storage.sql.exec("DELETE FROM equipment WHERE player = ? AND slot = ?", s.name, slot);
+    this.invAdd(s.name, item, 1);
+    this.line(ws, `You remove ${ITEM_TEMPLATES[item].name} and stow it.`);
+    this.emitEquipment(ws, s.name);
+    this.prompt(ws);
+  }
+
+  // equipment / eq: show what's worn and the bonuses it grants.
+  private equipmentView(ws: WebSocket, s: Session): void {
+    const eq = this.equipped(s.name);
+    const lines = ["You are using:"];
+    for (const sl of EQUIP_SLOTS) {
+      lines.push(`  ${sl.padEnd(7)} ${eq[sl] ? ITEM_TEMPLATES[eq[sl]].name : "(nothing)"}`);
+    }
+    const b = this.equipBonuses(s.name);
+    lines.push(`  -- in total: +${b.damage} damage, +${b.armor} armor`);
+    this.line(ws, lines.join(NL));
+    this.emitEquipment(ws, s.name);
+    this.prompt(ws);
+  }
+
   private help(): string {
     return (
       [
@@ -1798,6 +1919,9 @@ export class World extends DurableObject<Env> {
         "  drop <item>           drop an item",
         "  give <item> <player>  hand an item to someone in your room",
         "  inventory (inv, i)    list what you're carrying",
+        "  wear/wield <item>     equip gear (weapons add damage, armor soaks hits)",
+        "  remove <item>         take off a piece of gear",
+        "  equipment (eq)        show what you're wearing and wielding",
         "  use/drink <item>      use an item (antidote, rad-cell, ...)",
         "  examine <item>        look closely at an item",
         "  free/rescue           free the captive (in the Holding Pit)",
