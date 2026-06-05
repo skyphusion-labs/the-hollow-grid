@@ -1074,6 +1074,34 @@ export class World extends DurableObject<Env> {
       return;
     }
 
+    if (s.room === "checkpoint") {
+      if (s.faction === "front") {
+        this.line(ws, 'The enforcer claps your shoulder. "Good to see the cause has hands. The road is yours -- crack a few refugee skulls for me."');
+      } else if (s.faction === "ally") {
+        this.line(ws, 'The enforcer levels a gun at your chest. "Elf-lover. You do not pass here. Turn around, or draw." (you may have to fight your way through)');
+      } else {
+        this.line(ws, 'The enforcer blocks the barrier. "Pick a side before you come up this road. The Front is always hiring."');
+      }
+      this.prompt(ws);
+      return;
+    }
+
+    if (s.room === "waystation") {
+      if (s.faction === "ally") {
+        s.hp = s.maxHp;
+        ws.serializeAttachment(s);
+        this.persistPlayer(s);
+        this.emitVitals(ws, s);
+        this.line(ws, 'The medic pulls you onto the cot, cleans your wounds, and presses a hand to your shoulder. "You stood with us when it counted. Rest, friend -- you are whole again." (fully healed)');
+      } else if (s.faction === "front") {
+        this.line(ws, 'A refugee spits at your feet. "Cinder Front. We know what you are. Get gone, before we make you." There is no help for you here.');
+      } else {
+        this.line(ws, 'The medic studies you. "We tend friends of the free folk. Pick a side, wanderer, and we will see."');
+      }
+      this.prompt(ws);
+      return;
+    }
+
     this.line(ws, "There's no one here to talk to.");
     this.prompt(ws);
   }
@@ -1322,6 +1350,26 @@ export class World extends DurableObject<Env> {
         lines.push("The square is hushed; the recruiter counts you among his own.");
       } else {
         lines.push("Elf refugees move freely here, nodding to you as you pass.");
+      }
+    }
+
+    if (s.room === "checkpoint") {
+      if (s.faction === "front") {
+        lines.push("The enforcer thumps a fist to their chest in salute -- one of theirs. (try 'talk')");
+      } else if (s.faction === "ally") {
+        lines.push("The enforcer's hand drops to their weapon the moment they place your face. (try 'talk')");
+      } else {
+        lines.push("The enforcer watches you, weighing which side you're on. (try 'talk')");
+      }
+    }
+
+    if (s.room === "waystation") {
+      if (s.faction === "front") {
+        lines.push("The free folk go silent and still. You are not welcome here. (try 'talk')");
+      } else if (s.faction === "ally") {
+        lines.push("The refugees brighten at a friend's face; the medic waves you over. (try 'talk')");
+      } else {
+        lines.push("The medic watches you cautiously, one hand near the triage kit. (try 'talk')");
       }
     }
 

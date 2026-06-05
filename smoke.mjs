@@ -385,5 +385,33 @@ check(
 );
 Z.sock.close();
 
+// --- Phase 6: the Open Wastes (surface zone, faction-reactive) ---
+const W = mkClient();
+await W.open();
+await sleep(300);
+W.send("wtest_" + Math.random().toString(36).slice(2, 6));
+await sleep(500);
+W.send("east"); // nexus -> workshop
+await sleep(500);
+W.send("up"); // workshop -> roof
+await sleep(500);
+W.send("north"); // roof -> the Ash Flats (out into the wastes)
+await sleep(600);
+check(W.last("room.info")?.data.id === "dunes", "the open wastes are reachable (roof -> the Ash Flats)");
+
+W.send("east"); // dunes -> Scorch Road
+await sleep(600);
+const sr = W.last("room.info");
+check(sr?.data.id === "scorch_road", "the wastes connect onward (Ash Flats -> Scorch Road)");
+check(Array.isArray(sr?.data.mobs) && sr.data.mobs.some((m) => m.id === "raider"), "a wastes raider prowls the road");
+
+W.send("east"); // Scorch Road -> Refugee Waystation
+await sleep(600);
+const wsmark = W.raw().length;
+W.send("talk");
+await sleep(400);
+check(/pick a side|free folk/i.test(W.raw().slice(wsmark)), "the waystation reacts to your standing (unaligned: pick a side)");
+W.sock.close();
+
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nSMOKE TEST PASSED");
 process.exit(failures ? 1 : 0);

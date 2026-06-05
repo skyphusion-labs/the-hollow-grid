@@ -162,6 +162,38 @@ export const MOB_TEMPLATES: MobTemplate[] = [
       { item: "rebar", chance: 1 },
     ],
   },
+
+  // --- The Open Wastes ---
+  {
+    template: "raider",
+    name: "a wastes raider",
+    desc: "A scarred scavenger in scrap armor, knife already out, deciding whether you're worth the trouble.",
+    maxHp: 22,
+    minDmg: 3,
+    maxDmg: 6,
+    xp: 20,
+    room: "scorch_road",
+    respawnMs: 40_000,
+    loot: [
+      { item: "shiv", chance: 0.4 },
+      { item: "radcell", chance: 0.3 },
+    ],
+  },
+  {
+    template: "enforcer",
+    name: "a Cinder Front enforcer",
+    desc: "A heavyset Front soldier in ash-grey plate -- more bully than soldier, but the gun on their hip is real enough.",
+    maxHp: 34,
+    minDmg: 4,
+    maxDmg: 8,
+    xp: 35,
+    room: "checkpoint",
+    respawnMs: 90_000,
+    loot: [
+      { item: "plating", chance: 0.5 },
+      { item: "rebar", chance: 0.25 },
+    ],
+  },
 ];
 
 export const MOB_BY_ID: Record<string, MobTemplate> = Object.fromEntries(

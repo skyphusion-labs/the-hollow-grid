@@ -64,8 +64,9 @@ export const ROOMS: Record<string, Room> = {
     name: "Rusted Rooftop",
     desc:
       "Wind drags grit across corrugated steel. The wastes stretch out in every " +
-      "direction, indifferent and enormous.",
-    exits: { down: "workshop" },
+      "direction, indifferent and enormous. A catwalk runs north off the roof's edge " +
+      "and down to the open flats.",
+    exits: { down: "workshop", north: "dunes" },
   },
   tunnels: {
     id: "tunnels",
@@ -138,6 +139,40 @@ export const ROOMS: Record<string, Room> = {
       "The air is bone-dry and very cold. Whatever the Grid wanted to keep forever, " +
       "it kept here.",
     exits: { east: "corelab" },
+  },
+
+  // --- The Open Wastes: the surface, where faction standing has teeth ---
+  dunes: {
+    id: "dunes",
+    name: "The Ash Flats",
+    desc:
+      "Open desert under a bleached sky, dunes of grey ash rolling to the horizon. A " +
+      "cracked highway runs east, and the silhouette of a checkpoint stands to the north.",
+    exits: { south: "roof", east: "scorch_road", north: "checkpoint" },
+  },
+  scorch_road: {
+    id: "scorch_road",
+    name: "The Scorch Road",
+    desc:
+      "A ruined stretch of pre-collapse highway, asphalt buckled and tar-black, " +
+      "burned-out hulks lining the shoulder. The kind of place people get robbed.",
+    exits: { west: "dunes", east: "waystation" },
+  },
+  checkpoint: {
+    id: "checkpoint",
+    name: "The Cinder Front Checkpoint",
+    desc:
+      "Sandbags, razor-wire, and a banner stamped with the Front's ash-and-flame mark. " +
+      "An enforcer mans the barrier, weighing everyone who comes up the road.",
+    exits: { south: "dunes" },
+  },
+  waystation: {
+    id: "waystation",
+    name: "The Refugee Waystation",
+    desc:
+      "A huddle of tents and tarps where the free folk shelter off the road. A field " +
+      "medic works a triage cot, and wary eyes track every newcomer.",
+    exits: { west: "scorch_road" },
   },
 };
 
