@@ -245,40 +245,36 @@ async function think() {
 
 // Shared caller for any OpenAI-compatible chat/completions endpoint (ollama and
 // the AI Gateway compat path are both this shape; only URL/auth/model differ).
-async function thinkOpenAICompat(label, endpoint, authHeaders) {
-  return async (prompt) => {
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders },
-      body: JSON.stringify({
-        model: CFG.model,
-        max_tokens: CFG.maxTokens,
-        temperature: 0.8,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: prompt },
-        ],
-      }),
-    });
-    if (!res.ok) throw new Error(`${label} ${res.status}: ${await res.text()}`);
-    const json = await res.json();
-    return json.choices?.[0]?.message?.content ?? "";
-  };
+async function thinkOpenAICompat(label, endpoint, authHeaders, prompt) {
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders },
+    body: JSON.stringify({
+      model: CFG.model,
+      max_tokens: CFG.maxTokens,
+      temperature: 0.8,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error(`${label} ${res.status}: ${await res.text()}`);
+  const json = await res.json();
+  return json.choices?.[0]?.message?.content ?? "";
 }
 
 // Free local brain: ollama's OpenAI-compatible chat endpoint.
 const thinkOllama = (prompt) =>
-  thinkOpenAICompat("ollama", `${CFG.ollamaBase}/chat/completions`, {
-    Authorization: `Bearer ${CFG.ollamaKey}`,
-  })(prompt);
+  thinkOpenAICompat("ollama", `${CFG.ollamaBase}/chat/completions`,
+    { Authorization: `Bearer ${CFG.ollamaKey}` }, prompt);
 
 // Cloudflare AI Gateway brain: OpenAI-compatible, any provider via provider/model.
 // Authenticates to the gateway with a gateway token; provider keys live in the
 // gateway (BYOK), not here.
 const thinkGateway = (prompt) =>
-  thinkOpenAICompat("gateway", gatewayEndpoint(), {
-    "cf-aig-authorization": `Bearer ${CFG.gatewayToken}`,
-  })(prompt);
+  thinkOpenAICompat("gateway", gatewayEndpoint(),
+    { "cf-aig-authorization": `Bearer ${CFG.gatewayToken}` }, prompt);
 
 // Paid frontier brain: the Anthropic Messages API (native, no SDK/deps).
 async function thinkAnthropic(prompt) {
