@@ -57,6 +57,17 @@ function mkClient(url = URL) {
   };
 }
 
+// Character creation now has a race step after the name: the server prompts for
+// a race and waits. Tests pick "human" by default (an "accepted" race, so it does
+// not trigger the Cinder Front's race-reactive prose and the existing faction
+// assertions stay valid). Always sleep between name and race so the server has
+// processed the name before the race line arrives. Works for the raw `ws` and for
+// mkClient() clients (both expose .send).
+async function pickRace(client, race = "human") {
+  client.send(race);
+  await sleep(400);
+}
+
 let failures = 0;
 function check(cond, msg) {
   console.log(`${cond ? "ok  " : "FAIL"}  ${msg}`);
@@ -78,8 +89,9 @@ await new Promise((res, rej) => {
 // character's position -- a test must control its own fixtures.
 const name = "smoke_" + Math.random().toString(36).slice(2, 8);
 await sleep(300);
-ws.send(name); // choose a name -> server logs us in and shows the start room
+ws.send(name); // choose a name -> server prompts for a race
 await sleep(500);
+await pickRace(ws); // pick a race -> server logs us in and shows the start room
 
 // Logging in already emits the start room + vitals via the structured channel.
 const room = last("room.info");
@@ -249,6 +261,7 @@ await sleep(300);
 const aName = "front_" + Math.random().toString(36).slice(2, 7);
 A.send(aName);
 await sleep(500);
+await pickRace(A);
 A.send("north"); // nexus -> Scrap Market, where the recruiter rallies
 await sleep(500);
 A.send("join"); // side with the Cinder Front
@@ -266,6 +279,7 @@ await B.open();
 await sleep(300);
 B.send("witness_" + Math.random().toString(36).slice(2, 7));
 await sleep(500);
+await pickRace(B);
 B.send("north"); // into the market, where A is standing
 await sleep(700);
 const seen = B.last("room.info")?.data.players?.find((p) => p.name === aName);
@@ -283,17 +297,50 @@ check(!!oath, "the Grid still remembers the Cinder Front oath after the collabor
 
 B.sock.close();
 
+// --- Phase 2b: the kapo. An elf who joins the Cinder Front is branded ash-sworn,
+// the darkest choice on the board: one of the hunted turning on his own people.
+const KAPO = mkClient();
+await KAPO.open();
+await sleep(300);
+const kName = "kapo_" + Math.random().toString(36).slice(2, 6);
+KAPO.send(kName);
+await sleep(500);
+await pickRace(KAPO, "elf"); // an elf -- the people the Front hunts
+KAPO.send("north"); // nexus -> Scrap Market, where the recruiter rallies
+await sleep(500);
+const kmark = KAPO.raw().length;
+KAPO.send("join"); // an elf siding with the Cinder Front
+await sleep(700);
+check(/ash-sworn/i.test(KAPO.raw().slice(kmark)), "an elf who joins the Front is branded ash-sworn (the kapo)");
+check(KAPO.last("char.affects")?.data.ashsworn === true, "the ash-sworn brand is on the structured channel (char.affects)");
+
+// The brand outranks faction and never washes off: others see "ash-sworn".
+const KW = mkClient();
+await KW.open();
+await sleep(300);
+KW.send("kwit_" + Math.random().toString(36).slice(2, 6));
+await sleep(500);
+await pickRace(KW);
+KW.send("north"); // into the market, where the kapo stands
+await sleep(700);
+const kseen = KW.last("room.info")?.data.players?.find((p) => p.name === kName);
+check(kseen?.standing === "ash-sworn", `the world brands the kapo to others as ash-sworn (got ${JSON.stringify(kseen?.standing)})`);
+KAPO.sock.close();
+KW.sock.close();
+
 // --- Phase 3: server-wide announcements (wall) ---
 const ADMIN = mkClient();
 await ADMIN.open();
 await sleep(300);
 ADMIN.send("skyphusion"); // a keeper, per the ADMINS wrangler var
 await sleep(500);
+await pickRace(ADMIN);
 const OBS = mkClient();
 await OBS.open();
 await sleep(300);
 OBS.send("watcher_" + Math.random().toString(36).slice(2, 7));
 await sleep(500);
+await pickRace(OBS);
 
 // A non-admin cannot broadcast.
 OBS.send("wall I should not be able to do this");
@@ -322,12 +369,14 @@ await sleep(300);
 const pName = "alf_" + Math.random().toString(36).slice(2, 6);
 P.send(pName);
 await sleep(500);
+await pickRace(P);
 const Q = mkClient();
 await Q.open();
 await sleep(300);
 const qName = "bex_" + Math.random().toString(36).slice(2, 6);
 Q.send(qName);
 await sleep(500);
+await pickRace(Q);
 
 // tell + reply (private, cross-room)
 P.send(`tell ${qName} you there?`);
@@ -376,6 +425,7 @@ await Z.open();
 await sleep(300);
 Z.send("ztest_" + Math.random().toString(36).slice(2, 6));
 await sleep(500);
+await pickRace(Z);
 Z.send("down"); // nexus -> tunnels
 await sleep(500);
 Z.send("down"); // tunnels -> sump
@@ -405,6 +455,7 @@ await W.open();
 await sleep(300);
 W.send("wtest_" + Math.random().toString(36).slice(2, 6));
 await sleep(500);
+await pickRace(W);
 W.send("east"); // nexus -> workshop
 await sleep(500);
 W.send("up"); // workshop -> roof
@@ -433,6 +484,7 @@ await G.open();
 await sleep(300);
 G.send("gtest_" + Math.random().toString(36).slice(2, 6));
 await sleep(500);
+await pickRace(G);
 G.send("east"); // nexus -> workshop
 await sleep(600);
 let gmark = G.raw().length;
@@ -455,6 +507,7 @@ await F.open();
 await sleep(300);
 F.send("ftest_" + Math.random().toString(36).slice(2, 6));
 await sleep(500);
+await pickRace(F);
 // Walk out to the stronghold: nexus -> workshop -> roof -> dunes -> checkpoint -> gate
 for (const dir of ["east", "up", "north", "north", "north"]) {
   F.send(dir);
@@ -499,11 +552,13 @@ await sleep(300);
 const gxName = "caster_" + Math.random().toString(36).slice(2, 6);
 GX.send(gxName);
 await sleep(500);
+await pickRace(GX); // first login of gxName: choose a race (returning logins skip this)
 const GY = mkClient();
 await GY.open();
 await sleep(300);
 GY.send("hearer_" + Math.random().toString(36).slice(2, 6));
 await sleep(500);
+await pickRace(GY);
 
 // gridcast goes into the shared hub; the relay reaches every world's players on
 // the alarm tick (so it round-trips through the federation backend, not locally).
@@ -528,6 +583,7 @@ await GH.open();
 await sleep(300);
 GH.send("frontkid_" + Math.random().toString(36).slice(2, 6));
 await sleep(500);
+await pickRace(GH);
 GH.send("north"); // nexus -> Scrap Market
 await sleep(500);
 GH.send("join"); // side with the Cinder Front -> -10 to the GLOBAL tide
@@ -584,6 +640,7 @@ await TR.open();
 await sleep(300);
 TR.send("trav" + Math.floor(tideAfter)); // any fresh name
 await sleep(600);
+await pickRace(TR);
 TR.send("worlds");
 await sleep(600);
 const wl = TR.last("grid.worlds");
@@ -656,6 +713,7 @@ if (!dustfallUp) {
   await sleep(300);
   P.send("crosscheck_" + Math.random().toString(36).slice(2, 6));
   await sleep(500);
+  await pickRace(P);
   P.send("war");
   await sleep(600);
   const tidePrimary = P.last("world.war")?.data.tide;

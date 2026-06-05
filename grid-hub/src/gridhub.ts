@@ -83,6 +83,15 @@ export class GridHub extends DurableObject<Env> {
           title TEXT NOT NULL DEFAULT ''
         )
       `);
+      // race: an opaque, federated label (the hub never gatekeeps it, so any world
+      // can define races). ashsworn: the permanent kapo brand (write-once true).
+      for (const col of ["race TEXT NOT NULL DEFAULT ''", "ashsworn INTEGER NOT NULL DEFAULT 0"]) {
+        try {
+          sql.exec(`ALTER TABLE characters ADD COLUMN ${col}`);
+        } catch {
+          // column already exists
+        }
+      }
 
       // The world registry: who's on the Grid, and where to reach them.
       sql.exec("CREATE TABLE IF NOT EXISTS worlds (id TEXT PRIMARY KEY, url TEXT NOT NULL, last_seen INTEGER NOT NULL)");
@@ -165,14 +174,23 @@ export class GridHub extends DurableObject<Env> {
   // --- Canonical identity: the character that follows you --------------------
   loadCharacter(name: string): CharSheet {
     const row = this.ctx.storage.sql
-      .exec<CharSheet>("SELECT level, xp, gold, faction, morality, title FROM characters WHERE name = ?", name)
+      .exec<{
+        level: number;
+        xp: number;
+        gold: number;
+        faction: string;
+        morality: number;
+        title: string;
+        race: string;
+        ashsworn: number;
+      }>("SELECT level, xp, gold, faction, morality, title, race, ashsworn FROM characters WHERE name = ?", name)
       .toArray()[0];
-    if (row) return row;
+    if (row) return { ...row, ashsworn: !!row.ashsworn };
     this.ctx.storage.sql.exec(
-      "INSERT OR IGNORE INTO characters (name, level, xp, gold, faction, morality, title) VALUES (?, 1, 0, 20, 'none', 0, '')",
+      "INSERT OR IGNORE INTO characters (name, level, xp, gold, faction, morality, title, race, ashsworn) VALUES (?, 1, 0, 20, 'none', 0, '', '', 0)",
       name,
     );
-    return { level: 1, xp: 0, gold: 20, faction: "none", morality: 0, title: "" };
+    return { level: 1, xp: 0, gold: 20, faction: "none", morality: 0, title: "", race: "", ashsworn: false };
   }
 
   // A world PROPOSES a character sheet; the hub VALIDATES it against bounds and
@@ -188,15 +206,23 @@ export class GridHub extends DurableObject<Env> {
       faction: ["none", "front", "ally"].includes(p.faction) ? p.faction : cur.faction,
       morality: clamp(Math.floor(p.morality), -1000, 1000),
       title: String(p.title ?? "").replace(/[\r\n]/g, "").slice(0, 40),
+      // race: an opaque label, sanitized but not validated against any list (any
+      // world may define races); set once, then sticky (a character cannot reroll
+      // their race across worlds).
+      race: cur.race || String(p.race ?? "").replace(/[^a-z0-9_]/gi, "").toLowerCase().slice(0, 24),
+      // ashsworn: the kapo brand is write-once true and never clears.
+      ashsworn: cur.ashsworn || !!p.ashsworn,
     };
     this.ctx.storage.sql.exec(
-      "UPDATE characters SET level = ?, xp = ?, gold = ?, faction = ?, morality = ?, title = ? WHERE name = ?",
+      "UPDATE characters SET level = ?, xp = ?, gold = ?, faction = ?, morality = ?, title = ?, race = ?, ashsworn = ? WHERE name = ?",
       next.level,
       next.xp,
       next.gold,
       next.faction,
       next.morality,
       next.title,
+      next.race,
+      next.ashsworn ? 1 : 0,
       name,
     );
     return next;

@@ -57,6 +57,10 @@ export interface Session {
   addiction: number;
   /** stance toward the Cinder Front: "none" | "front" | "ally" */
   faction: "none" | "front" | "ally";
+  /** federated race id, chosen once at creation; "" until chosen (see src/races.ts) */
+  race: string;
+  /** the permanent kapo brand: an elf who joined the Front. Once true, never false. */
+  ashsworn: boolean;
   /** whether the player has consciously resisted the tavern's vices */
   resisted: boolean;
   /** name of the last player who `tell`-ed us, for `reply` (in-memory only) */

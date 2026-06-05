@@ -117,6 +117,7 @@ src/types.ts      Env (bindings + vars) and the per-socket Session
 src/rooms.ts      room maps + mapFor() + per-world intro
 src/mobs.ts       mob templates + per-world bestiary (mobsFor)
 src/items.ts      item catalog + per-world shop stock / starter (waresFor, starterFor)
+src/races.ts      player races: roster, Front stance, light leans (a federated attribute)
 src/banner.ts     per-world ANSI login banners (bannerFor)
 src/webclient.ts  the in-browser xterm.js play client (served from /)
 shared/grid.ts    THE federation contract (GridHubApi + data types)

@@ -19,7 +19,22 @@ export type GridCast = { id: number; world: string; sender: string; text: string
 // The canonical, federation-wide character: the progression + standing that
 // follows a player across every world. Local-only state (room, hp, position,
 // inventory) is NOT here -- worlds own that.
-export type CharSheet = { level: number; xp: number; gold: number; faction: string; morality: number; title: string };
+// The canonical character that follows you across worlds. `race` is an opaque
+// string: the hub carries whatever a world commits and never gatekeeps it, so any
+// world (including a third party) can define its own races; a world that does not
+// recognize an arriving race falls back to neutral mechanics. `ashsworn` is the
+// permanent brand of an elf who joined the Cinder Front (the federation's kapo):
+// once true it can never be set back to false, even on defection.
+export type CharSheet = {
+  level: number;
+  xp: number;
+  gold: number;
+  faction: string;
+  morality: number;
+  title: string;
+  race: string;
+  ashsworn: boolean;
+};
 
 // A world on the federation: its name, where to connect, and when it last
 // checked in (for liveness). Players `travel` between these.

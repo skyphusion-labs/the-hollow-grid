@@ -63,6 +63,44 @@ bearing mob ids, and the quest, but:
   `waresFor`/`starterFor` hand it out, and the Dustfall mob loot drops it.
 - A rust-and-sand `bannerFor` spec and a salt-pan `introFor` clause.
 
+## Races
+
+Races are data too (`src/races.ts`), but they sit a little differently from the
+map/bestiary/items: a race is a **federated, canonical attribute** chosen once at
+character creation that follows you across worlds, so the Grid Hub carries the
+race id as an opaque `CharSheet.race` string and never gatekeeps it. A race is
+mostly NARRATIVE: its load-bearing field is `stance` (how the Cinder Front treats
+this people: `accepted` | `tolerated` | `hunted`), which the faction-reactive
+rooms read. The mechanical leans (hp/damage/armor/regen, poison immunity) are
+deliberately light.
+
+In this codebase both worlds share one roster (`RACES`), so the Front's stances
+stay coherent federation-wide (the Front is one movement; elves are hunted
+everywhere). The model is built for extension, though:
+
+- **A world owns its roster.** A world (including a third party) can define any
+  races it likes. `raceFor(id)` returns undefined for a race it does not know.
+- **Unknown races degrade gracefully.** When a traveler arrives carrying a race
+  the destination world has never heard of, the label still travels (it shows in
+  `whoami`), but local mechanics default and `stanceFor` falls back to
+  `tolerated`. The character is never broken.
+- **The long-term shape** is a small shared canon of well-known races + their
+  stances in `shared/`, which worlds honor, plus local extensions. Same
+  fediverse logic as content packs: a shared standard, local color, opt-in. See
+  `docs/federation.md`.
+
+### The kapo (a designed special case)
+
+An **elf who joins the Cinder Front** is the federation's kapo: one of the hunted
+turning on his own people. The game marks this as `ashsworn` on the `CharSheet`,
+a **permanent brand** the hub enforces as write-once true (it never clears, even
+on defection). It carries the heaviest morality cost on the board, the Front
+tolerates-with-contempt rather than accepts him, the free folk react with the
+deepest revulsion, and the public `brand` shows `ash-sworn` above any faction.
+This is intentional weight, handled with gravity; treat it as such if you extend
+it. (Detected as `race === "elf" && faction === "front"`; see `factionChoice` and
+`brandAshsworn` in `src/world.ts`.)
+
 ## Adding a new world
 
 Say you want `saltreach` (already seeded as a stub in the registry):

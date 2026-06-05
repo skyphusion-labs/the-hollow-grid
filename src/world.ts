@@ -3,6 +3,7 @@ import type { Env, Session } from "./types";
 import { mapFor, introFor, START_ROOM, HOLDING_PIT, WARDEN_ID, TAVERN, MARKET, normalizeDir, type Room } from "./rooms";
 import { mobsFor, type MobTemplate } from "./mobs";
 import { ITEM_TEMPLATES, itemMatches, EQUIP_SLOTS, waresFor, starterFor, type Ware } from "./items";
+import { RACES, RACE_ORDER, raceFor, matchRace, stanceFor } from "./races";
 import type { GridTrace, GridCast, CharSheet, WorldInfo } from "../shared/grid";
 import { bannerFor } from "./banner";
 
@@ -52,6 +53,10 @@ type MobRow = {
 
 const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+
+// Max HP follows your level, plus your race's HP lean (0 for most). Unknown races
+// (defined by some other world) contribute 0, so a traveler is never broken.
+const maxHpFor = (level: number, raceId?: string): number => BASE_HP + (raceFor(raceId)?.hpMod ?? 0) + (level - 1) * 10;
 
 // Body positions. Resting/sleeping regen HP on the alarm tick; you can't do
 // either mid-fight, and attacking from one snaps you to your feet.
@@ -144,7 +149,9 @@ export class World extends DurableObject<Env> {
           addiction INTEGER NOT NULL DEFAULT 0,
           faction TEXT NOT NULL DEFAULT 'none',
           resisted INTEGER NOT NULL DEFAULT 0,
-          title TEXT NOT NULL DEFAULT ''
+          title TEXT NOT NULL DEFAULT '',
+          race TEXT NOT NULL DEFAULT '',
+          ashsworn INTEGER NOT NULL DEFAULT 0
         )
       `);
       for (const col of [
@@ -159,6 +166,8 @@ export class World extends DurableObject<Env> {
         "faction TEXT NOT NULL DEFAULT 'none'",
         "resisted INTEGER NOT NULL DEFAULT 0",
         "title TEXT NOT NULL DEFAULT ''",
+        "race TEXT NOT NULL DEFAULT ''",
+        "ashsworn INTEGER NOT NULL DEFAULT 0",
       ]) {
         try {
           sql.exec(`ALTER TABLE players ADD COLUMN ${col}`);
@@ -276,6 +285,8 @@ export class World extends DurableObject<Env> {
       morality: 0,
       addiction: 0,
       faction: "none",
+      race: "",
+      ashsworn: false,
       resisted: false,
     };
     server.serializeAttachment(session);
@@ -293,6 +304,11 @@ export class World extends DurableObject<Env> {
 
     if (!session || !session.name) {
       await this.handleLogin(ws, line);
+      return;
+    }
+    if (!session.race) {
+      // Name chosen but no race yet: a brand-new character is at the race prompt.
+      await this.handleRaceChoice(ws, session, line);
       return;
     }
     await this.handleCommand(ws, session, line);
@@ -346,7 +362,9 @@ export class World extends DurableObject<Env> {
     for (const ws of this.ctx.getWebSockets()) {
       const s = ws.deserializeAttachment() as Session | null;
       if (!s?.name || s.target || s.poisoned || s.hp >= s.maxHp) continue;
-      const regen = POS_REGEN[s.position ?? "standing"] ?? 0;
+      // Position regen plus your race's lean (the wastes-hardened heal even on
+      // their feet; most races add 0).
+      const regen = (POS_REGEN[s.position ?? "standing"] ?? 0) + (raceFor(s.race)?.regen ?? 0);
       if (regen <= 0) continue;
       s.hp = Math.min(s.maxHp, s.hp + regen);
       ws.serializeAttachment(s);
@@ -415,7 +433,8 @@ export class World extends DurableObject<Env> {
 
     // Player strikes first (wielded gear adds to the swing).
     const bonus = this.equipBonuses(s.name);
-    const pdmg = rand(3, 7) + (s.level - 1) * 2 + bonus.damage;
+    const race = raceFor(s.race);
+    const pdmg = rand(3, 7) + (s.level - 1) * 2 + bonus.damage + (race?.damage ?? 0);
     const mobHp = Math.max(0, mob.hp - pdmg);
     this.ctx.storage.sql.exec("UPDATE mobs SET hp = ? WHERE id = ?", mobHp, mob.id);
     this.line(ws, `You hit ${t.name} for ${pdmg}. (${mobHp}/${mob.max_hp})`);
@@ -426,7 +445,7 @@ export class World extends DurableObject<Env> {
     }
 
     // Mob hits back (worn armor soaks some), possibly envenomating.
-    const mdmg = Math.max(1, rand(t.minDmg, t.maxDmg) - bonus.armor);
+    const mdmg = Math.max(1, rand(t.minDmg, t.maxDmg) - bonus.armor - (race?.armor ?? 0));
     s.hp = Math.max(0, s.hp - mdmg);
     this.line(ws, `${cap(t.name)} hits you for ${mdmg}. (HP ${s.hp}/${s.maxHp})`);
 
@@ -435,7 +454,7 @@ export class World extends DurableObject<Env> {
       return;
     }
 
-    if (t.poisonChance && !s.poisoned && Math.random() < t.poisonChance) {
+    if (t.poisonChance && !s.poisoned && !race?.poisonImmune && Math.random() < t.poisonChance) {
       s.poisoned = true;
       this.line(ws, "Venom courses through your veins; you are POISONED. Seek an antidote.");
     }
@@ -530,7 +549,7 @@ export class World extends DurableObject<Env> {
     while (s.xp >= s.level * 100) {
       s.xp -= s.level * 100;
       s.level += 1;
-      s.maxHp += 10;
+      s.maxHp = maxHpFor(s.level, s.race);
       s.hp = s.maxHp;
       this.line(ws, `*** You reach level ${s.level}! Max HP is now ${s.maxHp}. ***`);
     }
@@ -564,8 +583,10 @@ export class World extends DurableObject<Env> {
         faction: string;
         resisted: number;
         title: string;
+        race: string;
+        ashsworn: number;
       }>(
-        "SELECT room, hp, max_hp, xp, level, poisoned, gold, morality, addiction, faction, resisted, title FROM players WHERE name = ?",
+        "SELECT room, hp, max_hp, xp, level, poisoned, gold, morality, addiction, faction, resisted, title, race, ashsworn FROM players WHERE name = ?",
         name,
       )
       .toArray()[0];
@@ -586,6 +607,8 @@ export class World extends DurableObject<Env> {
       morality: row?.morality ?? 0,
       addiction: row?.addiction ?? 0,
       faction: (row?.faction as Session["faction"]) ?? "none",
+      race: row?.race ?? "",
+      ashsworn: !!row?.ashsworn,
       resisted: !!row?.resisted,
       title: row?.title ?? "",
     };
@@ -602,7 +625,8 @@ export class World extends DurableObject<Env> {
       session.faction = canon.faction as Session["faction"];
       session.morality = canon.morality;
       session.title = canon.title;
-      session.maxHp = BASE_HP + (canon.level - 1) * 10; // max HP follows your level
+      session.race = canon.race || session.race; // the federated, canonical race
+      session.ashsworn = canon.ashsworn || session.ashsworn; // the permanent brand
       // Advertise this world to the federation registry (keeps its entry live).
       // waitUntil so the RPC survives this handler returning -- across the service
       // binding a bare fire-and-forget can be cancelled before it lands.
@@ -613,6 +637,57 @@ export class World extends DurableObject<Env> {
       /* hub unreachable; the local character stands on its own */
     }
 
+    // Brand new to the federation: no race yet. Choose one before entering the
+    // world. The name is set but race is "", so the next line routes here too
+    // (see webSocketMessage / handleRaceChoice).
+    if (!session.race) {
+      ws.serializeAttachment(session);
+      this.sendRacePrompt(ws, name);
+      return;
+    }
+
+    this.finishSpawn(ws, session, !row);
+  }
+
+  // The character-creation race menu. Race is the axis the Cinder Front judges
+  // you on, so onboarding names it plainly.
+  private sendRacePrompt(ws: WebSocket, name: string): void {
+    const lines = [
+      "",
+      `Before the wastes can place you, ${name}, they have to see WHAT you are.`,
+      "The Cinder Front decides who counts as a person. Choose your kind:",
+      "",
+      ...RACE_ORDER.map((id, i) => `  ${i + 1}. ${RACES[id].name} -- ${RACES[id].blurb}`),
+      "",
+      "Type a number or a name.",
+    ];
+    ws.send(lines.join(NL) + NL);
+  }
+
+  // Second step of onboarding: the player picks a race, which becomes a federated,
+  // canonical attribute committed to the hub immediately.
+  private async handleRaceChoice(ws: WebSocket, session: Session, line: string): Promise<void> {
+    const id = matchRace(line);
+    if (!id) {
+      ws.send(`"${line}" is not one of the kinds offered.` + NL);
+      this.sendRacePrompt(ws, session.name);
+      return;
+    }
+    session.race = id;
+    const r = RACES[id];
+    this.line(ws, `You are ${/^[aeiou]/i.test(r.name) ? "an" : "a"} ${r.name}. ${r.trait}`);
+    // A brand-new character (no local row) wakes with the starter weapon; a
+    // character that predates the race system keeps what it already had.
+    const existing = this.ctx.storage.sql.exec("SELECT 1 FROM players WHERE name = ?", session.name).toArray()[0];
+    this.commitIdentity(session); // persist the race to the hub now, so it sticks
+    this.finishSpawn(ws, session, !existing);
+  }
+
+  // Shared spawn: applies racial max HP, persists, welcomes, and drops the player
+  // into the world. Called for returning characters (from handleLogin) and for
+  // brand-new ones once they have chosen a race (from handleRaceChoice).
+  private finishSpawn(ws: WebSocket, session: Session, isNew: boolean): void {
+    session.maxHp = maxHpFor(session.level, session.race);
     if (session.hp <= 0 || session.hp > session.maxHp) session.hp = session.maxHp;
     ws.serializeAttachment(session);
     this.persistPlayer(session);
@@ -620,20 +695,20 @@ export class World extends DurableObject<Env> {
     // Self-documenting onboarding: never make a new player guess. State the
     // goal and how to learn every command, and promise that nothing is gated
     // behind secret words (the anti-"hidden search gate" lesson, in-voice).
-    if (!row) {
-      this.invAdd(name, this.starter, 1); // a starter weapon: you wake clutching it
+    if (isNew) {
+      this.invAdd(session.name, this.starter, 1); // a starter weapon: you wake clutching it
       ws.send(
         [
-          `Welcome to the wastes, ${name}. You wake ${this.intro}, ${ITEM_TEMPLATES[this.starter].name} in your fist and little else.`,
+          `Welcome to the wastes, ${session.name}. You wake ${this.intro}, ${ITEM_TEMPLATES[this.starter].name} in your fist and little else.`,
           "Survive, explore, and decide what the wastes make of you. Nothing here is hidden",
           "behind secret commands: type 'help' (or '?') for everything you can do, and 'look'",
           "to take in your surroundings. The exits of each room are always listed.",
         ].join(NL) + NL,
       );
     } else {
-      ws.send(`Welcome back to the wastes, ${name}. (Type 'help' if you need a refresher.)` + NL);
+      ws.send(`Welcome back to the wastes, ${session.name}. (Type 'help' if you need a refresher.)` + NL);
     }
-    this.broadcast(room, `${name} steps out of the haze.`, ws);
+    this.broadcast(session.room, `${session.name} steps out of the haze.`, ws);
     this.sendRoom(ws, session);
     this.emitWorldState(ws);
     if (session.poisoned) this.line(ws, "The old venom still burns in you. (poisoned)");
@@ -1413,14 +1488,16 @@ export class World extends DurableObject<Env> {
     }
     s.gold -= COST;
     s.morality -= 8;
+    // A Revenant has no flesh for the pox to take root in (poisonImmune).
+    const immune = !!raceFor(s.race)?.poisonImmune;
     this.line(
       ws,
       "You spend coin and an hour in the back; the details stay between you and the rafters." +
-        (s.poisoned
+        (s.poisoned || immune
           ? ""
           : NL + "By morning, though, something burns that shouldn't. You've caught the pox. (afflicted)"),
     );
-    s.poisoned = true; // "that nonsense": an affliction you'll need to cure
+    if (!immune) s.poisoned = true; // "that nonsense": an affliction you'll need to cure
     ws.serializeAttachment(s);
     this.persistPlayer(s);
     this.prompt(ws);
@@ -1447,6 +1524,16 @@ export class World extends DurableObject<Env> {
     this.prompt(ws);
   }
 
+  // Brand a character ash-sworn: the permanent mark of an elf who joined the
+  // Cinder Front, the federation's kapo. Mechanics only; the caller supplies the
+  // scene. Heavier than any other collaboration on the board, and it never clears,
+  // even on defection (the hub enforces ashsworn as write-once true).
+  private brandAshsworn(ws: WebSocket, s: Session, scene: string[]): void {
+    s.ashsworn = true;
+    s.morality -= 40;
+    this.line(ws, scene.join(NL));
+  }
+
   private factionChoice(ws: WebSocket, s: Session, side: "front" | "ally"): void {
     // The faction arc's climax: at the Ashmonger's dais you can turn on the
     // Front (defect to the free folk) or, if unaligned, pledge yourself to it.
@@ -1454,28 +1541,53 @@ export class World extends DurableObject<Env> {
       if (side === "ally" && s.faction === "front") {
         s.faction = "ally";
         s.morality += 30;
+        // Defection does NOT clear the ash-sworn brand: you can turn the right
+        // way, but you cannot unmake what you did. Whether the free folk forgive
+        // it is left an open wound, not a reward.
+        if (s.ashsworn) {
+          this.line(
+            ws,
+            [
+              "You spit at the Ashmonger's boots. \"I'm done being your dog.\" The stronghold turns on you at once.",
+              "You stand with the free folk now -- but the brand on your shoulder stays. For once you wear it",
+              "turning the right way. Whether the people you helped cage can ever look at you again is not a",
+              "thing the wastes will settle tonight, or maybe ever. You turned. It has to be enough to start.",
+            ].join(NL),
+          );
+        } else {
+          this.line(
+            ws,
+            'You spit at the Ashmonger\'s boots. "I\'m done being your dog." Every soldier in the stronghold turns on you at once' +
+              " -- but you stand with the free folk now, and the wastes will remember THIS above all.",
+          );
+        }
         ws.serializeAttachment(s);
         this.persistPlayer(s);
         this.emitAffects(ws, s);
         this.recordTrace(s.room, "oath", `${s.name} turned on the Cinder Front at the Ashmonger's own dais.`);
         this.contributeTide(15);
         this.commitIdentity(s);
-        this.line(
-          ws,
-          'You spit at the Ashmonger\'s boots. "I\'m done being your dog." Every soldier in the stronghold turns on you at once' +
-            " -- but you stand with the free folk now, and the wastes will remember THIS above all.",
-        );
         this.broadcast(s.room, `${s.name} has turned against the Cinder Front!`, ws);
       } else if (side === "front" && s.faction === "none") {
         s.faction = "front";
-        s.morality -= 25;
+        if (s.race === "elf") {
+          this.brandAshsworn(ws, s, [
+            "You kneel before the Ashmonger -- an elf, at the feet of the man who cages elves.",
+            "He laughs, delighted, and burns the ash-and-flame into your shoulder with his own hand.",
+            '"The best dogs are the ones who hate themselves. You\'ll do the work my men won\'t."',
+            "You are ash-sworn now. There is no one left to belong to.",
+          ]);
+          this.recordTrace(s.room, "oath", `${s.name}, an elf, knelt to the Ashmonger and was branded ash-sworn.`);
+        } else {
+          s.morality -= 25;
+          this.line(ws, 'You kneel and swear yourself to the Front. The Ashmonger\'s hand closes on your shoulder like a trap. "Good. The wastes will be ours."');
+          this.recordTrace(s.room, "oath", `${s.name} swore themselves to the Cinder Front at the Ashmonger's dais.`);
+        }
         ws.serializeAttachment(s);
         this.persistPlayer(s);
         this.emitAffects(ws, s);
-        this.recordTrace(s.room, "oath", `${s.name} swore themselves to the Cinder Front at the Ashmonger's dais.`);
         this.contributeTide(-15);
         this.commitIdentity(s);
-        this.line(ws, 'You kneel and swear yourself to the Front. The Ashmonger\'s hand closes on your shoulder like a trap. "Good. The wastes will be ours."');
       } else {
         this.line(ws, "The Ashmonger only laughs. There's nothing here to decide that your blood hasn't already settled.");
       }
@@ -1496,15 +1608,29 @@ export class World extends DurableObject<Env> {
 
     if (side === "front") {
       s.faction = "front";
-      s.morality -= 25;
-      s.gold += 30;
-      this.line(
-        ws,
-        'You take the recruiter\'s hand. "Good. The wastes need hard men." He presses 30 gold of blood' +
-          " money on you as the elf refugee bolts in terror.",
-      );
-      this.broadcast(s.room, `${s.name} has joined the Cinder Front.`, ws);
-      this.recordTrace(s.room, "oath", `${s.name} swore themselves to the Cinder Front here.`);
+      if (s.race === "elf") {
+        this.brandAshsworn(ws, s, [
+          'The recruiter\'s smile widens. "An elf? Better still. Prove you\'re not like them."',
+          "He presses thirty gold of blood money into your hand, and a brand into your shoulder:",
+          "the ash-and-flame, burned into your own skin, so everyone knows what you chose.",
+          "The refugee beside you does not run. She just looks at you, and looks away.",
+          "You are ash-sworn now. The Front will use you, and never be your people --",
+          "and after this, neither are the free folk.",
+        ]);
+        s.gold += 30;
+        this.broadcast(s.room, `${s.name} -- one of the hunted -- has taken the Cinder Front's brand.`, ws);
+        this.recordTrace(s.room, "oath", `${s.name}, an elf, swore to the Cinder Front and was branded ash-sworn.`);
+      } else {
+        s.morality -= 25;
+        s.gold += 30;
+        this.line(
+          ws,
+          'You take the recruiter\'s hand. "Good. The wastes need hard men." He presses 30 gold of blood' +
+            " money on you as the elf refugee bolts in terror.",
+        );
+        this.broadcast(s.room, `${s.name} has joined the Cinder Front.`, ws);
+        this.recordTrace(s.room, "oath", `${s.name} swore themselves to the Cinder Front here.`);
+      }
       this.contributeTide(-10);
     } else {
       s.faction = "ally";
@@ -1556,12 +1682,23 @@ export class World extends DurableObject<Env> {
       lines.push("A grizzled tinker hunches over the benches, salvaged gear laid out for sale. (try 'list')");
     }
 
+    // The Cinder Front rooms react to your race's standing (the spectrum of
+    // belonging) and, hardest of all, to the ash-sworn brand.
+    const hunted = stanceFor(s.race) === "hunted";
+
     if (s.room === MARKET) {
       if (s.faction === "none") {
-        lines.push(
-          "A Cinder Front recruiter rallies a crowd against the 'unregistered elves,' while a frightened" +
-            " elf refugee shrinks against the wall. (try 'talk')",
-        );
+        if (s.race === "elf") {
+          lines.push(
+            "A Cinder Front recruiter works the crowd against the 'unregistered elves' -- and his eyes keep" +
+              " catching on YOU. \"You. Prove you're not like them,\" he calls, almost kindly. (try 'talk')",
+          );
+        } else {
+          lines.push(
+            "A Cinder Front recruiter rallies a crowd against the 'unregistered elves,' while a frightened" +
+              " elf refugee shrinks against the wall. (try 'talk')",
+          );
+        }
       } else if (s.faction === "front") {
         lines.push("The square is hushed; the recruiter counts you among his own.");
       } else {
@@ -1570,8 +1707,12 @@ export class World extends DurableObject<Env> {
     }
 
     if (s.room === "checkpoint") {
-      if (s.faction === "front") {
+      if (s.ashsworn) {
+        lines.push("The enforcer waves you through with a sneer he doesn't bother to hide -- the Front's dog, useful and never trusted. (try 'talk')");
+      } else if (s.faction === "front") {
         lines.push("The enforcer thumps a fist to their chest in salute -- one of theirs. (try 'talk')");
+      } else if (hunted && s.faction !== "ally") {
+        lines.push("The enforcer's eyes catch on your kind, and his hand finds his weapon before he finds your face. (try 'talk')");
       } else if (s.faction === "ally") {
         lines.push("The enforcer's hand drops to their weapon the moment they place your face. (try 'talk')");
       } else {
@@ -1580,8 +1721,12 @@ export class World extends DurableObject<Env> {
     }
 
     if (s.room === "waystation") {
-      if (s.faction === "front") {
+      if (s.ashsworn) {
+        lines.push("The free folk go dead silent. One of their own, branded, standing here. The medic's hand shakes near the triage kit; nobody says the word, but everybody is thinking it. (try 'talk')");
+      } else if (s.faction === "front") {
         lines.push("The free folk go silent and still. You are not welcome here. (try 'talk')");
+      } else if (hunted) {
+        lines.push("The refugees ease at the sight of one of their own off the road; the medic waves you in. (try 'talk')");
       } else if (s.faction === "ally") {
         lines.push("The refugees brighten at a friend's face; the medic waves you over. (try 'talk')");
       } else {
@@ -1590,7 +1735,9 @@ export class World extends DurableObject<Env> {
     }
 
     if (s.room === "gate" || s.room === "muster") {
-      if (s.faction === "front") {
+      if (s.ashsworn) {
+        lines.push("Troopers smirk as you pass -- the Front's pet, here to do the work they'd not dirty their own hands with.");
+      } else if (s.faction === "front") {
         lines.push("Troopers snap to attention as you pass -- one of the cause.");
       } else if (s.faction === "ally") {
         lines.push("Every trooper here would gut you on sight. You are deep in enemy ground.");
@@ -1676,6 +1823,8 @@ export class World extends DurableObject<Env> {
       addiction: s.addiction,
       faction: s.faction,
       resisted: s.resisted,
+      race: s.race,
+      ashsworn: s.ashsworn,
     });
   }
 
@@ -1684,6 +1833,9 @@ export class World extends DurableObject<Env> {
   // not wash off; standing with the free folk is likewise known. Otherwise only
   // the notable moral extremes earn a public tag (newcomers stay untagged).
   private brand(s: Session): string {
+    // The ash-sworn brand outranks everything and never washes off, even after
+    // defection: the world remembers what you did above what you became.
+    if (s.ashsworn) return "ash-sworn";
     if (s.faction === "front") return "Cinder Front";
     if (s.faction === "ally") return "Free Folk ally";
     if (s.morality >= 50) return "a beacon of the wastes";
@@ -1747,6 +1899,8 @@ export class World extends DurableObject<Env> {
             faction: s.faction,
             morality: s.morality,
             title: s.title ?? "",
+            race: s.race ?? "",
+            ashsworn: !!s.ashsworn,
           })
           .catch(() => {}),
       );
@@ -1761,14 +1915,25 @@ export class World extends DurableObject<Env> {
     try {
       sheet = await this.env.GRID.loadCharacter(s.name);
     } catch {
-      sheet = { level: s.level, xp: s.xp, gold: s.gold, faction: s.faction, morality: s.morality, title: s.title ?? "" };
+      sheet = {
+        level: s.level,
+        xp: s.xp,
+        gold: s.gold,
+        faction: s.faction,
+        morality: s.morality,
+        title: s.title ?? "",
+        race: s.race,
+        ashsworn: s.ashsworn,
+      };
       this.line(ws, "(the Grid is unreachable; showing your local self)");
     }
     const standing = sheet.faction === "front" ? "Cinder Front" : sheet.faction === "ally" ? "Free Folk ally" : "unaligned";
+    const raceName = raceFor(sheet.race)?.name ?? (sheet.race ? cap(sheet.race) : "unchosen");
     this.line(
       ws,
       [
         `You are ${s.name}${sheet.title ? ", " + sheet.title : ""} -- known across the Grid.`,
+        `  ${raceName}${sheet.ashsworn ? ", ASH-SWORN (branded by the Cinder Front)" : ""}`,
         `  level ${sheet.level}   xp ${sheet.xp}   gold ${sheet.gold}`,
         `  standing: ${standing}   (morality ${sheet.morality})`,
         "  This identity is canonical on the Grid; it follows you to every world.",
@@ -2642,13 +2807,14 @@ export class World extends DurableObject<Env> {
 
   private persistPlayer(s: Session): void {
     this.ctx.storage.sql.exec(
-      `INSERT INTO players (name, room, hp, max_hp, xp, level, poisoned, gold, morality, addiction, faction, resisted, title)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO players (name, room, hp, max_hp, xp, level, poisoned, gold, morality, addiction, faction, resisted, title, race, ashsworn)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(name) DO UPDATE SET
          room = excluded.room, hp = excluded.hp, max_hp = excluded.max_hp,
          xp = excluded.xp, level = excluded.level, poisoned = excluded.poisoned,
          gold = excluded.gold, morality = excluded.morality, addiction = excluded.addiction,
-         faction = excluded.faction, resisted = excluded.resisted, title = excluded.title`,
+         faction = excluded.faction, resisted = excluded.resisted, title = excluded.title,
+         race = excluded.race, ashsworn = excluded.ashsworn`,
       s.name,
       s.room,
       s.hp,
@@ -2662,6 +2828,8 @@ export class World extends DurableObject<Env> {
       s.faction,
       s.resisted ? 1 : 0,
       s.title ?? "",
+      s.race ?? "",
+      s.ashsworn ? 1 : 0,
     );
   }
 }
