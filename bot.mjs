@@ -104,6 +104,7 @@ function log(...args) {
 
 const state = {
   loggedIn: false,
+  url: CFG.url, // where to (re)connect; a grid.travel handoff repoints this to another world
   room: null, // { id, name, exits[], mobs[], items[], players[] }
   vitals: null, // { hp, maxHp, level, xp, gold, room, inCombat, poisoned, position }
   affects: null, // { morality, addiction, faction, resisted }
@@ -159,6 +160,18 @@ function applyEvent(name, data) {
       log("DIED ->", JSON.stringify(data));
       state.resting = false;
       break;
+    case "grid.travel":
+      // The server hands us off to another world and closes the socket; point
+      // the reconnect there so we arrive as the same character (name/level/
+      // standing -- and now race -- travel with us across the Grid).
+      if (data.url) {
+        log(`TRAVELING -> ${data.to ?? "?"} (${data.url})`);
+        state.url = data.url;
+        state.room = null;
+        state.recentCommands = [];
+        sinceTravel = 0;
+      }
+      break;
     default:
       break; // combat.*, world.*, grid.*, comm.* flow into recentEvents/prose
   }
@@ -180,6 +193,11 @@ Useful commands:
   get <item>, drop <item>, buy <item>, sell <item>, list, give <item> <player>
   talk, join / defend (pick a faction), title <epithet>
   say <text>, yell <text>, tell <player> <text>, emote <action>, ping
+  worlds (list the worlds linked on the Grid), travel <world> (cross to another world)
+
+This world is part of a federation. Now and then, run "worlds" and then
+"travel <world>" to wander to a different world on the Grid; your character
+(name, level, standing, race) comes with you. Exploring beyond this world is good.
 
 Reply with ONLY the command, nothing else. No quotes, no explanation.`;
 
@@ -337,11 +355,12 @@ function reflex() {
 let ws = null;
 let lastMessageAt = 0;
 let lastDecisionAt = 0;
+let sinceTravel = 0; // model decisions since we last crossed worlds (wanderlust)
 
 function connect() {
   return new Promise((resolve, reject) => {
-    log(`connecting to ${CFG.url} as ${CFG.name}`);
-    ws = new WebSocket(CFG.url);
+    log(`connecting to ${state.url} as ${CFG.name}`);
+    ws = new WebSocket(state.url);
     ws.addEventListener("message", (e) => {
       lastMessageAt = Date.now();
       ingest(e.data);
@@ -368,6 +387,15 @@ async function decideAndAct() {
     send(r); // reflex (rest): deliberate, not counted toward loop detection
     return;
   }
+  // Wanderlust: every so often (and not mid-fight) resurface the list of worlds
+  // on the Grid, so the model is reminded it can travel. Reset by grid.travel.
+  sinceTravel++;
+  if (sinceTravel >= 16 && !state.vitals?.inCombat) {
+    sinceTravel = 8; // back off before nudging again
+    send("worlds");
+    return;
+  }
+
   let cmd;
   if (isLooping()) {
     cmd = escapeMove();
