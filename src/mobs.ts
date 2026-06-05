@@ -244,3 +244,67 @@ export const MOB_TEMPLATES: MobTemplate[] = [
 export const MOB_BY_ID: Record<string, MobTemplate> = Object.fromEntries(
   MOB_TEMPLATES.map((m) => [m.template, m]),
 );
+
+// Dustfall's bestiary (see worlds/dustfall.jsonc, rooms.ts ROOMS_DUSTFALL). Like
+// the map, it reuses the template ids and rooms so all id-based logic keeps
+// working (the warden still drops the keycard, the Custodian still drops the
+// quest shard, the Ashmonger is still `ashmonger`). Only the REGIONAL life is
+// reskinned: the wastes wildlife and locals belong to the open salt pan, while
+// the Cinder Front (trooper/zealot/enforcer/ashmonger) is the same federation-
+// wide enemy in both worlds. Overrides keep this DRY: anything not named here is
+// identical to the Hollow Grid version. template + room are intentionally not
+// overridable, so the ids and placement can never drift.
+const DUSTFALL_OVERRIDES: Record<string, Partial<Omit<MobTemplate, "template" | "room">>> = {
+  rat: {
+    name: "a salt-tick",
+    desc: "A swollen tick the size of a fist, mouthparts crusted white with the salt it drinks from anything still warm.",
+  },
+  scav: {
+    name: "a salt-crazed scavenger",
+    desc: "A sun-blistered wanderer with cracked lips and a wild stare, already pricing the boots off your feet.",
+  },
+  drone: {
+    name: "a derelict survey drone",
+    desc: "A sand-pitted survey quadcopter still flying a long-dead mapping route, rotors screaming, gun pod twitching toward anything that moves.",
+    maxHp: 22,
+  },
+  scorpion: {
+    name: "a salt-scorpion",
+    desc: "A pallid, dog-sized scorpion bleached bone-white by the pan, tail hooked high and beading venom.",
+    maxDmg: 4,
+  },
+  warden: {
+    name: "the stockade boss",
+    desc: "A slab of a man in a welded mask, the stockade keys swinging at his belt, bored and cruel in equal measure.",
+  },
+  leech: {
+    name: "a sand-leech",
+    desc: "A pale, boneless thing fused to a half-buried rack, bloated on the last trickle of current. It turns toward your heat.",
+  },
+  maint: {
+    name: "a seized maintenance unit",
+    desc: "A three-legged service drone half-fused with rust and grit, grinding through its final work-order on a loop. It resents the interruption.",
+  },
+  wraith: {
+    name: "a grid-wraith",
+    desc: "A smear of cold light walking the dead trunk lines, almost person-shaped, mouthing signals to a network that stopped listening a long time ago.",
+  },
+  custodian: {
+    desc: "A knot of salvaged servo-arms and server blades hunched over the last living core, guarding the buried relay with the patience of a machine that has forgotten why.",
+  },
+  raider: {
+    name: "a bone-road raider",
+    desc: "A scarred marauder in plate cut from road-signs and bone, blade already drawn, doing the math on whether you're worth the trouble.",
+  },
+};
+
+export const MOBS_DUSTFALL: MobTemplate[] = MOB_TEMPLATES.map((m) => ({
+  ...m,
+  ...DUSTFALL_OVERRIDES[m.template],
+}));
+
+// Pick a world's bestiary by key (set per deployment via WORLD_MAP, same as the
+// map). Unknown or unset falls back to the Hollow Grid.
+export function mobsFor(key?: string): MobTemplate[] {
+  return key?.trim().toLowerCase() === "dustfall" ? MOBS_DUSTFALL : MOB_TEMPLATES;
+}
