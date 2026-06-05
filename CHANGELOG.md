@@ -6,6 +6,24 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.9.0
+
+A signature active ability for each race, so a race is something you DO, not just
+something you are.
+
+### Code
+- Seven cooldown-gated abilities (use the named verb, or the generic `ability` /
+  `trait`): Human **Requisition** (the registry pays its own: gold), Elf
+  **Vanish** (break off any fight and disappear), Revenant **Commune** (read the
+  dead Grid's cross-world memory and draw a little of its life), Ghoul
+  **Regenerate** (a heavy self-heal), Chromed **Overclock** (vent past every
+  safety for one devastating strike), Dustkin **Forage** (scavenge the open
+  wastes; outdoors only), Vatborn **Fabricate** (print a field stim). Defined in
+  `src/races.ts`; resolved in `useTrait` (`src/world.ts`).
+- Conditions that block firing (Overclock with no target, Forage indoors) do not
+  spend the cooldown. The ability is named in `whoami` and `help`. Smoke at 86
+  checks (ability fires + respects cooldown).
+
 ## v0.8.0
 
 Races and character creation, with the heart of the game made playable: you no

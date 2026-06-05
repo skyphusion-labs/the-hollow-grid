@@ -74,6 +74,13 @@ this people: `accepted` | `tolerated` | `hunted`), which the faction-reactive
 rooms read. The mechanical leans (hp/damage/armor/regen, poison immunity) are
 deliberately light.
 
+Each race also has an active **signature ability** (`Ability` in `src/races.ts`):
+a cooldown-gated command, used by its named verb or the generic `ability`/`trait`,
+resolved in `useTrait` (`src/world.ts`). They lean into identity rather than
+balance (Elf Vanish escapes a fight, Chromed Overclock bursts a target, Dustkin
+Forage scavenges the open wastes, Revenant Commune reads the dead Grid, and so
+on). The passive leans (hp/damage/armor/regen, poison immunity) still apply.
+
 In this codebase both worlds share one roster (`RACES`), so the Front's stances
 stay coherent federation-wide (the Front is one movement; elves are hunted
 everywhere). The model is built for extension, though:

@@ -100,6 +100,8 @@ Commands are single line verbs (many with short aliases). Grouped:
   `gridcast` (`gc`).
 - **Info:** `who`, `status` (`st`), `affects` (`affs`), `hp`, `time`, `weather`,
   `war`, `tide`, `identity`/`whoami`, `help` (`?`).
+- **Racial ability:** `ability`/`trait` (or the race's named verb, e.g. `vanish`,
+  `overclock`, `forage`) activates your race's signature ability.
 - **The faction arc:** `join`, `defend`/`defy` (side with the free folk),
   `free`/`rescue` (free caged refugees), `talk`, `resist`.
 - **The world / drugs:** `drink`, `eat`, `carouse`, `ping`, `title`.

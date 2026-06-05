@@ -13,6 +13,15 @@
 
 export type FrontStance = "accepted" | "tolerated" | "hunted";
 
+// An active racial ability: a signature command on a cooldown. Use it with the
+// named verb or the generic `ability` / `trait`.
+export interface Ability {
+  verb: string; // the named command, e.g. "vanish"
+  name: string; // display name
+  desc: string; // one line for help / whoami
+  cooldownMs: number;
+}
+
 export interface Race {
   id: string;
   name: string;
@@ -28,6 +37,8 @@ export interface Race {
   poisonImmune?: boolean;
   /** the trait line shown when you choose the race */
   trait: string;
+  /** the active signature ability */
+  ability: Ability;
 }
 
 export const RACES: Record<string, Race> = {
@@ -41,6 +52,7 @@ export const RACES: Record<string, Race> = {
     armor: 0,
     regen: 0,
     trait: "Unmarked. The registry, the vendors, and the checkpoints treat you as a person by default.",
+    ability: { verb: "requisition", name: "Requisition", desc: "call in a registry payout; the system pays its own", cooldownMs: 180000 },
   },
   elf: {
     id: "elf",
@@ -52,6 +64,7 @@ export const RACES: Record<string, Race> = {
     armor: 0,
     regen: 1,
     trait: "Quick and resilient; you recover a little faster. The Front's cages, rallies, and checkpoints are about you.",
+    ability: { verb: "vanish", name: "Vanish", desc: "slip the net: break off any fight and disappear", cooldownMs: 45000 },
   },
   revenant: {
     id: "revenant",
@@ -64,6 +77,7 @@ export const RACES: Record<string, Race> = {
     regen: 0,
     poisonImmune: true,
     trait: "No flesh to rot: poison and the pox cannot touch you. The Front calls you an abomination, not a citizen.",
+    ability: { verb: "commune", name: "Commune", desc: "reach into the dead Grid for its memory and a little of its cold life", cooldownMs: 120000 },
   },
   ghoul: {
     id: "ghoul",
@@ -75,6 +89,7 @@ export const RACES: Record<string, Race> = {
     armor: 0,
     regen: 0,
     trait: "You carry more hit points than flesh should. The Front works you, and never lets you forget you are not 'real'.",
+    ability: { verb: "regenerate", name: "Regenerate", desc: "rad-scoured flesh knits itself back: a heavy self-heal", cooldownMs: 120000 },
   },
   chromed: {
     id: "chromed",
@@ -86,6 +101,7 @@ export const RACES: Record<string, Race> = {
     armor: 1,
     regen: 0,
     trait: "Chrome under the skin: a little more bite, a little more plate. The Front's muscle is chromed too, until you go too far.",
+    ability: { verb: "overclock", name: "Overclock", desc: "vent your augments past every safety into one devastating strike", cooldownMs: 30000 },
   },
   dustkin: {
     id: "dustkin",
@@ -97,6 +113,7 @@ export const RACES: Record<string, Race> = {
     armor: 0,
     regen: 2,
     trait: "At home where others die: you heal faster out in the world. The Front hunts you as a vagrant.",
+    ability: { verb: "forage", name: "Forage", desc: "scavenge the open wastes for supplies (outdoors only)", cooldownMs: 90000 },
   },
   vatborn: {
     id: "vatborn",
@@ -108,6 +125,7 @@ export const RACES: Record<string, Race> = {
     armor: 0,
     regen: 0,
     trait: "Printed sturdy: a little extra frame. No lineage the Front recognizes, so they call you property.",
+    ability: { verb: "fabricate", name: "Fabricate", desc: "print a field stim from raw salvage", cooldownMs: 120000 },
   },
 };
 
