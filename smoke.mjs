@@ -24,6 +24,37 @@ function ingest(text) {
 const last = (name) => [...events].reverse().find((e) => e.name === name);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// A self-contained client (its own event buffer), for multi-player checks.
+function mkClient() {
+  const evs = [];
+  let text = "";
+  const sock = new WebSocket(URL);
+  sock.addEventListener("message", (e) => {
+    text += String(e.data);
+    for (const line of String(e.data).split(/\r?\n/)) {
+      const m = line.match(/^@event (\S+) (.*)$/);
+      if (m) {
+        try {
+          evs.push({ name: m[1], data: JSON.parse(m[2]) });
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  });
+  return {
+    sock,
+    last: (n) => [...evs].reverse().find((e) => e.name === n),
+    raw: () => text,
+    open: () =>
+      new Promise((res, rej) => {
+        sock.addEventListener("open", res);
+        sock.addEventListener("error", rej);
+      }),
+    send: (c) => sock.send(c),
+  };
+}
+
 let failures = 0;
 function check(cond, msg) {
   console.log(`${cond ? "ok  " : "FAIL"}  ${msg}`);
@@ -104,5 +135,39 @@ check(finalVit?.data.inCombat === false, "vitals show inCombat=false after the f
 check(finalVit?.data.hp > 0, `player survived the glow-rat (hp=${finalVit?.data.hp})`);
 
 ws.close();
+
+// --- Phase 2: the world remembers. Side with the Cinder Front, and it sticks. ---
+const A = mkClient();
+await A.open();
+await sleep(300);
+const aName = "front_" + Math.random().toString(36).slice(2, 7);
+A.send(aName);
+await sleep(500);
+A.send("north"); // nexus -> Scrap Market, where the recruiter rallies
+await sleep(500);
+A.send("join"); // side with the Cinder Front
+await sleep(700);
+check(A.last("char.affects")?.data.faction === "front", "joining brands the player Cinder Front (char.affects)");
+
+// The honest market remembers, and shuts them out.
+A.send("sell scrap");
+await sleep(500);
+check(/don't trade with your kind/i.test(A.raw()), "the market refuses to trade with a Cinder Front member");
+
+// And anyone else who walks in sees the brand on them.
+const B = mkClient();
+await B.open();
+await sleep(300);
+B.send("witness_" + Math.random().toString(36).slice(2, 7));
+await sleep(500);
+B.send("north"); // into the market, where A is standing
+await sleep(700);
+const seen = B.last("room.info")?.data.players?.find((p) => p.name === aName);
+check(!!seen, "a second player sees the collaborator in the room");
+check(seen?.standing === "Cinder Front", `the world brands them to others (got ${JSON.stringify(seen?.standing)})`);
+
+A.sock.close();
+B.sock.close();
+
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nSMOKE TEST PASSED");
 process.exit(failures ? 1 : 0);

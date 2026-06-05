@@ -603,7 +603,8 @@ export class World extends DurableObject<Env> {
     s.room = destId;
     ws.serializeAttachment(s);
     this.persistPlayer(s);
-    this.broadcast(destId, `${s.name} arrives.`, ws);
+    const mark = this.brand(s);
+    this.broadcast(destId, mark ? `${s.name}, ${mark}, arrives.` : `${s.name} arrives.`, ws);
     this.sendRoom(ws, s);
     this.prompt(ws);
   }
@@ -878,6 +879,17 @@ export class World extends DurableObject<Env> {
       this.prompt(ws);
       return;
     }
+    if (s.faction === "front") {
+      // The market is the free folk's ground; they remember who marched against
+      // them. The Cinder Front doesn't get to sell here. Some doors stay shut.
+      this.line(
+        ws,
+        'The vendor drone\'s optic flares red. "Cinder Front. We remember Scrap Market. We don\'t' +
+          ' trade with your kind." It turns its back on you, and the stalls nearby go quiet.',
+      );
+      this.prompt(ws);
+      return;
+    }
     if (!arg) {
       this.line(ws, "Sell what?");
       this.prompt(ws);
@@ -889,15 +901,18 @@ export class World extends DurableObject<Env> {
       this.prompt(ws);
       return;
     }
-    const value = ITEM_TEMPLATES[item].value ?? 0;
-    if (value <= 0) {
+    const base = ITEM_TEMPLATES[item].value ?? 0;
+    if (base <= 0) {
       this.line(ws, `The vendor drone won't touch ${ITEM_TEMPLATES[item].name}.`);
       this.prompt(ws);
       return;
     }
+    // The free folk remember their friends, too: allies get a fair-and-then-some price.
+    const value = s.faction === "ally" ? Math.round(base * 1.2) : base;
     this.invRemove(s.name, item, 1);
     s.gold += value;
-    this.line(ws, `You sell ${ITEM_TEMPLATES[item].name} for ${value} gold. (gold: ${s.gold})`);
+    const bonus = value > base ? " (the elves see you right)" : "";
+    this.line(ws, `You sell ${ITEM_TEMPLATES[item].name} for ${value} gold.${bonus} (gold: ${s.gold})`);
     ws.serializeAttachment(s);
     this.persistPlayer(s);
     this.prompt(ws);
@@ -1082,8 +1097,8 @@ export class World extends DurableObject<Env> {
     const ground = this.groundItems(s.room).map((id) => ITEM_TEMPLATES[id].name);
     if (ground.length) lines.push(`On the ground: ${ground.join(", ")}.`);
 
-    const others = this.playersInRoom(s.room).filter((n) => n !== s.name);
-    if (others.length) lines.push(`Also here: ${others.join(", ")}.`);
+    const others = this.sessions().filter((o) => o.room === s.room && o.name !== s.name);
+    if (others.length) lines.push(`Also here: ${others.map((o) => this.tagged(o)).join(", ")}.`);
 
     return NL + lines.join(NL) + NL;
   }
@@ -1111,7 +1126,9 @@ export class World extends DurableObject<Env> {
       exits: Object.keys(room.exits),
       mobs: this.livingMobsInRoom(s.room).map((m) => ({ id: m.id, name: MOB_BY_ID[m.id].name })),
       items: this.groundItems(s.room).map((id) => ({ id, name: ITEM_TEMPLATES[id].name })),
-      players: this.playersInRoom(s.room).filter((n) => n !== s.name),
+      players: this.sessions()
+        .filter((o) => o.room === s.room && o.name !== s.name)
+        .map((o) => ({ name: o.name, standing: this.brand(o) })),
     });
     this.emitVitals(ws, s);
     this.emitAffects(ws, s);
@@ -1143,6 +1160,24 @@ export class World extends DurableObject<Env> {
     });
   }
 
+  // The public BRAND the world remembers about a player. Faction is permanent
+  // and always shown -- siding with the Cinder Front marks you visibly and does
+  // not wash off; standing with the free folk is likewise known. Otherwise only
+  // the notable moral extremes earn a public tag (newcomers stay untagged).
+  private brand(s: Session): string {
+    if (s.faction === "front") return "Cinder Front";
+    if (s.faction === "ally") return "Free Folk ally";
+    if (s.morality >= 50) return "a beacon of the wastes";
+    if (s.morality <= -50) return "reviled";
+    return "";
+  }
+
+  // A player's name tagged with what the world remembers about them.
+  private tagged(s: Session): string {
+    const label = this.brand(s);
+    return label ? `${s.name} (${label})` : s.name;
+  }
+
   private inventoryView(s: Session): string {
     const rows = this.ctx.storage.sql
       .exec<{ item: string; qty: number }>("SELECT item, qty FROM inventory WHERE player = ?", s.name)
@@ -1153,12 +1188,12 @@ export class World extends DurableObject<Env> {
   }
 
   private who(): string {
-    const names = this.onlineNames();
+    const all = this.sessions();
     return (
       NL +
-      `Survivors online (${names.length}):` +
+      `Survivors online (${all.length}):` +
       NL +
-      (names.length ? names.map((n) => `  - ${n}`).join(NL) : "  (nobody but you)") +
+      (all.length ? all.map((o) => `  - ${this.tagged(o)}`).join(NL) : "  (nobody but you)") +
       NL
     );
   }
