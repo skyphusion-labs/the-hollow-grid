@@ -1,11 +1,28 @@
-# The Hollow Grid Federation — design
+# The Hollow Grid Federation: design and status
 
-Status: design draft. No code yet; this is the thing we build against.
+Status: **LIVE.** Federation phases 1-5 are built, merged, and deployed. Two
+worlds run on one shared Grid in production (hollow.skyphusion.org and
+dustfall.skyphusion.org), with cross-world identity, a global faction tide, a
+shared ledger and chat, and `travel`. This document is the design and the trust
+model; for the contract see `docs/protocol.md` (section 3), for running and
+deploying it see `docs/deploy.md`, and for building a second world see
+`docs/worlds.md`. The remaining open work is noted in section 10.
+
+**Design vs as-built.** This document is the original design and the north-star
+trust model. The shipped contract is intentionally simpler and is specified
+as-built in `docs/protocol.md` section 3 (`GridHubApi` in `shared/grid.ts`):
+shared memory ledger, global tide, cross-world chat, a canonical `CharSheet`
+(load/commit), and a world registry with `travel`. The hub is a `GridHub`
+Durable Object with SQLite, not D1. Crucially, the **trust hardening in sections
+2 and 4 (per-world keys, leased progression deltas, server-side validation) is
+NOT yet implemented**: the current federation trusts every world. That is fine
+while one operator runs all the worlds, and it is the single biggest open item
+before opening federation to third parties (see section 10).
 
 ## 0. The pitch
 
 Multiple independently-run MUD worlds ("nodes") link to one shared backend
-("the Grid") to share identity, memory, and global state — while each world stays
+("the Grid") to share identity, memory, and global state -- while each world stays
 its own autonomous game.
 
 This is diegetic, not bolted on. The Hollow Grid's whole premise is a dead
@@ -39,27 +56,27 @@ not building a single point of failure; we're building a network worlds can
 - **The Grid** = a dedicated backend Worker that owns the shared **D1** (durable)
   and a **Grid Hub** DO (real-time). Worlds reach it via a **service binding**
   (Worker→Worker RPC) authenticated with a per-world key. Worlds never talk to
-  each other directly — everything goes through the Grid.
+  each other directly -- everything goes through the Grid.
 
 Why this split: D1 is the only Cloudflare primitive multiple Worker scripts can
 share as a queryable SQL store (the "common DB"). A single Hub DO gives a strongly
 serialized coordinator for live fan-out (chat, tide, presence). Service bindings
 are how separate deployments call one backend.
 
-## 2. The trust model (the crux — design this first)
+## 2. The trust model (the crux -- design this first)
 
 If different people run worlds, the backend cannot trust what a world reports.
 This is the whole ballgame.
 
 - **The Grid owns the canonical character.** Level, XP, gold, faction, morality,
-  title — source of truth is D1, never the world.
+  title -- source of truth is D1, never the world.
 - A world **leases** a character: on connect it `loadCharacter`s a snapshot +
   a lease token, plays locally, and **proposes** progression changes as *deltas*,
   which the Grid **validates against bounds** before committing (e.g. no more than
   N xp / M gold per commit window; faction transitions follow legal rules).
 - Worlds are **semi-trusted**: honest worlds work; cheaty worlds get rate-limited,
   their bogus deltas rejected, and their key revoked. We are NOT solving Byzantine
-  fault tolerance — the bar is "an honest world Just Works, a dishonest one gets
+  fault tolerance -- the bar is "an honest world Just Works, a dishonest one gets
   caught and cut off."
 - **Local state is free.** A world's rooms, mobs, and in-progress quests are its
   own business; the Grid neither knows nor cares. Only *shared* fields round-trip.
@@ -110,7 +127,7 @@ The Hub fans `gridcast` out by calling each live world's inbound binding (worlds
 expose a small `/grid-event` endpoint the Hub pushes to). Tide and presence are
 read on demand and cached briefly in each world.
 
-## 6. Player travel (the dream — a later phase)
+## 6. Player travel (the dream -- a later phase)
 
 A world offers a gateway room. `travel <world>`:
 1. World A checkpoints the character to the Grid (`commitDelta`).
@@ -118,7 +135,7 @@ A world offers a gateway room. `travel <world>`:
 3. World B `loadCharacter`s the same character into its start room.
 
 **v1 simplification:** travel = "log out of A, log into B with the same account,
-your progression follows." No live session migration — just shared persistent
+your progression follows." No live session migration -- just shared persistent
 identity. Live hand-off of an active socket is a v2 luxury.
 
 ## 7. The cheapest magic: the shared Grid ledger (build this first)
@@ -128,7 +145,7 @@ tagged with `world_id`. `ping` can query the ledger scoped to **all worlds**, so
 you hear echoes from other nodes. "The network outlived us" becomes literal: the
 Grid remembers across the whole federation.
 
-This needs **zero trust machinery** — traces are lore/flavor, not progression —
+This needs **zero trust machinery** -- traces are lore/flavor, not progression --
 so it's the highest-magic, lowest-risk first step. It also makes the federation
 *visible and felt* before any of the hard identity work.
 
@@ -143,13 +160,13 @@ so it's the highest-magic, lowest-risk first step. It also makes the federation
 
 ## 9. Phased build
 
-1. **Shared Grid ledger** — Hub/D1 + `recordGridTrace`/`queryGrid`, `ping --all`.
+1. **Shared Grid ledger** -- Hub/D1 + `recordGridTrace`/`queryGrid`, `ping --all`.
    Cross-world memory. No trust needed. (The cheap magic.) DONE.
-2. **Cross-world comms + global tide** — `gridcast` + `factionTally`. Hub fan-out. DONE.
-3. **Shared identity** — accounts + canonical character sheet in D1; worlds
+2. **Cross-world comms + global tide** -- `gridcast` + `factionTally`. Hub fan-out. DONE.
+3. **Shared identity** -- accounts + canonical character sheet in D1; worlds
    lease/commit progression. (The trust boundary; the big one.) DONE.
-4. **Player travel** — gateways + account-follows-you. DONE.
-5. **A second, real world on the Grid** — the federation, proven across an actual
+4. **Player travel** -- gateways + account-follows-you. DONE.
+5. **A second, real world on the Grid** -- the federation, proven across an actual
    deployment boundary rather than seeded stubs. The world's name is now per
    deployment (the `WORLD_NAME` var; see `src/world.ts` `worldName`), so the same
    code runs as two distinct worlds. `worlds/dustfall.jsonc` is that second world:
@@ -166,15 +183,15 @@ own `wrangler dev` process, while the hub runs once and both worlds bind it
 through wrangler's local dev registry (`env.GRID ... [connected]`). That is the
 same shape as two separate production deployments binding one backend Worker.
 
-- `npm run dev` — the whole federation: primary world on `:8787`, Dustfall on
+- `npm run dev` -- the whole federation: primary world on `:8787`, Dustfall on
   `:8788`, one shared hub. (See `scripts/dev.sh`.) Dustfall sets a distinct
   `inspector_port` so its debugger doesn't clash with the primary's default 9229.
-- `npm run dev:solo` — just the primary world + hub (single-world hacking).
-- `npm run smoke` — phase 12 brings up a client against the real `:8788` world and
+- `npm run dev:solo` -- just the primary world + hub (single-world hacking).
+- `npm run smoke` -- phase 12 brings up a client against the real `:8788` world and
   asserts cross-deployment identity, a shared tide, live registration, and travel
   handoff. If the second world isn't running it SKIPs those (federation never
   blocks single-world play) rather than failing.
-- `npm run deploy` — ships the hub, then the primary world, then Dustfall as three
+- `npm run deploy` -- ships the hub, then the primary world, then Dustfall as three
   separate Workers. For a real deploy, set each world's `WORLD_URL` to its
   deployed hostname (the configs default to localhost for dev).
 
