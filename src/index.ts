@@ -1,4 +1,5 @@
 import type { Env } from "./types";
+import { playPage } from "./webclient";
 
 // The Durable Object class must be exported from the Worker entry module.
 // (The Grid Hub is no longer here -- it lives in its own backend Worker,
@@ -15,10 +16,10 @@ export default {
       return stub.fetch(request);
     }
 
-    return new Response(
-      "THE HOLLOW GRID: a MUD on Cloudflare Workers.\n" +
-        "Connect a WebSocket to /ws (e.g. `wscat -c ws://localhost:8787/ws`).\n",
-      { headers: { "content-type": "text/plain" } },
-    );
+    // Anything else: serve the browser play client (it connects back to /ws on
+    // this same host, so each world serves its own playable terminal).
+    return new Response(playPage(env.WORLD_NAME ?? "The Hollow Grid"), {
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
   },
 } satisfies ExportedHandler<Env>;
