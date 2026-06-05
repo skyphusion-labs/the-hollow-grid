@@ -6,6 +6,10 @@
   "observability": {
     "enabled": true
   },
+  "vars": {
+    // Player names allowed to broadcast with `wall` (comma-separated).
+    "ADMINS": "skyphusion"
+  },
   "durable_objects": {
     "bindings": [
       { "name": "WORLD", "class_name": "World" }

@@ -188,5 +188,37 @@ check(!!oath, "the Grid still remembers the Cinder Front oath after the collabor
 
 B.sock.close();
 
+// --- Phase 3: server-wide announcements (wall) ---
+const ADMIN = mkClient();
+await ADMIN.open();
+await sleep(300);
+ADMIN.send("skyphusion"); // a keeper, per the ADMINS wrangler var
+await sleep(500);
+const OBS = mkClient();
+await OBS.open();
+await sleep(300);
+OBS.send("watcher_" + Math.random().toString(36).slice(2, 7));
+await sleep(500);
+
+// A non-admin cannot broadcast.
+OBS.send("wall I should not be able to do this");
+await sleep(400);
+check(/keeper of the Grid/i.test(OBS.raw()), "a non-admin is refused the wall command");
+
+// A keeper's announcement reaches every player, wherever they are.
+const beacon = "The Grid stirs in the deep dark.";
+ADMIN.send("wall " + beacon);
+await sleep(500);
+check(OBS.raw().includes(beacon), "an admin wall reaches another player anywhere in the world");
+check(/GRID BROADCAST/i.test(OBS.raw()), "the announcement is clearly marked as a server broadcast");
+const ann = OBS.last("server.announce");
+check(
+  ann?.data.text === beacon && ann?.data.from === "skyphusion",
+  "the announcement is on the structured channel (server.announce)",
+);
+
+ADMIN.sock.close();
+OBS.sock.close();
+
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nSMOKE TEST PASSED");
 process.exit(failures ? 1 : 0);

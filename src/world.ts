@@ -576,6 +576,10 @@ export class World extends DurableObject<Env> {
       case "ping":
         this.gridPing(ws, s);
         break;
+      case "wall":
+      case "announce":
+        this.wall(ws, s, arg);
+        break;
       case "help":
       case "?":
         ws.send(this.help());
@@ -1247,6 +1251,39 @@ export class World extends DurableObject<Env> {
     this.prompt(ws);
   }
 
+  // --- Server announcements (wall) ------------------------------------------
+  // Keepers are configured by the ADMINS wrangler var (comma-separated names).
+  private isAdmin(name: string): boolean {
+    const admins = (this.env.ADMINS ?? "")
+      .split(",")
+      .map((a) => a.trim().toLowerCase())
+      .filter(Boolean);
+    return admins.includes(name.toLowerCase());
+  }
+
+  // `wall <message>`: a server-wide announcement that reaches every player,
+  // wherever they are -- for keepers (the ADMINS var) only.
+  private wall(ws: WebSocket, s: Session, arg: string): void {
+    if (!this.isAdmin(s.name)) {
+      this.line(ws, "Only a keeper of the Grid can broadcast across the wastes.");
+      this.prompt(ws);
+      return;
+    }
+    const msg = arg.trim();
+    if (!msg) {
+      this.line(ws, "Announce what?  (wall <message>)");
+      this.prompt(ws);
+      return;
+    }
+    const banner = `*** GRID BROADCAST ***  ${msg}`;
+    for (const sock of this.ctx.getWebSockets()) {
+      const os = sock.deserializeAttachment() as Session | null;
+      if (!os?.name) continue;
+      sock.send(NL + banner + NL + "> ");
+      this.event(sock, "server.announce", { from: s.name, text: msg });
+    }
+  }
+
   private inventoryView(s: Session): string {
     const rows = this.ctx.storage.sql
       .exec<{ item: string; qty: number }>("SELECT item, qty FROM inventory WHERE player = ?", s.name)
@@ -1292,6 +1329,7 @@ export class World extends DurableObject<Env> {
         "  say <message> (')     speak to everyone in the room",
         "  who                   list survivors online",
         "  ping                  query the dead Grid here for what it remembers",
+        "  wall <message>        broadcast an announcement to everyone (keepers only)",
         "  help (?)              this message",
         "  quit                  disconnect",
       ].join(NL) + NL

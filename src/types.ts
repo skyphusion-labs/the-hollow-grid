@@ -2,6 +2,8 @@ import type { World } from "./world";
 
 export interface Env {
   WORLD: DurableObjectNamespace<World>;
+  /** Comma-separated player names allowed to `wall` (server-wide announcements). */
+  ADMINS?: string;
 }
 
 /**
