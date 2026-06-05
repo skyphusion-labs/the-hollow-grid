@@ -12,6 +12,7 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "smoke": "node smoke.mjs",
+    "bot": "node bot.mjs",
     "cf-typegen": "wrangler types"
   },
   "devDependencies": {
