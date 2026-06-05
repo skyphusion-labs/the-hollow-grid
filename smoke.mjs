@@ -30,8 +30,12 @@ function check(cond, msg) {
   if (!cond) failures++;
 }
 
+let raw = ""; // accumulated prose, for the few checks that are about human text
 const ws = new WebSocket(URL);
-ws.addEventListener("message", (e) => ingest(e.data));
+ws.addEventListener("message", (e) => {
+  raw += String(e.data);
+  ingest(e.data);
+});
 await new Promise((res, rej) => {
   ws.addEventListener("open", res);
   ws.addEventListener("error", () => rej(new Error(`could not connect to ${URL} (is \`npm run dev\` running?)`)));
@@ -61,6 +65,10 @@ check(
   aff?.data.addiction === 0 && aff?.data.faction === "none" && aff?.data.resisted === false,
   `fresh character starts clean (addiction=${aff?.data.addiction}, faction=${JSON.stringify(aff?.data.faction)})`,
 );
+
+// Self-documenting onboarding: a new player must be pointed at help, not left
+// to guess (the anti-hidden-gate lesson).
+check(/\bhelp\b/i.test(raw), "new-player welcome points to the help command");
 
 // Move and confirm the structured room graph tracks us.
 events.length = 0;

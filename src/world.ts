@@ -411,7 +411,21 @@ export class World extends DurableObject<Env> {
     ws.serializeAttachment(session);
     this.persistPlayer(session);
 
-    ws.send(`Welcome to the wastes, ${name}.` + NL);
+    // Self-documenting onboarding: never make a new player guess. State the
+    // goal and how to learn every command, and promise that nothing is gated
+    // behind secret words (the anti-"hidden search gate" lesson, in-voice).
+    if (!row) {
+      ws.send(
+        [
+          `Welcome to the wastes, ${name}. You wake in the ruins of the Grid with nothing but your wits.`,
+          "Survive, explore, and decide what the wastes make of you. Nothing here is hidden",
+          "behind secret commands: type 'help' (or '?') for everything you can do, and 'look'",
+          "to take in your surroundings. The exits of each room are always listed.",
+        ].join(NL) + NL,
+      );
+    } else {
+      ws.send(`Welcome back to the wastes, ${name}. (Type 'help' if you need a refresher.)` + NL);
+    }
     this.broadcast(room, `${name} steps out of the haze.`, ws);
     this.sendRoom(ws, session);
     if (session.poisoned) this.line(ws, "The old venom still burns in you. (poisoned)");
