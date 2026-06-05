@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "mud-on-cf-workers",
+  "name": "the-hollow-grid",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-04",
   "observability": {

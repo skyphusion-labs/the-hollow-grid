@@ -1,4 +1,4 @@
-# The Chrome Wastes: a MUD on Cloudflare Workers
+# The Hollow Grid: a MUD on Cloudflare Workers
 
 A small, multiplayer MUD that runs entirely on [Cloudflare Workers](https://developers.cloudflare.com/workers/)
 and [Durable Objects](https://developers.cloudflare.com/durable-objects/): no

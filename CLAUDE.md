@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-A text MUD ("The Chrome Wastes") that runs entirely on Cloudflare Workers + Durable Objects. Players connect over WebSocket (`wss://.../ws`) and play with plain-text commands, so a raw client like `wscat` works as the game client.
+A text MUD ("The Hollow Grid") that runs entirely on Cloudflare Workers + Durable Objects. Players connect over WebSocket (`wss://.../ws`) and play with plain-text commands, so a raw client like `wscat` works as the game client.
 
 ## Commands
 
@@ -17,7 +17,9 @@ Connect locally with `wscat -c ws://localhost:8787/ws`.
 
 ### Verifying changes (this is the project's test method)
 
-There is no unit-test suite. Features are verified end-to-end against a live `wrangler dev` with a scripted WebSocket client. Node 24+ has a global `WebSocket`, so a smoke test is a plain `.mjs` script: open one or more sockets, send command lines with small delays (combat and poison resolve on a ~3s alarm tick, so wait several seconds across rounds), then assert on the accumulated server text. Always run `npm run typecheck` first, then the live smoke test, before considering a change done. Wipe `.wrangler/` to reset local game state (SQLite) when the schema changes or a clean run is needed.
+There is no unit-test suite. Features are verified end-to-end against a live `wrangler dev` with a scripted WebSocket client. Node 24+ has a global `WebSocket`, so a smoke test is a plain `.mjs` script: open one or more sockets, send command lines with small delays (combat and poison resolve on a ~3s alarm tick, so wait several seconds across rounds), then assert on server output. Always run `npm run typecheck` first, then the live smoke test (`npm run smoke`, which runs `smoke.mjs`), before considering a change done. Wipe `.wrangler/` to reset local game state (SQLite) when the schema changes or a clean run is needed; and have tests log in with a unique random name so they never inherit a persisted character's position.
+
+**Prefer asserting on the structured `@event` channel, not prose.** The server emits machine-readable state lines (`@event room.info {...}`, `@event char.vitals {...}`) alongside the human text (see "the structured state channel" below). A smoke test should parse those and assert on exact fields (room id, exits, hp/maxHp, inCombat) rather than grepping English, which is brittle. `smoke.mjs` is the worked example.
 
 ## Architecture
 
@@ -28,6 +30,8 @@ There is no unit-test suite. Features are verified end-to-end against a live `wr
 **A single DO alarm drives all time-based mechanics.** `alarm()` each tick: (1) respawns due mobs, (2) drains HP from poisoned/afflicted players, (3) resolves one combat round per active fight. After running, `scheduleNextTick()` reschedules the alarm only if something is still pending (an active `target`, a `poisoned` player, or a dead mob awaiting respawn); otherwise it calls `deleteAlarm()` so the DO can hibernate. Any code path that starts combat or applies an affliction must ensure the alarm is running (for example `attack()` and `carouse()` await `scheduleNextTick()`). When adding a new timed effect, extend both the `alarm()` body and the "busy?" check in `scheduleNextTick()`, or it will silently stop ticking.
 
 **Persistence is SQLite, set up in the constructor.** `blockConcurrencyWhile()` creates tables and seeds mob instances (one row per template). Durable state: `players`, `mobs`, `inventory` (per-player), `ground` (per-room item piles). Player vitals/gold/morality are written through `persistPlayer()` and mirrored on the live socket attachment. Schema changes use a guarded `ALTER TABLE ADD COLUMN` loop wrapped in try/catch so existing local DBs upgrade in place; follow that pattern instead of bumping migrations during early development.
+
+**The structured state channel (GMCP-style) is the source of machine-readable truth.** Alongside prose, the DO emits events as their own lines, `@event <name> <json>` (helper: `event()` in `src/world.ts`). `sendRoom()` is the single way a room is shown: it sends the prose AND emits `room.info` ({id, name, exits, mobs, items, players}) plus `char.vitals` ({hp, maxHp, level, xp, gold, room, inCombat, poisoned}). `emitVitals()` is also called wherever hp/maxHp/combat change off a room view (combat rounds, poison ticks). RULE: any canonical, player-affecting state belongs in a structured event, never prose-only -- the two channels drifting apart is what makes a MUD un-testable and un-tool-able. When you add state a client/bot/test would need (a new vital, a quest flag, an affect), emit it here. Clients that don't care can ignore lines starting with `@event`.
 
 **Game content is data, the engine is generic.** Add content by editing the data files, not the engine:
 - `src/rooms.ts`: rooms and their `exits`. An exit only works if it is declared here; undeclared directions return a clear message (this no-silent-no-op rule is intentional, since a phantom unusable exit was the bug that motivated the whole project). Also exports location constants (`HOLDING_PIT`, `TAVERN`, `MARKET`, and others) used for room-specific interactions.

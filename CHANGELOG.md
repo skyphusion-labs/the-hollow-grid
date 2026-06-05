@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to The Chrome Wastes. Versioning is SemVer-style
+All notable changes to The Hollow Grid. Versioning is SemVer-style
 `0.MINOR.PATCH` while pre-1.0: PATCH for fixes, docs, and tweaks; MINOR for new
 features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are

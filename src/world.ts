@@ -148,7 +148,8 @@ export class World extends DurableObject<Env> {
       [
         "",
         "================================================================",
-        "  THE CHROME WASTES: a MUD on Cloudflare Workers",
+        "  THE HOLLOW GRID",
+        "  the network outlived us. now it just hums, empty, and waits.",
         "================================================================",
         "",
         "By what name are you known, wanderer?",
@@ -206,6 +207,7 @@ export class World extends DurableObject<Env> {
         continue;
       }
       this.line(ws, `The venom gnaws at you. (HP ${s.hp}/${s.maxHp})`);
+      this.emitVitals(ws, s);
       ws.serializeAttachment(s);
       this.persistPlayer(s);
       this.prompt(ws);
@@ -283,6 +285,7 @@ export class World extends DurableObject<Env> {
       this.line(ws, "Venom courses through your veins; you are POISONED. Seek an antidote.");
     }
 
+    this.emitVitals(ws, s);
     ws.serializeAttachment(s);
     this.persistPlayer(s);
     this.prompt(ws);
@@ -339,7 +342,7 @@ export class World extends DurableObject<Env> {
 
     this.line(ws, "...and wake, gasping, back at The Cracked Nexus.");
     this.broadcast(START_ROOM, `${s.name} staggers in, pale and shaking.`, ws);
-    ws.send(this.describeRoom(s));
+    this.sendRoom(ws, s);
     this.prompt(ws);
   }
 
@@ -410,7 +413,7 @@ export class World extends DurableObject<Env> {
 
     ws.send(`Welcome to the wastes, ${name}.` + NL);
     this.broadcast(room, `${name} steps out of the haze.`, ws);
-    ws.send(this.describeRoom(session));
+    this.sendRoom(ws, session);
     if (session.poisoned) this.line(ws, "The old venom still burns in you. (poisoned)");
     this.prompt(ws);
     if (session.poisoned) void this.scheduleNextTick();
@@ -437,7 +440,7 @@ export class World extends DurableObject<Env> {
     switch (cmd) {
       case "look":
       case "l":
-        ws.send(this.describeRoom(s));
+        this.sendRoom(ws, s);
         this.prompt(ws);
         break;
       case "go":
@@ -567,7 +570,7 @@ export class World extends DurableObject<Env> {
     ws.serializeAttachment(s);
     this.persistPlayer(s);
     this.broadcast(destId, `${s.name} arrives.`, ws);
-    ws.send(this.describeRoom(s));
+    this.sendRoom(ws, s);
     this.prompt(ws);
   }
 
@@ -1041,6 +1044,48 @@ export class World extends DurableObject<Env> {
     if (others.length) lines.push(`Also here: ${others.join(", ")}.`);
 
     return NL + lines.join(NL) + NL;
+  }
+
+  // --- Structured state channel (GMCP-style) --------------------------------
+  // Alongside the human-readable prose, we emit machine-readable events, each on
+  // its own line: `@event <name> <json>`. A plain client (wscat) can ignore
+  // these lines; a smart client, bot, test harness, or world-mapper parses them
+  // for EXACT game state instead of scraping English. This is the single
+  // highest-leverage thing a MUD can do for testability and tooling. Anything
+  // canonical (the room graph, vitals) is emitted HERE, never split between
+  // prose-only and structured -- that inconsistency is what breaks parsers.
+  private event(ws: WebSocket, name: string, data: unknown): void {
+    ws.send(`@event ${name} ${JSON.stringify(data)}` + NL);
+  }
+
+  // Send a room's prose AND its structured room.info + char.vitals together, so
+  // the two channels can never drift apart. Use everywhere a room is shown.
+  private sendRoom(ws: WebSocket, s: Session): void {
+    ws.send(this.describeRoom(s));
+    const room = ROOMS[s.room];
+    this.event(ws, "room.info", {
+      id: room.id,
+      name: room.name,
+      exits: Object.keys(room.exits),
+      mobs: this.livingMobsInRoom(s.room).map((m) => ({ id: m.id, name: MOB_BY_ID[m.id].name })),
+      items: this.groundItems(s.room).map((id) => ({ id, name: ITEM_TEMPLATES[id].name })),
+      players: this.playersInRoom(s.room).filter((n) => n !== s.name),
+    });
+    this.emitVitals(ws, s);
+  }
+
+  // Emit current vitals. Call after anything that changes hp/maxHp/combat state.
+  private emitVitals(ws: WebSocket, s: Session): void {
+    this.event(ws, "char.vitals", {
+      hp: s.hp,
+      maxHp: s.maxHp,
+      level: s.level,
+      xp: s.xp,
+      gold: s.gold,
+      room: s.room,
+      inCombat: s.target !== null,
+      poisoned: s.poisoned,
+    });
   }
 
   private inventoryView(s: Session): string {
