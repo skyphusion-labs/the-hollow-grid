@@ -2,34 +2,49 @@
 //
 // It connects like any other client (WebSocket to /ws, first line = name),
 // reads the structured `@event` channel for exact game state (the same lines
-// smoke.mjs asserts on), and asks a local ollama model for the next command.
+// smoke.mjs asserts on), and asks a model for the next command. The brain is
+// pluggable: a free local ollama model (default) or the Anthropic API (a
+// frontier model that needs far less hand-holding, but costs per call).
 // Deterministic survival reflexes (rest when hurt, ride out combat) run before
 // the model, so it doesn't burn a round, or its life, on the obvious calls.
 //
 // Usage:
 //   npm run dev                 # in one shell: the game on ws://localhost:8787/ws
-//   node bot.mjs                # in another: the bot logs in and plays
+//   node bot.mjs                # in another: the bot logs in and plays (ollama)
+//   BOT_BRAIN=anthropic ANTHROPIC_API_KEY=sk-... node bot.mjs   # play on Claude
 //
 // Config (all optional, via env):
 //   MUD_URL           ws endpoint           (default ws://localhost:8787/ws)
 //   MUD_NAME          character name        (default grid_<random>)
+//   BOT_BRAIN         ollama | anthropic    (default ollama)
+//   MUD_MODEL         model id (brain-specific default if unset)
 //   OLLAMA_BASE_URL   ollama OpenAI API     (default http://localhost:11434/v1)
 //   OLLAMA_API_KEY    ignored by ollama     (default "ollama")
-//   MUD_MODEL         model tag             (default qwen3:30b-a3b-instruct-2507-q4_K_M)
-//   BOT_THINK_MS      min ms between moves  (default 4000)
+//   ANTHROPIC_API_KEY required for BOT_BRAIN=anthropic (never hard-coded)
+//   ANTHROPIC_BASE_URL Messages API base    (default https://api.anthropic.com/v1)
+//   BOT_THINK_MS      min ms between moves   (default 4000; raise it to spend less)
 //   BOT_QUIET_MS      settle window         (default 700)
 //   BOT_LOG           tee output to a file  (optional)
+//
+// Note: the bot acts every few seconds, so the Anthropic brain bills continuously
+// for as long as it runs. Pick the model and BOT_THINK_MS with that in mind.
 //
 // Requires Node 24+ (global WebSocket + fetch). No build step, no deps.
 
 import { appendFileSync } from "node:fs";
 
+const BRAIN = (process.env.BOT_BRAIN ?? "ollama").toLowerCase();
+const DEFAULT_MODEL = BRAIN === "anthropic" ? "claude-sonnet-4-6" : "qwen3:30b-a3b-instruct-2507-q4_K_M";
+
 const CFG = {
   url: process.env.MUD_URL ?? "ws://localhost:8787/ws",
   name: process.env.MUD_NAME ?? "grid_" + Math.random().toString(36).slice(2, 7),
+  brain: BRAIN,
+  model: process.env.MUD_MODEL ?? DEFAULT_MODEL,
   ollamaBase: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434/v1",
   ollamaKey: process.env.OLLAMA_API_KEY ?? "ollama",
-  model: process.env.MUD_MODEL ?? "qwen3:30b-a3b-instruct-2507-q4_K_M",
+  anthropicBase: process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com/v1",
+  anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",
   thinkMs: Number(process.env.BOT_THINK_MS ?? 4000),
   quietMs: Number(process.env.BOT_QUIET_MS ?? 700),
   logFile: process.env.BOT_LOG ?? "",
@@ -189,24 +204,50 @@ function escapeMove() {
 }
 
 async function think() {
-  const context = buildContext();
-  const body = {
-    model: CFG.model,
-    max_tokens: 40,
-    temperature: 0.8,
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: `${context}\n\nWhat is your next command?` },
-    ],
-  };
+  const prompt = `${buildContext()}\n\nWhat is your next command?`;
+  const raw = CFG.brain === "anthropic" ? await thinkAnthropic(prompt) : await thinkOllama(prompt);
+  return sanitizeCommand(raw);
+}
+
+// Free local brain: ollama's OpenAI-compatible chat endpoint.
+async function thinkOllama(prompt) {
   const res = await fetch(`${CFG.ollamaBase}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${CFG.ollamaKey}` },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      model: CFG.model,
+      max_tokens: 40,
+      temperature: 0.8,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: prompt },
+      ],
+    }),
   });
   if (!res.ok) throw new Error(`ollama ${res.status}: ${await res.text()}`);
   const json = await res.json();
-  return sanitizeCommand(json.choices?.[0]?.message?.content ?? "");
+  return json.choices?.[0]?.message?.content ?? "";
+}
+
+// Paid frontier brain: the Anthropic Messages API (native, no SDK/deps).
+async function thinkAnthropic(prompt) {
+  const res = await fetch(`${CFG.anthropicBase}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": CFG.anthropicKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: CFG.model,
+      max_tokens: 40,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  if (!res.ok) throw new Error(`anthropic ${res.status}: ${await res.text()}`);
+  const json = await res.json();
+  return json.content?.find((b) => b.type === "text")?.text ?? "";
 }
 
 // Models sometimes wrap the answer in prose/markdown; take the first real line.
@@ -335,5 +376,15 @@ process.on("SIGINT", () => {
   }
   process.exit(0);
 });
+
+if (CFG.brain !== "ollama" && CFG.brain !== "anthropic") {
+  console.error(`unknown BOT_BRAIN "${CFG.brain}" (use "ollama" or "anthropic")`);
+  process.exit(1);
+}
+if (CFG.brain === "anthropic" && !CFG.anthropicKey) {
+  console.error("BOT_BRAIN=anthropic requires ANTHROPIC_API_KEY (it is never hard-coded)");
+  process.exit(1);
+}
+log(`brain: ${CFG.brain} (model ${CFG.model})`);
 
 run();
