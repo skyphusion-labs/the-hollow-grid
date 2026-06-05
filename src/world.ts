@@ -1046,6 +1046,34 @@ export class World extends DurableObject<Env> {
       return;
     }
 
+    if (s.room === "floodgate") {
+      if (this.invItems(s.name).includes("shard")) {
+        // Quest turn-in: the operator takes the shard and rewards you well.
+        this.invRemove(s.name, "shard", 1);
+        s.gold += 50;
+        this.awardXp(ws, s, 60);
+        s.hp = s.maxHp;
+        ws.serializeAttachment(s);
+        this.persistPlayer(s);
+        this.line(
+          ws,
+          'The operator\'s face cracks into something like joy. "The core shard -- you actually did it. Here, ' +
+            'take my coin, all of it, and let me patch you up. The wastes owe you better than I can pay." ' +
+            "(+50 gold, +60 xp, fully healed)",
+        );
+        this.recordTrace(s.room, "quest", `${this.tagged(s)} restored the node here with the core shard.`);
+      } else {
+        this.line(
+          ws,
+          'A stranded operator looks up from a dead console: "I can\'t leave until this node is restored, and ' +
+            "the Custodian dragged the core shard down into the Core Lab. Kill it, bring me the shard, and " +
+            'I\'ll give you everything I have."',
+        );
+      }
+      this.prompt(ws);
+      return;
+    }
+
     this.line(ws, "There's no one here to talk to.");
     this.prompt(ws);
   }

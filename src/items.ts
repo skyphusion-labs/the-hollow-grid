@@ -95,6 +95,13 @@ export const ITEM_TEMPLATES: Record<string, ItemTemplate> = {
     slot: "head",
     armor: 1,
   },
+  shard: {
+    id: "shard",
+    name: "the core shard",
+    desc:
+      "A sliver of black crystal lattice, warm and faintly humming. A whole node's " +
+      "worth of the dead Grid, somehow still holding a charge. The operator wants this.",
+  },
 };
 
 export function itemMatches(id: string, arg: string): boolean {

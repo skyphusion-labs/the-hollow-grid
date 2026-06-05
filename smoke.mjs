@@ -356,5 +356,34 @@ check(/charm/i.test(Q.raw()), "give transfers an item to another player in the r
 P.sock.close();
 Q.sock.close();
 
+// --- Phase 5: the Sunken Server Farm (new zone) ---
+const Z = mkClient();
+await Z.open();
+await sleep(300);
+Z.send("ztest_" + Math.random().toString(36).slice(2, 6));
+await sleep(500);
+Z.send("down"); // nexus -> tunnels
+await sleep(500);
+Z.send("down"); // tunnels -> sump
+await sleep(500);
+Z.send("down"); // sump -> floodgate (into the new zone)
+await sleep(600);
+check(Z.last("room.info")?.data.id === "floodgate", "the new zone is reachable: down from the sump to the floodgate");
+
+const zmark = Z.raw().length;
+Z.send("talk");
+await sleep(400);
+check(/Custodian|core shard/i.test(Z.raw().slice(zmark)), "the stranded operator offers the core-shard quest");
+
+Z.send("north"); // floodgate -> Cold Storage Row
+await sleep(600);
+const cr = Z.last("room.info");
+check(cr?.data.id === "coldrow", "the zone connects onward (floodgate -> Cold Storage Row)");
+check(
+  Array.isArray(cr?.data.mobs) && cr.data.mobs.some((m) => m.id === "leech"),
+  "a new mob (the data-leech) inhabits the zone",
+);
+Z.sock.close();
+
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nSMOKE TEST PASSED");
 process.exit(failures ? 1 : 0);

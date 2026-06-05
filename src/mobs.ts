@@ -105,6 +105,63 @@ export const MOB_TEMPLATES: MobTemplate[] = [
       { item: "radcell", chance: 0.5 },
     ],
   },
+
+  // --- The Sunken Server Farm ---
+  {
+    template: "leech",
+    name: "a data-leech",
+    desc: "A pale, boneless thing clamped to a live rack, swollen with stolen current. It turns toward your warmth.",
+    maxHp: 18,
+    minDmg: 2,
+    maxDmg: 5,
+    xp: 16,
+    room: "coldrow",
+    respawnMs: 30_000,
+    poisonChance: 0.2,
+    loot: [{ item: "radcell", chance: 0.3 }],
+  },
+  {
+    template: "maint",
+    name: "a drowned maintenance drone",
+    desc: "A three-legged service unit, half-corroded, still running its last work-order on a loop. It does not like being interrupted.",
+    maxHp: 24,
+    minDmg: 3,
+    maxDmg: 6,
+    xp: 22,
+    room: "cooling",
+    respawnMs: 40_000,
+    loot: [
+      { item: "plating", chance: 0.5 },
+      { item: "helm", chance: 0.25 },
+    ],
+  },
+  {
+    template: "wraith",
+    name: "a grid-wraith",
+    desc: "A smear of cold light running the dead fiber, shaped almost like a person, mouthing words no one is left to hear.",
+    maxHp: 26,
+    minDmg: 4,
+    maxDmg: 7,
+    xp: 26,
+    room: "fiber",
+    respawnMs: 45_000,
+    loot: [{ item: "radcell", chance: 0.4 }],
+  },
+  {
+    template: "custodian",
+    name: "the Custodian",
+    desc: "A mass of salvaged servo-arms and server blades crouched over the last living core, guarding it with the patience of a machine that has forgotten why.",
+    maxHp: 60,
+    minDmg: 5,
+    maxDmg: 9,
+    xp: 80,
+    room: "corelab",
+    respawnMs: 120_000,
+    loot: [
+      { item: "shard", chance: 1 },
+      { item: "rebar", chance: 1 },
+    ],
+  },
 ];
 
 export const MOB_BY_ID: Record<string, MobTemplate> = Object.fromEntries(
