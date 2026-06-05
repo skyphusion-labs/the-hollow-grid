@@ -70,13 +70,38 @@ check(
 // to guess (the anti-hidden-gate lesson).
 check(/\bhelp\b/i.test(raw), "new-player welcome points to the help command");
 
-// Move and confirm the structured room graph tracks us.
+// Move into a mob room and confirm the structured room graph tracks us.
 events.length = 0;
-ws.send("north");
-await sleep(600);
+ws.send("down"); // nexus -> tunnels, where the glow-rat lives
+await sleep(700);
 const room2 = last("room.info");
 check(!!room2, "moving emits a fresh room.info");
-check(room2 && room2.data.id !== "nexus", `north left the nexus (now "${room2?.data.id}")`);
+check(room2?.data.id === "tunnels", `"down" led to tunnels (now "${room2?.data.id}")`);
+check(
+  Array.isArray(room2?.data.mobs) && room2.data.mobs.some((m) => m.id === "rat"),
+  "room.info lists the glow-rat in the room",
+);
+
+// Critical path: a full fight, asserted entirely on the combat.* channel.
+events.length = 0;
+ws.send("attack rat");
+await sleep(800);
+check(!!last("combat.start"), "attack emits combat.start");
+check(last("char.vitals")?.data.inCombat === true, "vitals show inCombat=true mid-fight");
+
+// Combat resolves on a ~3s alarm tick; wait for the kill (12 HP / ~5 dmg a round).
+let ended = last("combat.end");
+for (let i = 0; i < 8 && !ended; i++) {
+  await sleep(2500);
+  ended = last("combat.end");
+}
+check(!!last("combat.round"), "combat produced at least one combat.round event");
+check(ended?.data.result === "killed", `combat ended in a kill (result=${JSON.stringify(ended?.data.result)})`);
+
+const finalVit = last("char.vitals");
+check(finalVit?.data.inCombat === false, "vitals show inCombat=false after the fight");
+// The death-floor lesson, observed: the player survives a starter mob easily.
+check(finalVit?.data.hp > 0, `player survived the glow-rat (hp=${finalVit?.data.hp})`);
 
 ws.close();
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nSMOKE TEST PASSED");

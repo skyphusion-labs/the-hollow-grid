@@ -254,6 +254,8 @@ export class World extends DurableObject<Env> {
     if (!mob || !t || mob.state === "dead" || mob.room !== s.room) {
       s.target = null;
       ws.serializeAttachment(s);
+      this.event(ws, "combat.end", { result: "gone" });
+      this.emitVitals(ws, s);
       this.line(ws, "Your quarry is gone. You stand down.");
       this.prompt(ws);
       return;
@@ -285,6 +287,14 @@ export class World extends DurableObject<Env> {
       this.line(ws, "Venom courses through your veins; you are POISONED. Seek an antidote.");
     }
 
+    this.event(ws, "combat.round", {
+      mob: mob.id,
+      mobHp,
+      mobMaxHp: mob.max_hp,
+      playerDmg: pdmg,
+      mobDmg: mdmg,
+      hp: s.hp,
+    });
     this.emitVitals(ws, s);
     ws.serializeAttachment(s);
     this.persistPlayer(s);
@@ -324,6 +334,8 @@ export class World extends DurableObject<Env> {
 
     s.target = null;
     this.awardXp(ws, s, t.xp);
+    this.event(ws, "combat.end", { mob: mob.id, result: "killed", xp: t.xp });
+    this.emitVitals(ws, s);
     ws.serializeAttachment(s);
     this.persistPlayer(s);
     this.prompt(ws);
@@ -611,6 +623,8 @@ export class World extends DurableObject<Env> {
     const t = MOB_BY_ID[mob.id];
     s.target = mob.id;
     ws.serializeAttachment(s);
+    this.event(ws, "combat.start", { mob: mob.id, name: t.name });
+    this.emitVitals(ws, s);
     this.line(ws, `You lunge at ${t.name}!`);
     this.broadcast(s.room, `${s.name} attacks ${t.name}!`, ws);
     this.prompt(ws);
@@ -621,8 +635,11 @@ export class World extends DurableObject<Env> {
     if (!s.target) {
       this.line(ws, "You're not fighting anything.");
     } else {
+      const fled = s.target;
       s.target = null;
       ws.serializeAttachment(s);
+      this.event(ws, "combat.end", { mob: fled, result: "fled" });
+      this.emitVitals(ws, s);
       this.line(ws, "You break off and catch your breath.");
       this.broadcast(s.room, `${s.name} flees the fight.`, ws);
     }
