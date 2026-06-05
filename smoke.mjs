@@ -413,5 +413,27 @@ await sleep(400);
 check(/pick a side|free folk/i.test(W.raw().slice(wsmark)), "the waystation reacts to your standing (unaligned: pick a side)");
 W.sock.close();
 
+// --- Phase 7: the Tinker's Workshop gear shop ---
+const G = mkClient();
+await G.open();
+await sleep(300);
+G.send("gtest_" + Math.random().toString(36).slice(2, 6));
+await sleep(500);
+G.send("east"); // nexus -> workshop
+await sleep(600);
+let gmark = G.raw().length;
+G.send("list");
+await sleep(400);
+check(/tinker's wares/i.test(G.raw().slice(gmark)) && /rebar/i.test(G.raw().slice(gmark)), "the tinker lists gear for sale");
+gmark = G.raw().length;
+G.send("buy helm"); // new characters wake with 20 gold; the helm is 14
+await sleep(500);
+check(/hands you a dented scrap helm/i.test(G.raw().slice(gmark)), "buying gear with gold works");
+gmark = G.raw().length;
+G.send("inventory");
+await sleep(400);
+check(/helm/i.test(G.raw().slice(gmark)), "the purchased gear lands in inventory");
+G.sock.close();
+
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nSMOKE TEST PASSED");
 process.exit(failures ? 1 : 0);

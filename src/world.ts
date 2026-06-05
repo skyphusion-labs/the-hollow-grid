@@ -72,6 +72,17 @@ const condition = (o: { hp: number; maxHp: number }): string => {
   return r >= 0.95 ? "in good shape" : r >= 0.6 ? "scuffed up" : r >= 0.3 ? "bloodied" : "barely standing";
 };
 
+// The Tinker's Workshop gear shop: item id -> price in gold. `list` shows it,
+// `buy <item>` purchases it (the tavern still sells only dust).
+const WORKSHOP_WARES: { item: string; price: number }[] = [
+  { item: "shiv", price: 12 },
+  { item: "helm", price: 14 },
+  { item: "antidote", price: 14 },
+  { item: "radcell", price: 16 },
+  { item: "plating", price: 18 },
+  { item: "rebar", price: 45 },
+];
+
 /**
  * World: a single Durable Object that holds the whole game. Players route to
  * the same instance via `getByName("world")` and share one coordinated world.
@@ -534,7 +545,7 @@ export class World extends DurableObject<Env> {
       level: row?.level ?? 1,
       target: null,
       poisoned: !!row?.poisoned,
-      gold: row?.gold ?? 0,
+      gold: row?.gold ?? 20, // new characters wake with a few coins
       morality: row?.morality ?? 0,
       addiction: row?.addiction ?? 0,
       faction: (row?.faction as Session["faction"]) ?? "none",
@@ -640,6 +651,9 @@ export class World extends DurableObject<Env> {
         break;
       case "buy":
         this.buy(ws, s, arg);
+        break;
+      case "list":
+        this.listWares(ws, s);
         break;
       case "carouse":
         await this.carouse(ws, s);
@@ -1046,6 +1060,16 @@ export class World extends DurableObject<Env> {
       return;
     }
 
+    if (s.room === "workshop") {
+      this.line(
+        ws,
+        'The tinker doesn\'t look up from their soldering. "Salvage\'s on the racks, prices on the list. ' +
+          "Say 'list', say 'buy'. I don't haggle and I don't chat.\"",
+      );
+      this.prompt(ws);
+      return;
+    }
+
     if (s.room === "floodgate") {
       if (this.invItems(s.name).includes("shard")) {
         // Quest turn-in: the operator takes the shard and rewards you well.
@@ -1201,27 +1225,70 @@ export class World extends DurableObject<Env> {
   }
 
   private buy(ws: WebSocket, s: Session, arg: string): void {
-    if (s.room !== TAVERN) {
-      this.line(ws, "There's nothing for sale here.");
+    if (s.room === TAVERN) {
+      if (!itemMatches("dust", arg)) {
+        this.line(ws, 'The dealer only deals one thing: dust. ("buy dust")');
+        this.prompt(ws);
+        return;
+      }
+      const COST = 10;
+      if (s.gold < COST) {
+        this.line(ws, `The dealer sneers. "${COST} gold, no credit." You're short.`);
+        this.prompt(ws);
+        return;
+      }
+      s.gold -= COST;
+      this.invAdd(s.name, "dust", 1);
+      this.line(ws, `The dealer slips you a packet of dust. (−${COST} gold, gold: ${s.gold})`);
+      ws.serializeAttachment(s);
+      this.persistPlayer(s);
       this.prompt(ws);
       return;
     }
-    if (!itemMatches("dust", arg)) {
-      this.line(ws, 'The dealer only deals one thing: dust. ("buy dust")');
+
+    if (s.room === "workshop") {
+      if (!arg.trim()) {
+        this.line(ws, "Buy what? Say 'list' to see the tinker's wares.");
+        this.prompt(ws);
+        return;
+      }
+      const ware = WORKSHOP_WARES.find((w) => itemMatches(w.item, arg));
+      if (!ware) {
+        this.line(ws, `The tinker doesn't stock any "${arg}". (try 'list')`);
+        this.prompt(ws);
+        return;
+      }
+      if (s.gold < ware.price) {
+        this.line(ws, `The tinker shakes their head. "${ware.price} gold for that. You've got ${s.gold}."`);
+        this.prompt(ws);
+        return;
+      }
+      s.gold -= ware.price;
+      this.invAdd(s.name, ware.item, 1);
+      this.line(ws, `The tinker hands you ${ITEM_TEMPLATES[ware.item].name}. (−${ware.price} gold, gold: ${s.gold})`);
+      ws.serializeAttachment(s);
+      this.persistPlayer(s);
       this.prompt(ws);
       return;
     }
-    const COST = 10;
-    if (s.gold < COST) {
-      this.line(ws, `The dealer sneers. "${COST} gold, no credit." You're short.`);
+
+    this.line(ws, "There's nothing for sale here.");
+    this.prompt(ws);
+  }
+
+  // list: show a shop's wares (only the tinker's workshop, for now).
+  private listWares(ws: WebSocket, s: Session): void {
+    if (s.room !== "workshop") {
+      this.line(ws, "There's no shopkeeper here to list wares.");
       this.prompt(ws);
       return;
     }
-    s.gold -= COST;
-    this.invAdd(s.name, "dust", 1);
-    this.line(ws, `The dealer slips you a packet of dust. (−${COST} gold, gold: ${s.gold})`);
-    ws.serializeAttachment(s);
-    this.persistPlayer(s);
+    const lines = ["The tinker's wares (buy <item>):"];
+    for (const w of WORKSHOP_WARES) {
+      lines.push(`  ${String(w.price).padStart(3)}g  ${ITEM_TEMPLATES[w.item].name}`);
+    }
+    lines.push(`  -- you have ${s.gold} gold.`);
+    this.line(ws, lines.join(NL));
     this.prompt(ws);
   }
 
@@ -1338,6 +1405,10 @@ export class World extends DurableObject<Env> {
 
     if (s.room === TAVERN) {
       lines.push("A dust-dealer works the shadows, and a tavern wench drifts among the tables. (try 'talk')");
+    }
+
+    if (s.room === "workshop") {
+      lines.push("A grizzled tinker hunches over the benches, salvaged gear laid out for sale. (try 'list')");
     }
 
     if (s.room === MARKET) {
@@ -2022,7 +2093,8 @@ export class World extends DurableObject<Env> {
         "  free/rescue           free the captive (in the Holding Pit)",
         "  sell <item>           sell salvage to the market vendor (honest coin)",
         "  steal                 lift gold from the market stall (risky, corrupting)",
-        "  buy <item>            buy from a vendor (dust, at the Tankard)",
+        "  buy <item>            buy from a vendor (dust at the Tankard; gear at the Workshop)",
+        "  list                  list a shop's wares (the Tinker's Workshop)",
         "  carouse / resist      indulge or refuse the Tankard's vices",
         "  join / defend         side with the Cinder Front, or the elves (Scrap Market)",
         "  talk                  speak to whoever shares your room",
