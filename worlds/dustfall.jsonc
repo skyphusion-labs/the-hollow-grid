@@ -20,8 +20,12 @@
     "ADMINS": "skyphusion",
     "WORLD_NAME": "Dustfall",
     "WORLD_MAP": "dustfall",
-    "WORLD_URL": "ws://localhost:8788/ws"
+    // PRODUCTION address advertised to the registry; dev overrides to localhost
+    // (see scripts/dev.sh and the dev:dustfall script).
+    "WORLD_URL": "wss://dustfall.skyphusion.org/ws"
   },
+  // Bind Dustfall to its public hostname (DNS + cert auto-created on deploy).
+  "routes": [{ "pattern": "dustfall.skyphusion.org", "custom_domain": true }],
   // Its own Durable Object namespace (own SQLite, own local rooms/mobs/players);
   // only the federated state lives in the shared hub.
   "durable_objects": {
