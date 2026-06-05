@@ -24,6 +24,20 @@ export type GridTrace = {
 
 export type GridCast = { id: number; world: string; sender: string; text: string };
 
+// The canonical, federation-wide character: the progression + standing that
+// follows a player across every world. Local-only state (room, hp, position,
+// inventory) is NOT here -- worlds own that. (See docs/federation.md.)
+export type CharSheet = {
+  level: number;
+  xp: number;
+  gold: number;
+  faction: string;
+  morality: number;
+  title: string;
+};
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
 // Echoes seeded from "elsewhere on the Grid" so the federation feed is alive on
 // the very first ping, before any other world has actually connected. (Once real
 // worlds report in, their traces interleave with these.)
@@ -70,6 +84,20 @@ export class GridHub extends DurableObject<Env> {
           at INTEGER NOT NULL
         )
       `);
+
+      // Canonical character sheets: the federation owns progression + standing,
+      // so a character is the same person in every world (phase 3).
+      sql.exec(`
+        CREATE TABLE IF NOT EXISTS characters (
+          name TEXT PRIMARY KEY,
+          level INTEGER NOT NULL DEFAULT 1,
+          xp INTEGER NOT NULL DEFAULT 0,
+          gold INTEGER NOT NULL DEFAULT 20,
+          faction TEXT NOT NULL DEFAULT 'none',
+          morality INTEGER NOT NULL DEFAULT 0,
+          title TEXT NOT NULL DEFAULT ''
+        )
+      `);
     });
   }
 
@@ -111,5 +139,45 @@ export class GridHub extends DurableObject<Env> {
     return this.ctx.storage.sql
       .exec<GridCast>("SELECT id, world, sender, text FROM casts WHERE id > ? ORDER BY id ASC LIMIT ?", sinceId, Math.max(1, Math.min(limit, 50)))
       .toArray();
+  }
+
+  // --- Canonical identity (phase 3): the character that follows you ----------
+  loadCharacter(name: string): CharSheet {
+    const row = this.ctx.storage.sql
+      .exec<CharSheet>("SELECT level, xp, gold, faction, morality, title FROM characters WHERE name = ?", name)
+      .toArray()[0];
+    if (row) return row;
+    this.ctx.storage.sql.exec(
+      "INSERT OR IGNORE INTO characters (name, level, xp, gold, faction, morality, title) VALUES (?, 1, 0, 20, 'none', 0, '')",
+      name,
+    );
+    return { level: 1, xp: 0, gold: 20, faction: "none", morality: 0, title: "" };
+  }
+
+  // A world PROPOSES a character sheet; the hub VALIDATES it against bounds and
+  // commits the result. This is the trust boundary: honest worlds pass, a cheaty
+  // world's absurd deltas get clamped (no de-leveling, no implausible jumps, no
+  // minting gold). Returns the committed (possibly clamped) sheet.
+  commitCharacter(name: string, p: CharSheet): CharSheet {
+    const cur = this.loadCharacter(name);
+    const next: CharSheet = {
+      level: clamp(Math.floor(p.level), cur.level, cur.level + 5), // never de-level; no big jumps
+      xp: Math.max(0, Math.floor(p.xp)),
+      gold: clamp(Math.floor(p.gold), 0, cur.gold + 1_000_000), // no minting absurd gold
+      faction: ["none", "front", "ally"].includes(p.faction) ? p.faction : cur.faction,
+      morality: clamp(Math.floor(p.morality), -1000, 1000),
+      title: String(p.title ?? "").replace(/[\r\n]/g, "").slice(0, 40),
+    };
+    this.ctx.storage.sql.exec(
+      "UPDATE characters SET level = ?, xp = ?, gold = ?, faction = ?, morality = ?, title = ? WHERE name = ?",
+      next.level,
+      next.xp,
+      next.gold,
+      next.faction,
+      next.morality,
+      next.title,
+      name,
+    );
+    return next;
   }
 }

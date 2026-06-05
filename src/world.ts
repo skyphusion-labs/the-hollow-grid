@@ -3,7 +3,7 @@ import type { Env, Session } from "./types";
 import { ROOMS, START_ROOM, HOLDING_PIT, WARDEN_ID, TAVERN, MARKET, normalizeDir } from "./rooms";
 import { MOB_TEMPLATES, MOB_BY_ID } from "./mobs";
 import { ITEM_TEMPLATES, itemMatches, EQUIP_SLOTS } from "./items";
-import type { GridTrace, GridCast } from "./gridhub";
+import type { GridTrace, GridCast, CharSheet } from "./gridhub";
 
 const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 
@@ -273,7 +273,7 @@ export class World extends DurableObject<Env> {
     const session = ws.deserializeAttachment() as Session | null;
 
     if (!session || !session.name) {
-      this.handleLogin(ws, line);
+      await this.handleLogin(ws, line);
       return;
     }
     await this.handleCommand(ws, session, line);
@@ -283,6 +283,7 @@ export class World extends DurableObject<Env> {
     const session = ws.deserializeAttachment() as Session | null;
     if (session?.name) {
       this.broadcast(session.room, `${session.name} flickers out of existence.`, ws);
+      this.commitIdentity(session); // checkpoint the canonical character to the hub
     }
     try {
       ws.close(code, reason);
@@ -514,11 +515,12 @@ export class World extends DurableObject<Env> {
       s.hp = s.maxHp;
       this.line(ws, `*** You reach level ${s.level}! Max HP is now ${s.maxHp}. ***`);
     }
+    this.commitIdentity(s); // checkpoint xp/level to the federated identity
   }
 
   // ---- login ---------------------------------------------------------------
 
-  private handleLogin(ws: WebSocket, raw: string): void {
+  private async handleLogin(ws: WebSocket, raw: string): Promise<void> {
     const name = raw.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 16);
     if (name.length < 2) {
       ws.send("Names must be 2-16 characters (letters, numbers, underscore)." + NL + "Your name? ");
@@ -568,7 +570,25 @@ export class World extends DurableObject<Env> {
       resisted: !!row?.resisted,
       title: row?.title ?? "",
     };
-    if (session.hp <= 0) session.hp = session.maxHp;
+
+    // Federation phase 3: the canonical identity (progression + standing) lives
+    // in the Grid Hub, so a character is the same person in every world. Load it
+    // over the local shared fields; keep local-only state (room, hp, inventory).
+    // If the hub is down, the local sheet stands -- federation is never required.
+    try {
+      const canon = await this.env.GRIDHUB.getByName("grid").loadCharacter(name);
+      session.level = canon.level;
+      session.xp = canon.xp;
+      session.gold = canon.gold;
+      session.faction = canon.faction as Session["faction"];
+      session.morality = canon.morality;
+      session.title = canon.title;
+      session.maxHp = BASE_HP + (canon.level - 1) * 10; // max HP follows your level
+    } catch {
+      /* hub unreachable; the local character stands on its own */
+    }
+
+    if (session.hp <= 0 || session.hp > session.maxHp) session.hp = session.maxHp;
     ws.serializeAttachment(session);
     this.persistPlayer(session);
 
@@ -778,6 +798,10 @@ export class World extends DurableObject<Env> {
       case "war":
       case "tide":
         await this.warReport(ws);
+        break;
+      case "whoami":
+      case "identity":
+        await this.whoami(ws, s);
         break;
       case "wall":
       case "announce":
@@ -1404,6 +1428,7 @@ export class World extends DurableObject<Env> {
         this.emitAffects(ws, s);
         this.recordTrace(s.room, "oath", `${s.name} turned on the Cinder Front at the Ashmonger's own dais.`);
         this.contributeTide(15);
+        this.commitIdentity(s);
         this.line(
           ws,
           'You spit at the Ashmonger\'s boots. "I\'m done being your dog." Every soldier in the stronghold turns on you at once' +
@@ -1418,6 +1443,7 @@ export class World extends DurableObject<Env> {
         this.emitAffects(ws, s);
         this.recordTrace(s.room, "oath", `${s.name} swore themselves to the Cinder Front at the Ashmonger's dais.`);
         this.contributeTide(-15);
+        this.commitIdentity(s);
         this.line(ws, 'You kneel and swear yourself to the Front. The Ashmonger\'s hand closes on your shoulder like a trap. "Good. The wastes will be ours."');
       } else {
         this.line(ws, "The Ashmonger only laughs. There's nothing here to decide that your blood hasn't already settled.");
@@ -1463,6 +1489,7 @@ export class World extends DurableObject<Env> {
       this.recordTrace(s.room, "oath", `${s.name} stood with the free folk here.`);
       this.contributeTide(10);
     }
+    this.commitIdentity(s);
     this.emitAffects(ws, s);
     ws.serializeAttachment(s);
     this.persistPlayer(s);
@@ -1673,6 +1700,48 @@ export class World extends DurableObject<Env> {
     } catch {
       /* hub unavailable; the choice still stands locally */
     }
+  }
+
+  // Commit the player's canonical identity (progression + standing) to the hub,
+  // best-effort. The hub validates the proposal; we never block on it.
+  private commitIdentity(s: Session): void {
+    try {
+      void this.env.GRIDHUB.getByName("grid")
+        .commitCharacter(s.name, {
+          level: s.level,
+          xp: s.xp,
+          gold: s.gold,
+          faction: s.faction,
+          morality: s.morality,
+          title: s.title ?? "",
+        })
+        .catch(() => {});
+    } catch {
+      /* hub unavailable */
+    }
+  }
+
+  // `whoami`: your federation-wide self, read live from the Grid Hub.
+  private async whoami(ws: WebSocket, s: Session): Promise<void> {
+    let sheet: CharSheet;
+    try {
+      sheet = await this.env.GRIDHUB.getByName("grid").loadCharacter(s.name);
+    } catch {
+      sheet = { level: s.level, xp: s.xp, gold: s.gold, faction: s.faction, morality: s.morality, title: s.title ?? "" };
+      this.line(ws, "(the Grid is unreachable; showing your local self)");
+    }
+    const standing = sheet.faction === "front" ? "Cinder Front" : sheet.faction === "ally" ? "Free Folk ally" : "unaligned";
+    this.line(
+      ws,
+      [
+        `You are ${s.name}${sheet.title ? ", " + sheet.title : ""} -- known across the Grid.`,
+        `  level ${sheet.level}   xp ${sheet.xp}   gold ${sheet.gold}`,
+        `  standing: ${standing}   (morality ${sheet.morality})`,
+        "  This identity is canonical on the Grid; it follows you to every world.",
+      ].join(NL),
+    );
+    this.event(ws, "char.identity", sheet);
+    this.prompt(ws);
   }
 
   // `war`: read the global Cinder Front vs free-folk tide, shared by every world.
@@ -2274,6 +2343,7 @@ export class World extends DurableObject<Env> {
     s.title = t;
     ws.serializeAttachment(s);
     this.persistPlayer(s);
+    this.commitIdentity(s);
     if (t) this.line(ws, `You are known henceforth as ${s.name}, ${t}.`);
     else this.line(ws, `Your title is stripped away. Just ${s.name} now.`);
     this.prompt(ws);
@@ -2320,6 +2390,7 @@ export class World extends DurableObject<Env> {
         "  ping [all]            query this node's Grid memory ('ping all' = the whole network)",
         "  gridcast <message>    speak across EVERY world on the Grid (gc)",
         "  war / tide            the global Cinder Front vs free-folk war (all worlds)",
+        "  whoami                your canonical self on the Grid (follows you everywhere)",
         "  wall <message>        broadcast an announcement to everyone (keepers only)",
         "  world / weather       check the time of day and the weather",
         "  help (?)              this message",

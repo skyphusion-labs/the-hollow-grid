@@ -525,7 +525,29 @@ GX.send("war");
 await sleep(600);
 const tideAfter = GX.last("world.war")?.data.tide ?? 0;
 check(tideAfter > tideBefore, `siding with the free folk moved the GLOBAL tide (${tideBefore} -> ${tideAfter})`);
-GX.sock.close();
+
+// Federation phase 3: the canonical identity lives in the hub and follows you.
+GX.send("whoami");
+await sleep(500);
+check(
+  GX.last("char.identity")?.data.faction === "ally",
+  "whoami reads your canonical self live from the Grid (faction committed to the hub)",
+);
+GX.sock.close(); // commits the canonical sheet on logout
+await sleep(800);
+// Re-enter as the SAME character -- a stand-in for arriving in another world.
+const GZ = mkClient();
+await GZ.open();
+await sleep(300);
+GZ.send(gxName);
+await sleep(600);
+GZ.send("whoami");
+await sleep(500);
+check(
+  GZ.last("char.identity")?.data.faction === "ally",
+  "the identity persists in the hub and follows the character to a fresh login (one character, many worlds)",
+);
+GZ.sock.close();
 GY.sock.close();
 
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nSMOKE TEST PASSED");
