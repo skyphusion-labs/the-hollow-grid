@@ -8,7 +8,9 @@
   },
   "vars": {
     // Player names allowed to broadcast with `wall` (comma-separated).
-    "ADMINS": "skyphusion"
+    "ADMINS": "skyphusion",
+    // This world's public address, advertised to the federation registry.
+    "WORLD_URL": "ws://localhost:8787/ws"
   },
   "durable_objects": {
     "bindings": [

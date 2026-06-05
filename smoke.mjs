@@ -548,6 +548,39 @@ check(
   "the identity persists in the hub and follows the character to a fresh login (one character, many worlds)",
 );
 GZ.sock.close();
+
+// --- Phase 11: federation phase 4 -- the world registry + travel ----------
+// Every login registers this world to the hub registry, and seeded sibling
+// worlds give us somewhere to travel to.
+const TR = mkClient();
+await TR.open();
+await sleep(300);
+TR.send("trav" + Math.floor(tideAfter)); // any fresh name
+await sleep(600);
+TR.send("worlds");
+await sleep(600);
+const wl = TR.last("grid.worlds");
+check(
+  !!wl && wl.data.worlds.some((w) => w.here && w.id === "The Hollow Grid"),
+  "the registry lists this world (The Hollow Grid) and marks it as where you are",
+);
+check(
+  !!wl && wl.data.worlds.some((w) => /Dustfall/i.test(w.id)),
+  "the registry lists sibling worlds you can travel to (Dustfall)",
+);
+const trMark = TR.raw().length;
+TR.send("travel Dustfall");
+await sleep(700);
+const trv = TR.last("grid.travel");
+check(
+  trv?.data.to === "Dustfall" && /dustfall\.example/i.test(trv?.data.url ?? ""),
+  "travel routes you to a sibling world and hands you its address (grid.travel)",
+);
+check(
+  /routes you toward Dustfall/i.test(TR.raw().slice(trMark)),
+  "travel checkpoints you and hands you off across the Grid",
+);
+
 GY.sock.close();
 
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nSMOKE TEST PASSED");
