@@ -38,6 +38,18 @@ export type CharSheet = {
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+// A world on the federation: its name, where to connect, and when it last
+// checked in (for liveness). Players `travel` between these.
+export type WorldInfo = { id: string; url: string; last_seen: number };
+
+// Notional sibling worlds, so the federation feels populated before others
+// actually connect. (A real world overwrites its entry when it registers.)
+const SEED_WORLDS: { id: string; url: string }[] = [
+  { id: "Saltreach", url: "wss://saltreach.example/ws" },
+  { id: "the Ninth Server", url: "wss://ninth-server.example/ws" },
+  { id: "Dustfall", url: "wss://dustfall.example/ws" },
+];
+
 // Echoes seeded from "elsewhere on the Grid" so the federation feed is alive on
 // the very first ping, before any other world has actually connected. (Once real
 // worlds report in, their traces interleave with these.)
@@ -98,6 +110,15 @@ export class GridHub extends DurableObject<Env> {
           title TEXT NOT NULL DEFAULT ''
         )
       `);
+
+      // The world registry (phase 4): who's on the Grid, and where to reach them.
+      sql.exec("CREATE TABLE IF NOT EXISTS worlds (id TEXT PRIMARY KEY, url TEXT NOT NULL, last_seen INTEGER NOT NULL)");
+      const worldCount = sql.exec<{ c: number }>("SELECT COUNT(*) AS c FROM worlds").one().c;
+      if (worldCount === 0) {
+        for (const w of SEED_WORLDS) {
+          sql.exec("INSERT INTO worlds (id, url, last_seen) VALUES (?, ?, 0)", w.id, w.url);
+        }
+      }
     });
   }
 
@@ -114,6 +135,33 @@ export class GridHub extends DurableObject<Env> {
     return this.ctx.storage.sql
       .exec<GridTrace>("SELECT world, node, kind, text, at FROM ledger ORDER BY id DESC LIMIT ?", Math.max(1, Math.min(limit, 50)))
       .toArray();
+  }
+
+  // The federation feed as heard FROM a given world: newest traces overall, but
+  // with slots reserved for OTHER worlds so the rest of the Grid is always
+  // audible even when your own world is the noisiest node on the network. (A
+  // plain `recent()` drowns in local traces once a world gets busy; the whole
+  // point of `ping all` is to hear past your own node.)
+  recentAcross(world: string, limit: number): GridTrace[] {
+    const sql = this.ctx.storage.sql;
+    const lim = clamp(Math.floor(limit), 1, 50);
+    const foreignQuota = Math.min(3, lim);
+    const foreign = sql
+      .exec<GridTrace>("SELECT world, node, kind, text, at FROM ledger WHERE world != ? ORDER BY id DESC LIMIT ?", world, foreignQuota)
+      .toArray();
+    const overall = sql
+      .exec<GridTrace>("SELECT world, node, kind, text, at FROM ledger ORDER BY id DESC LIMIT ?", lim)
+      .toArray();
+    const key = (t: GridTrace) => `${t.world}|${t.node}|${t.text}|${t.at}`;
+    const seen = new Set(foreign.map(key));
+    const out = [...foreign];
+    for (const t of overall) {
+      if (out.length >= lim) break;
+      if (seen.has(key(t))) continue;
+      seen.add(key(t));
+      out.push(t);
+    }
+    return out.sort((a, b) => b.at - a.at);
   }
 
   // --- The global faction tide (shared mutable state across all worlds) ------
@@ -179,5 +227,21 @@ export class GridHub extends DurableObject<Env> {
       name,
     );
     return next;
+  }
+
+  // --- The world registry (phase 4): travel destinations --------------------
+  register(world: string, url: string): void {
+    this.ctx.storage.sql.exec(
+      "INSERT INTO worlds (id, url, last_seen) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET url = excluded.url, last_seen = excluded.last_seen",
+      world,
+      url,
+      Date.now(),
+    );
+  }
+
+  listWorlds(): WorldInfo[] {
+    return this.ctx.storage.sql
+      .exec<WorldInfo>("SELECT id, url, last_seen FROM worlds ORDER BY last_seen DESC, id ASC")
+      .toArray();
   }
 }

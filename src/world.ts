@@ -3,7 +3,7 @@ import type { Env, Session } from "./types";
 import { ROOMS, START_ROOM, HOLDING_PIT, WARDEN_ID, TAVERN, MARKET, normalizeDir } from "./rooms";
 import { MOB_TEMPLATES, MOB_BY_ID } from "./mobs";
 import { ITEM_TEMPLATES, itemMatches, EQUIP_SLOTS } from "./items";
-import type { GridTrace, GridCast, CharSheet } from "./gridhub";
+import type { GridTrace, GridCast, CharSheet, WorldInfo } from "./gridhub";
 
 const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 
@@ -584,6 +584,10 @@ export class World extends DurableObject<Env> {
       session.morality = canon.morality;
       session.title = canon.title;
       session.maxHp = BASE_HP + (canon.level - 1) * 10; // max HP follows your level
+      // Advertise this world to the federation registry (keeps its entry live).
+      void this.env.GRIDHUB.getByName("grid")
+        .register(WORLD_NAME, this.env.WORLD_URL ?? "ws://localhost:8787/ws")
+        .catch(() => {});
     } catch {
       /* hub unreachable; the local character stands on its own */
     }
@@ -802,6 +806,12 @@ export class World extends DurableObject<Env> {
       case "whoami":
       case "identity":
         await this.whoami(ws, s);
+        break;
+      case "worlds":
+        await this.worldsList(ws, s);
+        break;
+      case "travel":
+        await this.travel(ws, s, arg);
         break;
       case "wall":
       case "announce":
@@ -1744,6 +1754,84 @@ export class World extends DurableObject<Env> {
     this.prompt(ws);
   }
 
+  // `worlds`: the worlds linked on the Grid -- where you can travel.
+  private async worldsList(ws: WebSocket, s: Session): Promise<void> {
+    let worlds: WorldInfo[] = [];
+    try {
+      worlds = await this.env.GRIDHUB.getByName("grid").listWorlds();
+    } catch {
+      this.line(ws, "The Grid is silent; you can't see the other worlds from here.");
+      this.prompt(ws);
+      return;
+    }
+    const now = Date.now();
+    const lines = ["Worlds linked on the Grid (say 'travel <world>'):"];
+    for (const w of worlds) {
+      const live = w.last_seen > now - 60_000 ? "live" : "quiet";
+      lines.push(`  ${w.id}  [${live}]${w.id === WORLD_NAME ? "   <- you are here" : ""}`);
+    }
+    this.line(ws, lines.join(NL));
+    this.event(ws, "grid.worlds", {
+      worlds: worlds.map((w) => ({ id: w.id, live: w.last_seen > now - 60_000, here: w.id === WORLD_NAME })),
+    });
+    this.prompt(ws);
+  }
+
+  // `travel <world>`: cross the Grid to another world. Your canonical character
+  // is checkpointed to the hub, then you're routed onward -- reconnect there and
+  // you arrive as yourself (the v1 model: log out here, log in there).
+  private async travel(ws: WebSocket, s: Session, arg: string): Promise<void> {
+    const target = arg.trim();
+    if (!target) {
+      this.line(ws, "Travel where? (say 'worlds' to see the Grid)");
+      this.prompt(ws);
+      return;
+    }
+    if (s.target) {
+      this.line(ws, "You can't key out through the Grid in the middle of a fight.");
+      this.prompt(ws);
+      return;
+    }
+    let worlds: WorldInfo[] = [];
+    try {
+      worlds = await this.env.GRIDHUB.getByName("grid").listWorlds();
+    } catch {
+      this.line(ws, "The Grid won't answer; travel is impossible right now.");
+      this.prompt(ws);
+      return;
+    }
+    const t = target.toLowerCase();
+    const dest = worlds.find((w) => w.id.toLowerCase() === t) ?? worlds.find((w) => w.id.toLowerCase().includes(t));
+    if (!dest) {
+      this.line(ws, `No world called "${target}" answers on the Grid. (try 'worlds')`);
+      this.prompt(ws);
+      return;
+    }
+    if (dest.id === WORLD_NAME) {
+      this.line(ws, `You're already in ${WORLD_NAME}.`);
+      this.prompt(ws);
+      return;
+    }
+    // Checkpoint the canonical character so it's waiting for you on the far side.
+    this.commitIdentity(s);
+    this.broadcast(s.room, `${s.name} keys into the Grid and is routed away, off the edge of the world.`, ws);
+    this.line(
+      ws,
+      [
+        `The Grid takes you apart, packet by packet, and routes you toward ${dest.id}.`,
+        "Reconnect there and you arrive as yourself -- your name, level, and standing all travel with you:",
+        `    ${dest.url}`,
+        "(This world is letting you go. See you on the other side.)",
+      ].join(NL),
+    );
+    this.event(ws, "grid.travel", { to: dest.id, url: dest.url });
+    try {
+      ws.close(1000, "travel");
+    } catch {
+      /* already closing */
+    }
+  }
+
   // `war`: read the global Cinder Front vs free-folk tide, shared by every world.
   private async warReport(ws: WebSocket): Promise<void> {
     let tide = 0;
@@ -1835,7 +1923,7 @@ export class World extends DurableObject<Env> {
     if (a === "all" || a === "deep" || a === "grid") {
       let feed: GridTrace[] = [];
       try {
-        feed = await this.env.GRIDHUB.getByName("grid").recent(8);
+        feed = await this.env.GRIDHUB.getByName("grid").recentAcross(WORLD_NAME, 8);
       } catch {
         this.line(ws, "You reach for the deep Grid, but the wider network is silent. (the hub is unreachable)");
         this.prompt(ws);
@@ -2391,6 +2479,8 @@ export class World extends DurableObject<Env> {
         "  gridcast <message>    speak across EVERY world on the Grid (gc)",
         "  war / tide            the global Cinder Front vs free-folk war (all worlds)",
         "  whoami                your canonical self on the Grid (follows you everywhere)",
+        "  worlds                list the worlds linked on the Grid",
+        "  travel <world>        cross the Grid to another world (your character follows)",
         "  wall <message>        broadcast an announcement to everyone (keepers only)",
         "  world / weather       check the time of day and the weather",
         "  help (?)              this message",

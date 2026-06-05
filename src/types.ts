@@ -7,6 +7,8 @@ export interface Env {
   GRIDHUB: DurableObjectNamespace<GridHub>;
   /** Comma-separated player names allowed to `wall` (server-wide announcements). */
   ADMINS?: string;
+  /** This world's public WebSocket URL, advertised to the federation registry. */
+  WORLD_URL?: string;
 }
 
 /**
