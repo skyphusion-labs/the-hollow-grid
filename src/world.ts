@@ -618,6 +618,32 @@ export class World extends DurableObject<Env> {
         ws.send(this.who());
         this.prompt(ws);
         break;
+      case "tell":
+        this.tell(ws, s, arg);
+        break;
+      case "reply":
+        this.reply(ws, s, arg);
+        break;
+      case "emote":
+      case "em":
+      case "pose":
+        this.emote(ws, s, arg);
+        break;
+      case "yell":
+      case "shout":
+        this.yell(ws, s, arg);
+        break;
+      case "give":
+        this.give(ws, s, arg);
+        break;
+      case "exits":
+      case "exit":
+        this.exitsView(ws, s);
+        break;
+      case "consider":
+      case "con":
+        this.consider(ws, s, arg);
+        break;
       case "ping":
         this.gridPing(ws, s);
         break;
@@ -1460,6 +1486,149 @@ export class World extends DurableObject<Env> {
     );
   }
 
+  // --- More standard MUD commands: comms, give, exits, consider --------------
+  private socketByName(name: string): WebSocket | null {
+    const lower = name.toLowerCase();
+    for (const ws of this.ctx.getWebSockets()) {
+      const s = ws.deserializeAttachment() as Session | null;
+      if (s?.name && s.name.toLowerCase() === lower) return ws;
+    }
+    return null;
+  }
+
+  // Private cross-room message to one online player.
+  private tell(ws: WebSocket, s: Session, arg: string): void {
+    const sp = arg.indexOf(" ");
+    const who = sp === -1 ? arg.trim() : arg.slice(0, sp);
+    const msg = sp === -1 ? "" : arg.slice(sp + 1).trim();
+    if (!who || !msg) {
+      this.line(ws, "Tell whom what?  (tell <player> <message>)");
+      this.prompt(ws);
+      return;
+    }
+    const target = this.socketByName(who);
+    if (!target || target === ws) {
+      this.line(ws, target === ws ? "Talking to yourself is a bad sign out here." : `No one called "${who}" is online.`);
+      this.prompt(ws);
+      return;
+    }
+    const ts = target.deserializeAttachment() as Session;
+    ts.replyTo = s.name;
+    target.serializeAttachment(ts);
+    this.line(target, `${s.name} tells you, "${msg}"`);
+    this.event(target, "comm.tell", { from: s.name, text: msg });
+    this.prompt(target);
+    this.line(ws, `You tell ${ts.name}, "${msg}"`);
+    this.prompt(ws);
+  }
+
+  private reply(ws: WebSocket, s: Session, arg: string): void {
+    if (!s.replyTo) {
+      this.line(ws, "You have no one to reply to.");
+      this.prompt(ws);
+      return;
+    }
+    this.tell(ws, s, `${s.replyTo} ${arg.trim()}`);
+  }
+
+  // A free-form emote to the room: "Name <action>".
+  private emote(ws: WebSocket, s: Session, arg: string): void {
+    const action = arg.trim();
+    if (!action) {
+      this.line(ws, "Emote what?  (emote <action>, e.g. emote spits in the dust)");
+      this.prompt(ws);
+      return;
+    }
+    this.broadcast(s.room, `${s.name} ${action}`, ws);
+    this.line(ws, `${s.name} ${action}`);
+    this.prompt(ws);
+  }
+
+  // Server-wide PLAYER chat (distinct from the admin `wall`).
+  private yell(ws: WebSocket, s: Session, arg: string): void {
+    const msg = arg.trim();
+    if (!msg) {
+      this.line(ws, "Yell what?  (yell <message>)");
+      this.prompt(ws);
+      return;
+    }
+    for (const sock of this.ctx.getWebSockets()) {
+      const os = sock.deserializeAttachment() as Session | null;
+      if (!os?.name) continue;
+      sock.send(NL + (sock === ws ? `You yell, "${msg}"` : `${s.name} yells, "${msg}"`) + NL + "> ");
+      this.event(sock, "comm.yell", { from: s.name, text: msg });
+    }
+  }
+
+  // Hand an item to another player in the same room.
+  private give(ws: WebSocket, s: Session, arg: string): void {
+    const toks = arg.trim().split(/\s+/).filter(Boolean);
+    if (toks.length < 2) {
+      this.line(ws, "Give what to whom?  (give <item> <player>)");
+      this.prompt(ws);
+      return;
+    }
+    const who = toks[toks.length - 1];
+    let itemToks = toks.slice(0, -1);
+    if (itemToks[itemToks.length - 1]?.toLowerCase() === "to") itemToks = itemToks.slice(0, -1);
+    const itemArg = itemToks.join(" ");
+    const item = this.invItems(s.name).find((id) => itemMatches(id, itemArg));
+    if (!item) {
+      this.line(ws, `You aren't carrying "${itemArg}".`);
+      this.prompt(ws);
+      return;
+    }
+    const target = this.socketByName(who);
+    const ts = target ? (target.deserializeAttachment() as Session | null) : null;
+    if (!target || target === ws || !ts || ts.room !== s.room) {
+      this.line(ws, `There's no one called "${who}" here to give it to.`);
+      this.prompt(ws);
+      return;
+    }
+    this.invRemove(s.name, item, 1);
+    this.invAdd(ts.name, item, 1);
+    const itemName = ITEM_TEMPLATES[item].name;
+    this.line(ws, `You give ${itemName} to ${ts.name}.`);
+    this.prompt(ws);
+    this.line(target, `${s.name} gives you ${itemName}.`);
+    this.prompt(target);
+  }
+
+  private exitsView(ws: WebSocket, s: Session): void {
+    const exits = Object.keys(ROOMS[s.room].exits);
+    this.line(ws, exits.length ? `Exits: ${exits.join(", ")}.` : "There are no obvious exits from here.");
+    this.prompt(ws);
+  }
+
+  // Size up a mob before committing to a fight.
+  private consider(ws: WebSocket, s: Session, arg: string): void {
+    if (!arg.trim()) {
+      this.line(ws, "Consider what?  (consider <mob>)");
+      this.prompt(ws);
+      return;
+    }
+    const mob = this.livingMobsInRoom(s.room).find((m) => this.mobMatches(m.id, arg));
+    if (!mob) {
+      this.line(ws, `There's no "${arg}" here to size up.`);
+      this.prompt(ws);
+      return;
+    }
+    const t = MOB_BY_ID[mob.id];
+    const ratio = (t.maxHp + t.maxDmg * 5) / (s.maxHp + s.level * 10);
+    const verdict =
+      ratio < 0.4
+        ? `You could put ${t.name} down without breaking a sweat.`
+        : ratio < 0.8
+          ? `${cap(t.name)} would give you a tussle, but the odds are yours.`
+          : ratio < 1.2
+            ? `${cap(t.name)} looks like an even match. Bring an antidote.`
+            : ratio < 2
+              ? `${cap(t.name)} would likely gut you. Think twice.`
+              : `Attacking ${t.name} would be a quiet way to die.`;
+    this.line(ws, verdict);
+    this.prompt(ws);
+  }
+
   private help(): string {
     return (
       [
@@ -1467,10 +1636,13 @@ export class World extends DurableObject<Env> {
         "Commands:",
         "  look (l)              describe your surroundings",
         "  north/south/...       move (n s e w ne nw se sw u d, or 'go <dir>')",
+        "  exits                 list the ways out of this room",
         "  attack <mob> (k)      start a fight (resolves every few seconds)",
+        "  consider <mob> (con)  size up a fight before you start it",
         "  flee (f)              break off combat",
         "  get/take <item>       pick something up off the ground",
         "  drop <item>           drop an item",
+        "  give <item> <player>  hand an item to someone in your room",
         "  inventory (inv, i)    list what you're carrying",
         "  use/drink <item>      use an item (antidote, rad-cell, ...)",
         "  examine <item>        look closely at an item",
@@ -1483,6 +1655,9 @@ export class World extends DurableObject<Env> {
         "  talk                  speak to whoever shares your room",
         "  hp / status           show health, level, xp, gold, and standing",
         "  say <message> (')     speak to everyone in the room",
+        "  tell <player> <msg>   private message (reply with 'reply <msg>')",
+        "  yell <message>        shout to everyone online",
+        "  emote <action>        act it out ('emote spits in the dust')",
         "  who                   list survivors online",
         "  ping                  query the dead Grid here for what it remembers",
         "  wall <message>        broadcast an announcement to everyone (keepers only)",

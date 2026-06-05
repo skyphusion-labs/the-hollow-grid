@@ -122,6 +122,19 @@ check(
   "room.info lists the glow-rat in the room",
 );
 
+// Standard info commands: exits and consider.
+let mark = raw.length;
+ws.send("exits");
+await sleep(300);
+check(raw.slice(mark).includes("Exits:"), "exits command lists the ways out");
+mark = raw.length;
+ws.send("consider rat");
+await sleep(300);
+check(
+  /sweat|odds are yours|even match|gut you|quiet way to die|tussle/i.test(raw.slice(mark)),
+  "consider sizes up the mob",
+);
+
 // Critical path: a full fight, asserted entirely on the combat.* channel.
 events.length = 0;
 ws.send("attack rat");
@@ -239,6 +252,55 @@ check(
 
 ADMIN.sock.close();
 OBS.sock.close();
+
+// --- Phase 4: player-to-player comms + give ---
+const P = mkClient();
+await P.open();
+await sleep(300);
+const pName = "alf_" + Math.random().toString(36).slice(2, 6);
+P.send(pName);
+await sleep(500);
+const Q = mkClient();
+await Q.open();
+await sleep(300);
+const qName = "bex_" + Math.random().toString(36).slice(2, 6);
+Q.send(qName);
+await sleep(500);
+
+// tell + reply (private, cross-room)
+P.send(`tell ${qName} you there?`);
+await sleep(400);
+const told = Q.last("comm.tell");
+check(told?.data.from === pName && /you there/i.test(told?.data.text ?? ""), "tell delivers a private message (comm.tell)");
+Q.send("reply loud and clear");
+await sleep(400);
+check(/loud and clear/i.test(P.raw()), "reply answers the last teller");
+
+// yell (global player chat)
+P.send("yell the wastes are restless tonight");
+await sleep(400);
+check(Q.last("comm.yell")?.data.from === pName, "yell reaches everyone online (comm.yell)");
+
+// emote + give, in the same room
+P.send("north"); // nexus -> market
+await sleep(500);
+Q.send("north");
+await sleep(500);
+P.send("emote kicks at the dust");
+await sleep(400);
+check(new RegExp(`${pName} kicks at the dust`).test(Q.raw()), "emote is seen by others in the room");
+
+// P sides with the free folk (gets an elven charm), then hands it to Q.
+P.send("defend");
+await sleep(500);
+P.send(`give charm ${qName}`);
+await sleep(500);
+Q.send("inventory");
+await sleep(400);
+check(/charm/i.test(Q.raw()), "give transfers an item to another player in the room");
+
+P.sock.close();
+Q.sock.close();
 
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nSMOKE TEST PASSED");
 process.exit(failures ? 1 : 0);
