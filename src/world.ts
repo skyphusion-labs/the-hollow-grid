@@ -736,6 +736,14 @@ export class World extends DurableObject<Env> {
       return;
     }
 
+    // Racial ability: the generic `ability`/`trait`, or the race's named verb
+    // (e.g. an elf typing "vanish", a chromed "overclock").
+    const myAbility = raceFor(s.race)?.ability;
+    if (cmd === "ability" || cmd === "trait" || (myAbility && cmd === myAbility.verb)) {
+      await this.useTrait(ws, s);
+      return;
+    }
+
     switch (cmd) {
       case "look":
       case "l":
@@ -1524,6 +1532,118 @@ export class World extends DurableObject<Env> {
     this.prompt(ws);
   }
 
+  // A race's active signature ability (the named verb, or `ability`/`trait`).
+  // Cooldown-gated; conditions that block firing do NOT spend the cooldown.
+  private async useTrait(ws: WebSocket, s: Session): Promise<void> {
+    const race = raceFor(s.race);
+    if (!race) {
+      this.line(ws, "Your kind has no signature trick out here.");
+      this.prompt(ws);
+      return;
+    }
+    const ab = race.ability;
+    const now = Date.now();
+    if (s.traitReadyAt && now < s.traitReadyAt) {
+      this.line(ws, `${ab.name} is still recharging. (${Math.ceil((s.traitReadyAt - now) / 1000)}s)`);
+      this.prompt(ws);
+      return;
+    }
+
+    // Blocking conditions (no cooldown spent).
+    const OUTDOORS = new Set(["dunes", "scorch_road", "roof", "waystation", "checkpoint"]);
+    if (s.race === "chromed" && !s.target) {
+      this.line(ws, "You spin your augments up to a scream, but there's nothing here to dump the charge into.");
+      this.prompt(ws);
+      return;
+    }
+    if (s.race === "dustkin" && !OUTDOORS.has(s.room)) {
+      this.line(ws, "Nothing to forage in here. You need the open wastes under the sky.");
+      this.prompt(ws);
+      return;
+    }
+
+    s.traitReadyAt = now + ab.cooldownMs;
+    let handled = false; // true if a sub-call (killMob) already serialized + prompted
+
+    switch (s.race) {
+      case "human": {
+        const coin = rand(15, 30);
+        s.gold += coin;
+        this.line(ws, `You flash credentials nobody bothers to check. The registry still provides for its own. (+${coin} gold)`);
+        this.commitIdentity(s);
+        break;
+      }
+      case "elf": {
+        if (s.target) {
+          s.target = null;
+          this.event(ws, "combat.end", { result: "vanished" });
+          this.line(ws, "You step between two breaths and are simply gone. The fight loses you.");
+        } else {
+          this.line(ws, "You fold into the dark for a moment, unseen. A hunted people keep the habit even when no one is looking.");
+        }
+        break;
+      }
+      case "revenant": {
+        const heal = Math.min(s.maxHp - s.hp, 8);
+        s.hp += heal;
+        this.line(ws, `You let your mind slip into the dead Grid. It remembers you, and pours a little of its cold life back. (+${heal} HP)`);
+        try {
+          const feed = await this.env.GRID.recentAcross(this.worldName, 3);
+          for (const t of feed) this.line(ws, `  the Grid whispers: ${t.text}`);
+        } catch {
+          /* the deep Grid is silent */
+        }
+        break;
+      }
+      case "ghoul": {
+        const heal = Math.min(s.maxHp - s.hp, Math.ceil(s.maxHp * 0.4));
+        s.hp += heal;
+        this.line(ws, `Your rad-scoured flesh boils and knits itself back together. (+${heal} HP)`);
+        break;
+      }
+      case "chromed": {
+        const mob = this.loadMob(s.target!);
+        const t = mob ? this.mobById[mob.id] : undefined;
+        if (!mob || !t || mob.state === "dead" || mob.room !== s.room) {
+          this.line(ws, "Your target is already gone; the surge earths out into the dirt.");
+          break;
+        }
+        const burst = rand(12, 20) + (s.level - 1) * 2;
+        const mobHp = Math.max(0, mob.hp - burst);
+        this.ctx.storage.sql.exec("UPDATE mobs SET hp = ? WHERE id = ?", mobHp, mob.id);
+        this.line(ws, `You vent your augments past every safety and slam ${t.name} for ${burst}! (${mobHp}/${mob.max_hp})`);
+        if (mobHp <= 0) {
+          this.killMob(ws, s, mob, t); // serializes + prompts
+          handled = true;
+        }
+        break;
+      }
+      case "dustkin": {
+        const item = Math.random() < 0.5 ? "radcell" : this.starter === "machete" ? "waterskin" : "plating";
+        this.invAdd(s.name, item, 1);
+        this.line(ws, `You read the ground the way only the pan-born can, and turn up ${ITEM_TEMPLATES[item].name}.`);
+        break;
+      }
+      case "vatborn": {
+        this.invAdd(s.name, "radcell", 1);
+        this.line(ws, `Your fabricator-scars itch and extrude a crude field stim: ${ITEM_TEMPLATES["radcell"].name}.`);
+        break;
+      }
+      default: {
+        this.line(ws, "Your kind has no signature trick out here.");
+        s.traitReadyAt = undefined; // unknown race: don't strand a cooldown
+        break;
+      }
+    }
+
+    if (!handled) {
+      ws.serializeAttachment(s);
+      this.persistPlayer(s);
+      this.emitVitals(ws, s);
+      this.prompt(ws);
+    }
+  }
+
   // Brand a character ash-sworn: the permanent mark of an elf who joined the
   // Cinder Front, the federation's kapo. Mechanics only; the caller supplies the
   // scene. Heavier than any other collaboration on the board, and it never clears,
@@ -1928,16 +2048,20 @@ export class World extends DurableObject<Env> {
       this.line(ws, "(the Grid is unreachable; showing your local self)");
     }
     const standing = sheet.faction === "front" ? "Cinder Front" : sheet.faction === "ally" ? "Free Folk ally" : "unaligned";
-    const raceName = raceFor(sheet.race)?.name ?? (sheet.race ? cap(sheet.race) : "unchosen");
+    const myRace = raceFor(sheet.race);
+    const raceName = myRace?.name ?? (sheet.race ? cap(sheet.race) : "unchosen");
     this.line(
       ws,
       [
         `You are ${s.name}${sheet.title ? ", " + sheet.title : ""} -- known across the Grid.`,
         `  ${raceName}${sheet.ashsworn ? ", ASH-SWORN (branded by the Cinder Front)" : ""}`,
+        myRace ? `  ability: ${myRace.ability.name} -- ${myRace.ability.desc}  (use 'ability' or '${myRace.ability.verb}')` : "",
         `  level ${sheet.level}   xp ${sheet.xp}   gold ${sheet.gold}`,
         `  standing: ${standing}   (morality ${sheet.morality})`,
         "  This identity is canonical on the Grid; it follows you to every world.",
-      ].join(NL),
+      ]
+        .filter(Boolean)
+        .join(NL),
     );
     this.event(ws, "char.identity", sheet);
     this.prompt(ws);
@@ -2673,6 +2797,7 @@ export class World extends DurableObject<Env> {
         "  gridcast <message>    speak across EVERY world on the Grid (gc)",
         "  war / tide            the global Cinder Front vs free-folk war (all worlds)",
         "  whoami                your canonical self on the Grid (follows you everywhere)",
+        "  ability (trait)       use your race's signature ability (whoami names it)",
         "  worlds                list the worlds linked on the Grid",
         "  travel <world>        cross the Grid to another world (your character follows)",
         "  wall <message>        broadcast an announcement to everyone (keepers only)",

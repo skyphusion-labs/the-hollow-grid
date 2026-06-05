@@ -111,6 +111,18 @@ check(
   `fresh character starts clean (addiction=${aff?.data.addiction}, faction=${JSON.stringify(aff?.data.faction)})`,
 );
 
+// Racial active ability: this character is Human, whose ability (Requisition)
+// pays out gold. It fires, then respects its cooldown on an immediate reuse.
+const goldBefore = vit?.data.gold ?? 0;
+ws.send("ability");
+await sleep(500);
+const goldAfter = last("char.vitals")?.data.gold ?? 0;
+check(goldAfter > goldBefore, `a racial ability fires (Requisition: gold ${goldBefore} -> ${goldAfter})`);
+const cdMark = raw.length;
+ws.send("ability"); // immediate reuse
+await sleep(400);
+check(/recharging/i.test(raw.slice(cdMark)), "a racial ability respects its cooldown");
+
 // Self-documenting onboarding: a new player must be pointed at help, not left
 // to guess (the anti-hidden-gate lesson).
 check(/\bhelp\b/i.test(raw), "new-player welcome points to the help command");

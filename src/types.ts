@@ -67,6 +67,8 @@ export interface Session {
   replyTo?: string;
   /** body position: standing (default) | sitting | resting | sleeping (in-memory) */
   position?: string;
+  /** when the racial ability is next usable, epoch ms (in-memory; resets on relogin) */
+  traitReadyAt?: number;
   /** a custom title shown after the player's name (persisted) */
   title?: string;
 }
