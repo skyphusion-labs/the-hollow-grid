@@ -14,6 +14,12 @@ export interface Env {
   ADMINS?: string;
   /** This world's public WebSocket URL, advertised to the federation registry. */
   WORLD_URL?: string;
+  /**
+   * This world's name on the federation (defaults to "The Hollow Grid"). Set it
+   * per deployment so the same code can run as two distinct worlds on one Grid,
+   * each registering under its own name. (See world.ts worldName.)
+   */
+  WORLD_NAME?: string;
 }
 
 /**

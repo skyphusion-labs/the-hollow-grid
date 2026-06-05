@@ -1,0 +1,31 @@
+{
+  // A SECOND world on the same Grid. It runs the exact same code as the primary
+  // world (../src/index.ts); only its federation identity differs. Both bind the
+  // same grid-hub backend, so they share the ledger, tide, identity, and travel
+  // -- this is the cross-deployment federation made real, not seeded stubs.
+  // (See docs/federation.md and src/world.ts worldName.)
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "dustfall",
+  "main": "../src/index.ts",
+  "compatibility_date": "2026-06-04",
+  "observability": {
+    "enabled": true
+  },
+  // Pin a port so clients (and smoke.mjs) can reach this world deterministically
+  // alongside the primary world on 8787. A distinct inspector_port is required
+  // too: this runs as its own wrangler process, and the default 9229 would clash
+  // with the primary world's debugger port. (See scripts/dev.sh.)
+  "dev": { "port": 8788, "inspector_port": 9230 },
+  "vars": {
+    "ADMINS": "skyphusion",
+    "WORLD_NAME": "Dustfall",
+    "WORLD_URL": "ws://localhost:8788/ws"
+  },
+  // Its own Durable Object namespace (own SQLite, own local rooms/mobs/players);
+  // only the federated state lives in the shared hub.
+  "durable_objects": {
+    "bindings": [{ "name": "WORLD", "class_name": "World" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["World"] }],
+  "services": [{ "binding": "GRID", "service": "grid-hub", "entrypoint": "GridHubService" }]
+}

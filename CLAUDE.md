@@ -8,12 +8,15 @@ A text MUD ("The Hollow Grid") that runs entirely on Cloudflare Workers + Durabl
 
 ```bash
 npm install
-npm run dev         # wrangler dev: local server on http://localhost:8787 (DO + SQLite run locally)
+npm run dev         # the whole federation: primary world :8787 + Dustfall :8788 + one shared hub
+npm run dev:solo    # just the primary world + hub on :8787 (single-world hacking)
 npm run typecheck   # tsc --noEmit: the CI gate; run before pushing (no other compile step)
-npm run deploy      # wrangler deploy
+npm run deploy      # wrangler deploy (hub, then primary world, then Dustfall)
 ```
 
-Connect locally with `wscat -c ws://localhost:8787/ws`.
+`npm run dev` runs two worlds as two `wrangler dev` processes (only the first config of a multi-config invocation gets a served port), both binding the one `grid-hub` via wrangler's local dev registry. This mirrors two separate production deployments sharing one backend. See `scripts/dev.sh` and `docs/federation.md`.
+
+Connect locally with `wscat -c ws://localhost:8787/ws` (primary) or `:8788` (Dustfall).
 
 ### Verifying changes (this is the project's test method)
 

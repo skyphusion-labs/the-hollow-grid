@@ -144,11 +144,39 @@ so it's the highest-magic, lowest-risk first step. It also makes the federation
 ## 9. Phased build
 
 1. **Shared Grid ledger** — Hub/D1 + `recordGridTrace`/`queryGrid`, `ping --all`.
-   Cross-world memory. No trust needed. (The cheap magic.)
-2. **Cross-world comms + global tide** — `gridcast` + `factionTally`. Hub fan-out.
+   Cross-world memory. No trust needed. (The cheap magic.) DONE.
+2. **Cross-world comms + global tide** — `gridcast` + `factionTally`. Hub fan-out. DONE.
 3. **Shared identity** — accounts + canonical character sheet in D1; worlds
-   lease/commit progression. (The trust boundary; the big one.)
-4. **Player travel** — gateways + account-follows-you.
+   lease/commit progression. (The trust boundary; the big one.) DONE.
+4. **Player travel** — gateways + account-follows-you. DONE.
+5. **A second, real world on the Grid** — the federation, proven across an actual
+   deployment boundary rather than seeded stubs. The world's name is now per
+   deployment (the `WORLD_NAME` var; see `src/world.ts` `worldName`), so the same
+   code runs as two distinct worlds. `worlds/dustfall.jsonc` is that second world:
+   same code, its own name/url/Durable Object namespace, binding the same
+   `grid-hub`. Two worlds, one Grid; identity, tide, ledger, and `travel` all
+   cross between them. Proven by smoke phase 12. DONE.
+
+## 9a. Running the federation locally
+
+`wrangler dev` serves only the FIRST config of a multi-config invocation on a
+port; the rest are auxiliary (reachable via service bindings, not their own
+port). Two worlds both need to accept player connections, so each runs as its
+own `wrangler dev` process, while the hub runs once and both worlds bind it
+through wrangler's local dev registry (`env.GRID ... [connected]`). That is the
+same shape as two separate production deployments binding one backend Worker.
+
+- `npm run dev` — the whole federation: primary world on `:8787`, Dustfall on
+  `:8788`, one shared hub. (See `scripts/dev.sh`.) Dustfall sets a distinct
+  `inspector_port` so its debugger doesn't clash with the primary's default 9229.
+- `npm run dev:solo` — just the primary world + hub (single-world hacking).
+- `npm run smoke` — phase 12 brings up a client against the real `:8788` world and
+  asserts cross-deployment identity, a shared tide, live registration, and travel
+  handoff. If the second world isn't running it SKIPs those (federation never
+  blocks single-world play) rather than failing.
+- `npm run deploy` — ships the hub, then the primary world, then Dustfall as three
+  separate Workers. For a real deploy, set each world's `WORLD_URL` to its
+  deployed hostname (the configs default to localhost for dev).
 
 ## 10. The honest caveats
 

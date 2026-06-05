@@ -7,8 +7,11 @@ import type { GridTrace, GridCast, CharSheet, WorldInfo } from "../shared/grid";
 
 const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 
-// This world's name on the federation. Identifies our traces in the shared Grid.
-const WORLD_NAME = "The Hollow Grid";
+// This world's name on the federation defaults here but is overridable per
+// deployment via the WORLD_NAME var (see this.worldName). That is what lets the
+// same code run as two distinct worlds on one Grid: each registers under its own
+// name and url, so neither clobbers the other's registry entry.
+const DEFAULT_WORLD_NAME = "The Hollow Grid";
 
 const ROUND_MS = 3_000; // combat + poison resolve one tick every 3 seconds
 const BASE_HP = 30;
@@ -98,8 +101,13 @@ const WORKSHOP_WARES: { item: string; price: number }[] = [
  * items) lives in SQLite, so ticks still work after the DO is evicted.
  */
 export class World extends DurableObject<Env> {
+  // This deployment's federation identity. Set once from the env so two Workers
+  // running this same code register as distinct worlds on the shared Grid.
+  private readonly worldName: string;
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    this.worldName = env.WORLD_NAME?.trim() || DEFAULT_WORLD_NAME;
     ctx.blockConcurrencyWhile(async () => {
       const sql = this.ctx.storage.sql;
 
@@ -588,7 +596,7 @@ export class World extends DurableObject<Env> {
       // waitUntil so the RPC survives this handler returning -- across the service
       // binding a bare fire-and-forget can be cancelled before it lands.
       this.ctx.waitUntil(
-        this.env.GRID.register(WORLD_NAME, this.env.WORLD_URL ?? "ws://localhost:8787/ws").catch(() => {}),
+        this.env.GRID.register(this.worldName, this.env.WORLD_URL ?? "ws://localhost:8787/ws").catch(() => {}),
       );
     } catch {
       /* hub unreachable; the local character stands on its own */
@@ -1698,7 +1706,7 @@ export class World extends DurableObject<Env> {
       // waitUntil keeps this best-effort mirror alive past the current handler
       // without blocking play; across the service binding an un-tracked promise
       // can be cancelled before the trace reaches the hub.
-      this.ctx.waitUntil(this.env.GRID.record(WORLD_NAME, node, kind, text, Date.now()).catch(() => {}));
+      this.ctx.waitUntil(this.env.GRID.record(this.worldName, node, kind, text, Date.now()).catch(() => {}));
     } catch {
       /* hub binding unavailable; local play is unaffected */
     }
@@ -1773,11 +1781,11 @@ export class World extends DurableObject<Env> {
     const lines = ["Worlds linked on the Grid (say 'travel <world>'):"];
     for (const w of worlds) {
       const live = w.last_seen > now - 60_000 ? "live" : "quiet";
-      lines.push(`  ${w.id}  [${live}]${w.id === WORLD_NAME ? "   <- you are here" : ""}`);
+      lines.push(`  ${w.id}  [${live}]${w.id === this.worldName ? "   <- you are here" : ""}`);
     }
     this.line(ws, lines.join(NL));
     this.event(ws, "grid.worlds", {
-      worlds: worlds.map((w) => ({ id: w.id, live: w.last_seen > now - 60_000, here: w.id === WORLD_NAME })),
+      worlds: worlds.map((w) => ({ id: w.id, live: w.last_seen > now - 60_000, here: w.id === this.worldName })),
     });
     this.prompt(ws);
   }
@@ -1812,8 +1820,8 @@ export class World extends DurableObject<Env> {
       this.prompt(ws);
       return;
     }
-    if (dest.id === WORLD_NAME) {
-      this.line(ws, `You're already in ${WORLD_NAME}.`);
+    if (dest.id === this.worldName) {
+      this.line(ws, `You're already in ${this.worldName}.`);
       this.prompt(ws);
       return;
     }
@@ -1876,7 +1884,7 @@ export class World extends DurableObject<Env> {
       // returns -- so the cast must land before we move on, or the relay never
       // sees it. (As an in-Worker DO call this raced by; across the boundary it
       // doesn't.)
-      await this.env.GRID.gridcast(WORLD_NAME, s.name, msg);
+      await this.env.GRID.gridcast(this.worldName, s.name, msg);
     } catch {
       this.line(ws, "The Grid swallows your words; the network is unreachable.");
       this.prompt(ws);
@@ -1933,7 +1941,7 @@ export class World extends DurableObject<Env> {
     if (a === "all" || a === "deep" || a === "grid") {
       let feed: GridTrace[] = [];
       try {
-        feed = await this.env.GRID.recentAcross(WORLD_NAME, 8);
+        feed = await this.env.GRID.recentAcross(this.worldName, 8);
       } catch {
         this.line(ws, "You reach for the deep Grid, but the wider network is silent. (the hub is unreachable)");
         this.prompt(ws);
