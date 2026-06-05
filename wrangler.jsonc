@@ -13,8 +13,15 @@
     // A second world (worlds/dustfall.jsonc) runs this same code under its own
     // name and url, joining the same Grid. (See docs/federation.md.)
     "WORLD_NAME": "The Hollow Grid",
-    "WORLD_URL": "ws://localhost:8787/ws"
+    // The PRODUCTION address this world advertises to the federation registry.
+    // Local dev overrides this back to ws://localhost:8787/ws (see scripts/dev.sh
+    // and the dev:solo script) so travel handoff works against the dev ports.
+    "WORLD_URL": "wss://hollow.skyphusion.org/ws"
   },
+  // Bind this world to its public hostname. custom_domain has wrangler create the
+  // DNS record + TLS cert in the skyphusion.org zone on deploy. Players connect to
+  // wss://hollow.skyphusion.org/ws.
+  "routes": [{ "pattern": "hollow.skyphusion.org", "custom_domain": true }],
   "durable_objects": {
     "bindings": [{ "name": "WORLD", "class_name": "World" }]
   },
