@@ -101,6 +101,15 @@ check(
 // to guess (the anti-hidden-gate lesson).
 check(/\bhelp\b/i.test(raw), "new-player welcome points to the help command");
 
+// The living world: it hands you the current sky on login...
+const w0 = last("world.state");
+check(!!w0, "login emits a world.state event");
+check(
+  typeof w0?.data.phase === "string" && typeof w0?.data.weather === "string",
+  `world.state carries time of day + weather (phase=${JSON.stringify(w0?.data.phase)})`,
+);
+const worldTick0 = w0?.data.tick ?? -1;
+
 // Move into a mob room and confirm the structured room graph tracks us.
 events.length = 0;
 ws.send("down"); // nexus -> tunnels, where the glow-rat lives
@@ -133,6 +142,17 @@ const finalVit = last("char.vitals");
 check(finalVit?.data.inCombat === false, "vitals show inCombat=false after the fight");
 // The death-floor lesson, observed: the player survives a starter mob easily.
 check(finalVit?.data.hp > 0, `player survived the glow-rat (hp=${finalVit?.data.hp})`);
+
+// ...and the clock advanced on its own while we were busy fighting (the alarm
+// heartbeat turns the world even between our actions).
+events.length = 0;
+ws.send("world");
+await sleep(500);
+const w1 = last("world.state");
+check(
+  (w1?.data.tick ?? 0) > worldTick0,
+  `the world turned on its own (tick ${worldTick0} -> ${w1?.data.tick ?? "?"})`,
+);
 
 // The Grid remembers: ping the node where we just killed and hear it echoed back.
 events.length = 0;

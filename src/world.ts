@@ -10,6 +10,30 @@ const ROUND_MS = 3_000; // combat + poison resolve one tick every 3 seconds
 const BASE_HP = 30;
 const POISON_DMG = 1; // hp lost per tick while poisoned
 
+// The living world advances on the same ~3s alarm tick. These are how many
+// ticks pass between each kind of change (kept slow enough to feel like weather,
+// not a strobe light): a full day is ~PHASE_TICKS*4 ticks.
+const PHASE_TICKS = 20; // day -> dusk -> night -> dawn, each ~1 minute
+const WEATHER_TICKS = 9; // roll for a weather change ~every 27s
+const TIDE_TICKS = 24; // the faction tide drifts ~every 72s
+const GHOST_TICKS = 4; // the Grid-ghost drifts a room ~every 12s
+
+const PHASES = ["dawn", "day", "dusk", "night"] as const;
+const PHASE_LINE: Record<string, string> = {
+  dawn: "A bruised light bleeds over the ridge. Dawn, such as it is.",
+  day: "The sun clears the wreckage. Day settles, white and pitiless.",
+  dusk: "The light goes long and red. Dusk creeps in from the east.",
+  night: "The sun dies behind the ridge and the wastes go cold and blue. Night.",
+};
+const WEATHERS = ["clear", "a haze of grid-static", "acid drizzle", "a dust storm", "an unnatural stillness"];
+const WEATHER_LINE: Record<string, string> = {
+  clear: "The air clears. For once you can see to the horizon.",
+  "a haze of grid-static": "A haze of grid-static rolls in, prickling your skin and your HUD alike.",
+  "acid drizzle": "Acid drizzle begins to fall, hissing where it lands.",
+  "a dust storm": "A dust storm boils up out of the flats; the world narrows to arm's length.",
+  "an unnatural stillness": "The wind dies completely. An unnatural stillness settles, and the Grid seems to hold its breath.",
+};
+
 type MobRow = {
   id: string;
   room: string;
@@ -124,6 +148,20 @@ export class World extends DurableObject<Env> {
           text TEXT NOT NULL
         )
       `);
+
+      // The living world: a single-row clock the alarm advances while anyone is
+      // online -- time of day, weather, the faction tide, and a wandering ghost.
+      sql.exec(`
+        CREATE TABLE IF NOT EXISTS world (
+          id INTEGER PRIMARY KEY,
+          tick INTEGER NOT NULL DEFAULT 0,
+          phase TEXT NOT NULL DEFAULT 'day',
+          weather TEXT NOT NULL DEFAULT 'clear',
+          tide INTEGER NOT NULL DEFAULT 0,
+          ghost_room TEXT NOT NULL DEFAULT '${START_ROOM}'
+        )
+      `);
+      sql.exec("INSERT OR IGNORE INTO world (id) VALUES (0)");
     });
   }
 
@@ -232,6 +270,9 @@ export class World extends DurableObject<Env> {
       if (s?.name && s.target) this.resolveRound(ws, s);
     }
 
+    // 4) Advance the living world (time of day, weather, faction tide, ghost).
+    this.worldTick();
+
     await this.scheduleNextTick();
   }
 
@@ -240,13 +281,14 @@ export class World extends DurableObject<Env> {
     const now = Date.now();
     let next = Infinity;
 
-    const busy = this.ctx
-      .getWebSockets()
-      .some((ws) => {
-        const s = ws.deserializeAttachment() as Session | null;
-        return !!s && (!!s.target || s.poisoned);
-      });
-    if (busy) next = Math.min(next, now + ROUND_MS);
+    // Beat every tick while ANYONE is online, so the living world keeps turning
+    // for them (combat/poison alone aren't required); the alarm stops and the DO
+    // hibernates once the last player disconnects.
+    const anyoneOnline = this.ctx.getWebSockets().some((ws) => {
+      const s = ws.deserializeAttachment() as Session | null;
+      return !!s && s.name.length > 0;
+    });
+    if (anyoneOnline) next = Math.min(next, now + ROUND_MS);
 
     const soonest = this.ctx.storage.sql
       .exec<{ t: number | null }>("SELECT MIN(respawn_at) AS t FROM mobs WHERE state = 'dead'")
@@ -463,9 +505,12 @@ export class World extends DurableObject<Env> {
     }
     this.broadcast(room, `${name} steps out of the haze.`, ws);
     this.sendRoom(ws, session);
+    this.emitWorldState(ws);
     if (session.poisoned) this.line(ws, "The old venom still burns in you. (poisoned)");
     this.prompt(ws);
-    if (session.poisoned) void this.scheduleNextTick();
+    // Start the world heartbeat for this session (it keeps the alarm beating
+    // so the living world turns; it stops when the last player leaves).
+    void this.scheduleNextTick();
   }
 
   // ---- command handling ----------------------------------------------------
@@ -580,6 +625,15 @@ export class World extends DurableObject<Env> {
       case "announce":
         this.wall(ws, s, arg);
         break;
+      case "world":
+      case "weather":
+      case "time": {
+        const w = this.world();
+        this.line(ws, `The sky: ${w.phase}, ${w.weather}.`);
+        this.emitWorldState(ws);
+        this.prompt(ws);
+        break;
+      }
       case "help":
       case "?":
         ws.send(this.help());
@@ -1090,6 +1144,9 @@ export class World extends DurableObject<Env> {
     const exits = Object.keys(room.exits);
     lines.push(exits.length ? `Exits: ${exits.join(", ")}.` : "There are no obvious exits.");
 
+    const w = this.world();
+    lines.push(`The sky: ${w.phase}, ${w.weather}.`);
+
     if (s.room === HOLDING_PIT) {
       const warden = this.loadMob(WARDEN_ID);
       lines.push(
@@ -1284,6 +1341,105 @@ export class World extends DurableObject<Env> {
     }
   }
 
+  // --- The living world: time, weather, tide, and a wandering ghost ----------
+  private world(): { tick: number; phase: string; weather: string; tide: number; ghost_room: string } {
+    return (
+      this.ctx.storage.sql
+        .exec<{ tick: number; phase: string; weather: string; tide: number; ghost_room: string }>(
+          "SELECT tick, phase, weather, tide, ghost_room FROM world WHERE id = 0",
+        )
+        .toArray()[0] ?? { tick: 0, phase: "day", weather: "clear", tide: 0, ghost_room: START_ROOM }
+    );
+  }
+
+  // Ambient broadcast to every player, wherever they are (for world events).
+  private worldBroadcast(text: string): void {
+    for (const ws of this.ctx.getWebSockets()) {
+      const s = ws.deserializeAttachment() as Session | null;
+      if (s?.name) ws.send(NL + text + NL + "> ");
+    }
+  }
+
+  private emitWorldState(ws: WebSocket): void {
+    const w = this.world();
+    this.event(ws, "world.state", { tick: w.tick, phase: w.phase, weather: w.weather, tide: w.tide });
+  }
+
+  private emitWorldStateAll(): void {
+    for (const ws of this.ctx.getWebSockets()) {
+      const s = ws.deserializeAttachment() as Session | null;
+      if (s?.name) this.emitWorldState(ws);
+    }
+  }
+
+  // Advance the world one tick (called from the alarm). Each change is announced
+  // to everyone online and re-emitted on the structured channel, so the world
+  // visibly turns without anyone touching it.
+  private worldTick(): void {
+    const w = this.world();
+    const tick = w.tick + 1;
+    let { phase, weather, tide, ghost_room } = w;
+    let changed = false;
+
+    if (tick % PHASE_TICKS === 0) {
+      const idx = (PHASES as readonly string[]).indexOf(phase);
+      phase = PHASES[(idx + 1) % PHASES.length];
+      this.worldBroadcast(PHASE_LINE[phase]);
+      changed = true;
+    }
+
+    if (tick % WEATHER_TICKS === 0) {
+      const next = WEATHERS[Math.floor(Math.random() * WEATHERS.length)];
+      if (next !== weather) {
+        weather = next;
+        this.worldBroadcast(WEATHER_LINE[weather]);
+        changed = true;
+      }
+    }
+
+    if (tick % TIDE_TICKS === 0) {
+      const band = (v: number) => (v <= -50 ? -1 : v >= 50 ? 1 : 0);
+      const before = band(tide);
+      tide = Math.max(-100, Math.min(100, tide + (Math.random() < 0.5 ? -10 : 10)));
+      if (band(tide) !== before) {
+        this.worldBroadcast(
+          band(tide) < 0
+            ? "Word spreads on the wind: the Cinder Front is ascendant in the wastes."
+            : band(tide) > 0
+              ? "Word spreads on the wind: the free folk are gaining ground against the Front."
+              : "The struggle for the wastes settles back into uneasy balance.",
+        );
+        changed = true;
+      }
+    }
+
+    if (tick % GHOST_TICKS === 0) {
+      ghost_room = this.driftGhost(ghost_room);
+    }
+
+    this.ctx.storage.sql.exec(
+      "UPDATE world SET tick = ?, phase = ?, weather = ?, tide = ?, ghost_room = ? WHERE id = 0",
+      tick,
+      phase,
+      weather,
+      tide,
+      ghost_room,
+    );
+
+    if (changed) this.emitWorldStateAll();
+  }
+
+  // The Grid-ghost drifts one room along an exit, haunting whoever's there and
+  // leaving a trace -- the dead network's wanderer (ties the living world to #3).
+  private driftGhost(from: string): string {
+    const exits = Object.values(ROOMS[from]?.exits ?? {});
+    if (exits.length === 0) return START_ROOM;
+    const to = exits[Math.floor(Math.random() * exits.length)];
+    this.broadcast(to, "A Grid-ghost flickers through, trailing dead static, and is gone.");
+    this.recordTrace(to, "ghost", "A Grid-ghost drifted through here.");
+    return to;
+  }
+
   private inventoryView(s: Session): string {
     const rows = this.ctx.storage.sql
       .exec<{ item: string; qty: number }>("SELECT item, qty FROM inventory WHERE player = ?", s.name)
@@ -1330,6 +1486,7 @@ export class World extends DurableObject<Env> {
         "  who                   list survivors online",
         "  ping                  query the dead Grid here for what it remembers",
         "  wall <message>        broadcast an announcement to everyone (keepers only)",
+        "  world / weather       check the time of day and the weather",
         "  help (?)              this message",
         "  quit                  disconnect",
       ].join(NL) + NL
