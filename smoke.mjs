@@ -435,5 +435,48 @@ await sleep(400);
 check(/helm/i.test(G.raw().slice(gmark)), "the purchased gear lands in inventory");
 G.sock.close();
 
+// --- Phase 8: the Cinder Front Stronghold (endgame zone) ---
+const F = mkClient();
+await F.open();
+await sleep(300);
+F.send("ftest_" + Math.random().toString(36).slice(2, 6));
+await sleep(500);
+// Walk out to the stronghold: nexus -> workshop -> roof -> dunes -> checkpoint -> gate
+for (const dir of ["east", "up", "north", "north", "north"]) {
+  F.send(dir);
+  await sleep(450);
+}
+check(F.last("room.info")?.data.id === "gate", "the Cinder Front stronghold is reachable (north past the checkpoint)");
+
+F.send("north"); // gate -> muster yard
+await sleep(500);
+const mu = F.last("room.info");
+check(mu?.data.id === "muster", "the gate opens into the muster yard");
+check(Array.isArray(mu?.data.mobs) && mu.data.mobs.some((m) => m.id === "trooper"), "Front troopers garrison the yard");
+
+F.send("west"); // muster -> the cages
+await sleep(500);
+let fmark = F.raw().length;
+F.send("free");
+await sleep(400);
+check(/refugees pour out|throws open/i.test(F.raw().slice(fmark)), "you can free the caged refugees in the stronghold");
+
+F.send("east"); // back to muster
+await sleep(400);
+F.send("north"); // -> war room
+await sleep(450);
+F.send("up"); // -> the Ashmonger's dais
+await sleep(500);
+const da = F.last("room.info");
+check(
+  da?.data.id === "dais" && da.data.mobs.some((m) => m.id === "ashmonger"),
+  "the Ashmonger commands the dais (the endgame boss)",
+);
+fmark = F.raw().length;
+F.send("talk");
+await sleep(400);
+check(/pledge|ashmonger|front/i.test(F.raw().slice(fmark)), "the Ashmonger answers when you face him");
+F.sock.close();
+
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nSMOKE TEST PASSED");
 process.exit(failures ? 1 : 0);

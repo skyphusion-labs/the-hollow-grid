@@ -102,6 +102,16 @@ export const ITEM_TEMPLATES: Record<string, ItemTemplate> = {
       "A sliver of black crystal lattice, warm and faintly humming. A whole node's " +
       "worth of the dead Grid, somehow still holding a charge. The operator wants this.",
   },
+  cleaver: {
+    id: "cleaver",
+    name: "the Ashmonger's cleaver",
+    desc:
+      "A brutal slab of a blade ground from a road-grader and stained dark with use. It was " +
+      "the Front commander's pride. Now it's salvage like everything else.",
+    value: 60,
+    slot: "weapon",
+    damage: 9,
+  },
 };
 
 export function itemMatches(id: string, arg: string): boolean {

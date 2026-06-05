@@ -431,6 +431,10 @@ export class World extends DurableObject<Env> {
     this.line(ws, `You have slain ${t.name}!  (+${t.xp} xp)`);
     this.broadcast(mob.room, `${s.name} has slain ${t.name}.`, ws);
     this.recordTrace(mob.room, "slain", `${s.name} slew ${t.name} here.`);
+    if (mob.id === "ashmonger") {
+      s.morality += 20;
+      this.worldBroadcast("Word races across the wastes: the Ashmonger is dead. The Cinder Front's heart is broken.");
+    }
 
     // Roll loot onto the ground.
     for (const drop of t.loot ?? []) {
@@ -983,6 +987,22 @@ export class World extends DurableObject<Env> {
   // ---- the maiden / quest --------------------------------------------------
 
   private freeMaiden(ws: WebSocket, s: Session): void {
+    if (s.room === "cells") {
+      s.morality += 15;
+      ws.serializeAttachment(s);
+      this.persistPlayer(s);
+      this.emitAffects(ws, s);
+      this.line(
+        ws,
+        "You wrench the cages open. The refugees pour out and scatter into the dark, some pausing only to " +
+          "grip your hand on the way past. Whatever else you are, whatever else you've done -- you did this.",
+      );
+      this.broadcast(s.room, `${s.name} throws open the Front's cages!`, ws);
+      this.recordTrace(s.room, "quest", `${this.tagged(s)} freed the caged refugees here.`);
+      this.prompt(ws);
+      return;
+    }
+
     if (s.room !== HOLDING_PIT) {
       this.line(ws, "There's no one here to free.");
       this.prompt(ws);
@@ -1121,6 +1141,18 @@ export class World extends DurableObject<Env> {
         this.line(ws, 'A refugee spits at your feet. "Cinder Front. We know what you are. Get gone, before we make you." There is no help for you here.');
       } else {
         this.line(ws, 'The medic studies you. "We tend friends of the free folk. Pick a side, wanderer, and we will see."');
+      }
+      this.prompt(ws);
+      return;
+    }
+
+    if (s.room === "dais") {
+      if (s.faction === "ally") {
+        this.line(ws, 'The Ashmonger laughs, low and delighted. "The elf-lover walked right into my house. Bold. I am going to wear you as a banner." There is no talking your way out of this -- only steel.');
+      } else if (s.faction === "front") {
+        this.line(ws, 'The Ashmonger claps a heavy hand on your shoulder. "You came far for the cause. Kneel and take your place at my right hand -- or find your spine and \'defy\' me, here and now. Choose what you are."');
+      } else {
+        this.line(ws, 'The Ashmonger spits. "Pledge to the Front or get off my dais. I have no patience for fence-sitters."');
       }
       this.prompt(ws);
       return;
@@ -1341,6 +1373,37 @@ export class World extends DurableObject<Env> {
   }
 
   private factionChoice(ws: WebSocket, s: Session, side: "front" | "ally"): void {
+    // The faction arc's climax: at the Ashmonger's dais you can turn on the
+    // Front (defect to the free folk) or, if unaligned, pledge yourself to it.
+    if (s.room === "dais") {
+      if (side === "ally" && s.faction === "front") {
+        s.faction = "ally";
+        s.morality += 30;
+        ws.serializeAttachment(s);
+        this.persistPlayer(s);
+        this.emitAffects(ws, s);
+        this.recordTrace(s.room, "oath", `${s.name} turned on the Cinder Front at the Ashmonger's own dais.`);
+        this.line(
+          ws,
+          'You spit at the Ashmonger\'s boots. "I\'m done being your dog." Every soldier in the stronghold turns on you at once' +
+            " -- but you stand with the free folk now, and the wastes will remember THIS above all.",
+        );
+        this.broadcast(s.room, `${s.name} has turned against the Cinder Front!`, ws);
+      } else if (side === "front" && s.faction === "none") {
+        s.faction = "front";
+        s.morality -= 25;
+        ws.serializeAttachment(s);
+        this.persistPlayer(s);
+        this.emitAffects(ws, s);
+        this.recordTrace(s.room, "oath", `${s.name} swore themselves to the Cinder Front at the Ashmonger's dais.`);
+        this.line(ws, 'You kneel and swear yourself to the Front. The Ashmonger\'s hand closes on your shoulder like a trap. "Good. The wastes will be ours."');
+      } else {
+        this.line(ws, "The Ashmonger only laughs. There's nothing here to decide that your blood hasn't already settled.");
+      }
+      this.prompt(ws);
+      return;
+    }
+
     if (s.room !== MARKET) {
       this.line(ws, "There's no rally here to weigh in on.");
       this.prompt(ws);
@@ -1441,6 +1504,26 @@ export class World extends DurableObject<Env> {
         lines.push("The refugees brighten at a friend's face; the medic waves you over. (try 'talk')");
       } else {
         lines.push("The medic watches you cautiously, one hand near the triage kit. (try 'talk')");
+      }
+    }
+
+    if (s.room === "gate" || s.room === "muster") {
+      if (s.faction === "front") {
+        lines.push("Troopers snap to attention as you pass -- one of the cause.");
+      } else if (s.faction === "ally") {
+        lines.push("Every trooper here would gut you on sight. You are deep in enemy ground.");
+      } else {
+        lines.push("Troopers track you, hands on their weapons, deciding whether you belong.");
+      }
+    }
+
+    if (s.room === "dais") {
+      if (s.faction === "ally") {
+        lines.push("The Ashmonger's eyes find you and narrow -- he knows exactly whose side you're on. (try 'talk', then steel)");
+      } else if (s.faction === "front") {
+        lines.push("The Ashmonger beckons you up, one of his own. (try 'talk' -- and decide who you really are)");
+      } else {
+        lines.push("The Ashmonger sizes you up, unimpressed. (try 'talk')");
       }
     }
 

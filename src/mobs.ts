@@ -194,6 +194,51 @@ export const MOB_TEMPLATES: MobTemplate[] = [
       { item: "rebar", chance: 0.25 },
     ],
   },
+
+  // --- The Cinder Front Stronghold ---
+  {
+    template: "trooper",
+    name: "a Cinder Front trooper",
+    desc: "A drilled Front soldier in matched ash-grey gear, moving like someone who's done this killing before.",
+    maxHp: 30,
+    minDmg: 4,
+    maxDmg: 7,
+    xp: 28,
+    room: "muster",
+    respawnMs: 60_000,
+    loot: [
+      { item: "plating", chance: 0.4 },
+      { item: "radcell", chance: 0.3 },
+    ],
+  },
+  {
+    template: "zealot",
+    name: "a Front zealot",
+    desc: "A true believer with the ash-and-flame branded into their own skin, eyes bright with the cause and nothing behind them.",
+    maxHp: 36,
+    minDmg: 5,
+    maxDmg: 8,
+    xp: 34,
+    room: "warroom",
+    respawnMs: 75_000,
+    poisonChance: 0.15,
+    loot: [{ item: "rebar", chance: 0.4 }],
+  },
+  {
+    template: "ashmonger",
+    name: "the Ashmonger",
+    desc: "Commander of the Cinder Front: a slab-shouldered butcher in scorched plate, leaning on a cleaver as long as your leg, smiling like he's already won.",
+    maxHp: 100,
+    minDmg: 7,
+    maxDmg: 12,
+    xp: 150,
+    room: "dais",
+    respawnMs: 180_000,
+    loot: [
+      { item: "cleaver", chance: 1 },
+      { item: "plating", chance: 1 },
+    ],
+  },
 ];
 
 export const MOB_BY_ID: Record<string, MobTemplate> = Object.fromEntries(

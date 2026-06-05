@@ -163,8 +163,8 @@ export const ROOMS: Record<string, Room> = {
     name: "The Cinder Front Checkpoint",
     desc:
       "Sandbags, razor-wire, and a banner stamped with the Front's ash-and-flame mark. " +
-      "An enforcer mans the barrier, weighing everyone who comes up the road.",
-    exits: { south: "dunes" },
+      "An enforcer mans the barrier, and the road runs north toward the Front's stronghold.",
+    exits: { south: "dunes", north: "gate" },
   },
   waystation: {
     id: "waystation",
@@ -173,6 +173,48 @@ export const ROOMS: Record<string, Room> = {
       "A huddle of tents and tarps where the free folk shelter off the road. A field " +
       "medic works a triage cot, and wary eyes track every newcomer.",
     exits: { west: "scorch_road" },
+  },
+
+  // --- The Cinder Front Stronghold: the endgame, the faction arc's climax ---
+  gate: {
+    id: "gate",
+    name: "The Cinder Gate",
+    desc:
+      "A fortress wall of welded scrap and old shipping containers, the ash-and-flame " +
+      "banner snapping overhead. Troopers watch from firing slits. This is the heart of the Front.",
+    exits: { south: "checkpoint", north: "muster" },
+  },
+  muster: {
+    id: "muster",
+    name: "The Muster Yard",
+    desc:
+      "A packed-dirt parade ground where the Front drills, ringed by barracks. Cages " +
+      "line the west wall; the war room looms to the north.",
+    exits: { south: "gate", west: "cells", north: "warroom" },
+  },
+  cells: {
+    id: "cells",
+    name: "The Cages",
+    desc:
+      "A row of welded cages, packed with elf refugees the Front has rounded up. They " +
+      "press to the bars when you enter, hope and terror warring in their faces. (try 'free')",
+    exits: { east: "muster" },
+  },
+  warroom: {
+    id: "warroom",
+    name: "The War Room",
+    desc:
+      "A blast-shelter strung with maps of the wastes, every refugee settlement circled in " +
+      "red. A zealot pores over the plans. A ladder climbs to the commander's dais above.",
+    exits: { south: "muster", up: "dais" },
+  },
+  dais: {
+    id: "dais",
+    name: "The Ashmonger's Dais",
+    desc:
+      "A raised platform of stacked rubble crowned with the Front's banner. The Ashmonger " +
+      "himself stands here, commander of the Cinder Front, surveying the wastes he means to own.",
+    exits: { down: "warroom" },
   },
 };
 
