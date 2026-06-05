@@ -8,6 +8,17 @@ This is the **World DO skeleton**: connect, pick a name, walk between linked
 rooms, and talk to other players in the same room. It's a clean base to grow a
 real game on.
 
+## Play now (live)
+
+Two worlds run live on one shared Grid; open either in a browser and you're in:
+
+- **The Hollow Grid** -- https://hollow.skyphusion.org
+- **Dustfall** -- https://dustfall.skyphusion.org
+
+Each domain serves its own in-browser terminal (xterm.js) and accepts raw
+WebSocket clients at `/ws`. Pushes to `main` deploy automatically via Jenkins
+(see `Jenkinsfile`).
+
 ## Architecture
 
 ```
