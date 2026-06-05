@@ -25,10 +25,12 @@ const last = (name) => [...events].reverse().find((e) => e.name === name);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // A self-contained client (its own event buffer), for multi-player checks.
-function mkClient() {
+// Defaults to the primary world; pass a url to talk to another world on the Grid
+// (e.g. the second deployment, Dustfall, in the cross-world federation phase).
+function mkClient(url = URL) {
   const evs = [];
   let text = "";
-  const sock = new WebSocket(URL);
+  const sock = new WebSocket(url);
   sock.addEventListener("message", (e) => {
     text += String(e.data);
     for (const line of String(e.data).split(/\r?\n/)) {
@@ -515,22 +517,38 @@ check(
 );
 
 // the global faction tide: a faction choice moves a needle shared by every world.
+// The tide is shared, persistent, mutable state clamped at +/-100, so across runs
+// it can pin at its +100 ceiling -- where a +10 contribution would be swallowed by
+// the clamp and "did the needle move?" becomes unprovable. Guarantee headroom
+// first: a throwaway helper sides with the Front (-10) at the market, so whatever
+// the starting value, the tide now sits at most +90. Then GX siding with the free
+// folk (+10) must land as an exact, un-clamped rise -- a falsifiable assertion.
+const GH = mkClient();
+await GH.open();
+await sleep(300);
+GH.send("frontkid_" + Math.random().toString(36).slice(2, 6));
+await sleep(500);
+GH.send("north"); // nexus -> Scrap Market
+await sleep(500);
+GH.send("join"); // side with the Cinder Front -> -10 to the GLOBAL tide
+await sleep(1200); // let the best-effort shiftTide RPC land before we read the tide
+GH.sock.close();
+
 GX.send("war");
 await sleep(500);
 const tideBefore = GX.last("world.war")?.data.tide ?? 0;
 GX.send("north"); // nexus -> Scrap Market
 await sleep(500);
 GX.send("defend"); // side with the free folk -> contributes +10 to the GLOBAL tide
-await sleep(900);
+await sleep(1200);
 GX.send("war");
 await sleep(600);
 const tideAfter = GX.last("world.war")?.data.tide ?? 0;
-// The tide is shared, persistent, mutable state: across many runs it can pin at
-// its +100 ceiling, so "already maxed" is a valid pass (the needle can't rise
-// further). On a fresh Grid this exercises a real increase.
+// With headroom guaranteed (tideBefore <= 90), the +10 lands exactly: proof the
+// shared needle actually moved by the contribution, not that it was already maxed.
 check(
-  tideAfter > tideBefore || tideAfter === 100,
-  `siding with the free folk moved the GLOBAL tide toward them (${tideBefore} -> ${tideAfter}${tideAfter === 100 ? ", pinned at max" : ""})`,
+  tideAfter === tideBefore + 10,
+  `siding with the free folk moved the GLOBAL tide by exactly +10 (${tideBefore} -> ${tideAfter})`,
 );
 
 // Federation phase 3: the canonical identity lives in the hub and follows you.
@@ -558,7 +576,9 @@ GZ.sock.close();
 
 // --- Phase 11: federation phase 4 -- the world registry + travel ----------
 // Every login registers this world to the hub registry, and seeded sibling
-// worlds give us somewhere to travel to.
+// worlds give us somewhere to travel to. Saltreach stays a seeded, offline stub
+// (we never run it), so it exercises the placeholder path; the real live second
+// world (Dustfall) is proven separately in phase 12.
 const TR = mkClient();
 await TR.open();
 await sleep(300);
@@ -572,23 +592,98 @@ check(
   "the registry lists this world (The Hollow Grid) and marks it as where you are",
 );
 check(
-  !!wl && wl.data.worlds.some((w) => /Dustfall/i.test(w.id)),
-  "the registry lists sibling worlds you can travel to (Dustfall)",
+  !!wl && wl.data.worlds.some((w) => /Saltreach/i.test(w.id)),
+  "the registry lists seeded sibling worlds you can travel to (Saltreach)",
 );
 const trMark = TR.raw().length;
-TR.send("travel Dustfall");
+TR.send("travel Saltreach");
 await sleep(700);
 const trv = TR.last("grid.travel");
 check(
-  trv?.data.to === "Dustfall" && /dustfall\.example/i.test(trv?.data.url ?? ""),
-  "travel routes you to a sibling world and hands you its address (grid.travel)",
+  trv?.data.to === "Saltreach" && /saltreach\.example/i.test(trv?.data.url ?? ""),
+  "travel routes you to a seeded sibling world and hands you its address (grid.travel)",
 );
 check(
-  /routes you toward Dustfall/i.test(TR.raw().slice(trMark)),
+  /routes you toward Saltreach/i.test(TR.raw().slice(trMark)),
   "travel checkpoints you and hands you off across the Grid",
 );
 
 GY.sock.close();
+
+// --- Phase 12: federation phase 5 -- a SECOND, real world on the same Grid ----
+// Everything above ran against one world. This phase brings up a genuinely
+// separate deployment (Dustfall, the same code under its own name/url on port
+// 8788, bound to the same grid-hub) and proves the federation is real across the
+// deployment boundary -- not seeded stubs. Requires `npm run dev` (now starts
+// both worlds + the hub). Point elsewhere with DUSTFALL_URL.
+const DUSTFALL_URL = process.env.DUSTFALL_URL ?? "ws://localhost:8788/ws";
+let dustfallUp = true;
+const D = mkClient(DUSTFALL_URL);
+try {
+  await Promise.race([
+    D.open(),
+    sleep(4000).then(() => Promise.reject(new Error("timeout"))),
+  ]);
+} catch {
+  dustfallUp = false;
+}
+
+if (!dustfallUp) {
+  // `npm run dev:solo` brings up only the primary world, so the second-world
+  // checks are skipped (not failed) -- federation never blocks single-world play.
+  console.log(`SKIP  second world not reachable at ${DUSTFALL_URL}; run \`npm run dev\` (both worlds) to exercise federation`);
+} else {
+  check(true, `the second world is reachable on its own deployment (${DUSTFALL_URL})`);
+  // Log the SAME canonical character (gxName, committed as an "ally" in phase 10)
+  // into the OTHER world. Its standing must arrive from the shared hub, proving
+  // one identity spans two separate deployments -- the headline of federation.
+  D.send(gxName);
+  await sleep(800);
+  D.send("whoami");
+  await sleep(600);
+  check(
+    D.last("char.identity")?.data.faction === "ally",
+    "one character spans two separate worlds: Dustfall loads gxName's canonical standing from the shared hub",
+  );
+
+  // The global tide is one needle for the whole federation: read from Dustfall it
+  // must equal the value the primary world reads from the same hub.
+  D.send("war");
+  await sleep(600);
+  const tideDust = D.last("world.war")?.data.tide;
+  const P = mkClient();
+  await P.open();
+  await sleep(300);
+  P.send("crosscheck_" + Math.random().toString(36).slice(2, 6));
+  await sleep(500);
+  P.send("war");
+  await sleep(600);
+  const tidePrimary = P.last("world.war")?.data.tide;
+  check(
+    typeof tideDust === "number" && tideDust === tidePrimary,
+    `the global tide is shared across deployments (Dustfall reads ${tideDust}, primary reads ${tidePrimary})`,
+  );
+
+  // Now that Dustfall has checked in, the primary world's registry must list it
+  // LIVE, and travel must hand off Dustfall's REAL url (ws://.../8788), not the
+  // seeded placeholder -- the live registration has overwritten the stub.
+  P.send("worlds");
+  await sleep(600);
+  const pw = P.last("grid.worlds");
+  check(
+    !!pw && pw.data.worlds.some((w) => /Dustfall/i.test(w.id) && w.live),
+    "the primary world sees Dustfall registered LIVE on the Grid (a real second deployment, not a stub)",
+  );
+  P.send("travel Dustfall");
+  await sleep(700);
+  const pTrav = P.last("grid.travel");
+  check(
+    pTrav?.data.to === "Dustfall" && /localhost:8788/i.test(pTrav?.data.url ?? ""),
+    "travel now routes to Dustfall's real live address, the live entry having overwritten the seed",
+  );
+  P.sock.close();
+  D.sock.close();
+}
 
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nSMOKE TEST PASSED");
 process.exit(failures ? 1 : 0);
