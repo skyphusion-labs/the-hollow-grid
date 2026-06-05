@@ -6,6 +6,86 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.7.0
+
+The federation made real, and shipped. Went from a single world to a live,
+multi-world universe on one shared Grid, playable in a browser, deploying itself.
+
+Why: prove cross-deployment federation end to end (not seeded stubs), turn "a
+world" into a content pack on a generic engine, and put it on the public internet
+with CI/CD so it can be announced, talked about, and ported to other languages.
+
+### Federation: a second, real world
+- `WORLD_NAME` is now per-deployment (`this.worldName`); a second world,
+  **Dustfall** (`worlds/dustfall.jsonc`), runs the same code under its own
+  name/url/Durable Object, binding the same Grid Hub. Proven across a real
+  deployment boundary: one character spans both worlds, the global tide is one
+  needle, the registry lists both live, and `travel` hands off the real address.
+
+### Content packs (the moddability seam)
+- Rooms, mobs, items, the login banner, the shop stock, the starter weapon, and
+  the welcome are all per-world data selected by `WORLD_MAP`
+  (`mapFor`/`mobsFor`/`waresFor`/`starterFor`/`bannerFor`/`introFor`). A world is
+  now content plus three env vars, not a fork of the engine. Dustfall is the
+  worked example: the open salt pan, its own creatures and salvage, a rust-and
+  sand banner. See `docs/worlds.md`.
+
+### Player-facing
+- An ANSI 256-color login banner per world (`src/banner.ts`): a cyan gradient
+  "HOLLOW GRID" going hollow; a rust-and-sand "DUSTFALL".
+- An in-browser play client (`src/webclient.ts`) served from each world's root:
+  an xterm.js terminal that connects to `/ws`, renders ANSI, and hides the
+  `@event` channel. Just open the world's domain.
+- A dependency-free terminal client, `scripts/connect.mjs` (`npm run connect`).
+
+### Live, with CI/CD
+- Deployed to Cloudflare on `skyphusion.org`: `the-hollow-grid` ->
+  hollow.skyphusion.org, `dustfall` -> dustfall.skyphusion.org (custom domains,
+  auto DNS + cert), `grid-hub` internal. `WORLD_URL` carries the prod address;
+  dev overrides to localhost.
+- A Jenkins pipeline (`Jenkinsfile`): install, typecheck, smoke (81 checks
+  against a real local federation), and deploy on `main`. Push-to-deploy via the
+  GitHub webhook. The smoke teardown runs each world under its own process group
+  (`setsid` + group kill), never a process-group-wide `kill 0` (which once
+  SIGTERM'd the Jenkins controller). See `docs/deploy.md`.
+
+### Documentation
+- A full docs set for announcing and porting: `docs/protocol.md` (the
+  language-agnostic wire + `@event` + federation contract), `docs/architecture.md`,
+  `docs/worlds.md`, `docs/deploy.md`; README overhauled; `docs/federation.md`
+  marked live; this changelog caught up.
+
+### Hardening
+- The global-tide smoke check now proves exact movement instead of accepting
+  "already maxed." Smoke suite at 81 checks. typecheck clean.
+
+## v0.6.0
+
+World registry, travel, and the Grid Hub as its own backend. (Reconstructed from
+git history.)
+
+### Code
+- **Federation phase 4:** a world registry on the hub and cross-Grid `travel`
+  (`register`/`listWorlds`; `travel <world>` checkpoints identity and hands off
+  the destination address).
+- **Grid Hub extracted into its own backend Worker** (`grid-hub/`): the hub moved
+  from an in-Worker Durable Object to a separate deployment reached over an RPC
+  service binding (`env.GRID`, typed by `shared/grid.ts`). This is the move that
+  lets genuinely separate deployments share one Grid.
+
+## v0.5.0
+
+Federation foundation and an AI player. (Reconstructed from git history.)
+
+### Code
+- **Federation phases 1-3:** the shared Grid ledger (cross-world memory via
+  `record`/`recent`), cross-world chat plus the global faction tide
+  (`gridcast`/`tide`/`shiftTide`), and shared canonical identity
+  (`loadCharacter`/`commitCharacter`, the character that follows you).
+- **`bot.mjs`:** an AI player driven entirely by the `@event` channel, with
+  swappable brains (local ollama by default, plus Anthropic and a Cloudflare AI
+  Gateway option).
+
 ## v0.4.1
 
 Project tooling and conventions. Added a `CLAUDE.md`, adopted the SkyPhusion

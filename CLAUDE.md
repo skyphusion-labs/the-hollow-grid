@@ -2,7 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-A text MUD ("The Hollow Grid") that runs entirely on Cloudflare Workers + Durable Objects. Players connect over WebSocket (`wss://.../ws`) and play with plain-text commands, so any raw WebSocket client works as the game client (the repo ships a dependency-free one: `npm run connect`).
+A text MUD ("The Hollow Grid") that runs entirely on Cloudflare Workers + Durable Objects. Players connect over WebSocket (`wss://.../ws`) and play with plain-text commands, so any raw WebSocket client works as the game client (the repo ships a dependency-free one: `npm run connect`). It is also a federation: separate world deployments share one Grid Hub backend, and a "world" is content selected by `WORLD_MAP` on a generic engine. Live: hollow.skyphusion.org and dustfall.skyphusion.org.
+
+## Documentation map
+
+Deep docs live in `docs/`; this file is the contributor working-method and conventions. When a change touches one of these areas, update the matching doc.
+
+- `docs/architecture.md` -- the runtime model (World DO, hibernation, the single alarm, SQLite), the five design rules, the command set, repo layout.
+- `docs/protocol.md` -- the language-agnostic wire protocol, the full `@event` vocabulary, and the federation contract (`GridHubApi`). The spec a port or client builds against.
+- `docs/worlds.md` -- authoring a world / content packs: the `WORLD_MAP` selectors and the shared anchor ids a new world must reuse.
+- `docs/federation.md` -- the federation design and trust model (the trust hardening is the main open item; the build trusts all worlds today).
+- `docs/deploy.md` -- the three Workers, env vars, npm scripts, Cloudflare deploy (custom domains), and the Jenkins CI/CD pipeline.
 
 ## Commands
 
