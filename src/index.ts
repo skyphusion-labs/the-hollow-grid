@@ -1,8 +1,9 @@
 import type { Env } from "./types";
 
-// The Durable Object classes must be exported from the Worker entry module.
+// The Durable Object class must be exported from the Worker entry module.
+// (The Grid Hub is no longer here -- it lives in its own backend Worker,
+// grid-hub/, reached through the GRID service binding. See docs/federation.md.)
 export { World } from "./world";
-export { GridHub } from "./gridhub";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {

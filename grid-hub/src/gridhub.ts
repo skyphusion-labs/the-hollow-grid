@@ -1,46 +1,19 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./types";
+import type { GridTrace, GridCast, CharSheet, WorldInfo } from "../../shared/grid";
 
-// The Grid Hub: the federation backend (phase 1, the shared Grid ledger).
+// The Grid Hub: the federation's shared state, as a single global Durable Object
+// (getByName("grid")). It holds the dead network's COLLECTIVE memory -- traces,
+// the faction tide, cross-world chat, canonical character sheets, and the world
+// registry -- tagged by the world each piece came from.
 //
-// A single global Durable Object (getByName("grid")) that holds the dead
-// network's COLLECTIVE memory -- traces from every connected world, tagged with
-// the world they came from. Worlds report notable events here (best-effort,
-// never blocking local play), and any world can read the federation feed back:
-// `ping all` hears echoes from across the whole network, not just your own node.
-//
-// This needs no trust machinery -- traces are lore, not progression -- which is
-// why it's the first federation piece. Today it lives in the same Worker as the
-// world; extracting it to a dedicated backend Worker behind a service binding is
-// the step that lets SEPARATE deployments share it (see docs/federation.md).
-
-export type GridTrace = {
-  world: string;
-  node: string;
-  kind: string;
-  text: string;
-  at: number;
-};
-
-export type GridCast = { id: number; world: string; sender: string; text: string };
-
-// The canonical, federation-wide character: the progression + standing that
-// follows a player across every world. Local-only state (room, hp, position,
-// inventory) is NOT here -- worlds own that. (See docs/federation.md.)
-export type CharSheet = {
-  level: number;
-  xp: number;
-  gold: number;
-  faction: string;
-  morality: number;
-  title: string;
-};
+// This DO now lives in its OWN backend Worker (grid-hub). The thin WorkerEntrypoint
+// in index.ts exposes these methods over a service binding, so SEPARATE world
+// deployments can all bind this one backend and share a single Grid. The data
+// shapes are defined once in shared/grid.ts (the federation contract).
+// (See docs/federation.md.)
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-
-// A world on the federation: its name, where to connect, and when it last
-// checked in (for liveness). Players `travel` between these.
-export type WorldInfo = { id: string; url: string; last_seen: number };
 
 // Notional sibling worlds, so the federation feels populated before others
 // actually connect. (A real world overwrites its entry when it registers.)
@@ -98,7 +71,7 @@ export class GridHub extends DurableObject<Env> {
       `);
 
       // Canonical character sheets: the federation owns progression + standing,
-      // so a character is the same person in every world (phase 3).
+      // so a character is the same person in every world.
       sql.exec(`
         CREATE TABLE IF NOT EXISTS characters (
           name TEXT PRIMARY KEY,
@@ -111,7 +84,7 @@ export class GridHub extends DurableObject<Env> {
         )
       `);
 
-      // The world registry (phase 4): who's on the Grid, and where to reach them.
+      // The world registry: who's on the Grid, and where to reach them.
       sql.exec("CREATE TABLE IF NOT EXISTS worlds (id TEXT PRIMARY KEY, url TEXT NOT NULL, last_seen INTEGER NOT NULL)");
       const worldCount = sql.exec<{ c: number }>("SELECT COUNT(*) AS c FROM worlds").one().c;
       if (worldCount === 0) {
@@ -189,7 +162,7 @@ export class GridHub extends DurableObject<Env> {
       .toArray();
   }
 
-  // --- Canonical identity (phase 3): the character that follows you ----------
+  // --- Canonical identity: the character that follows you --------------------
   loadCharacter(name: string): CharSheet {
     const row = this.ctx.storage.sql
       .exec<CharSheet>("SELECT level, xp, gold, faction, morality, title FROM characters WHERE name = ?", name)
@@ -229,7 +202,7 @@ export class GridHub extends DurableObject<Env> {
     return next;
   }
 
-  // --- The world registry (phase 4): travel destinations --------------------
+  // --- The world registry: travel destinations -------------------------------
   register(world: string, url: string): void {
     this.ctx.storage.sql.exec(
       "INSERT INTO worlds (id, url, last_seen) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET url = excluded.url, last_seen = excluded.last_seen",
