@@ -4,6 +4,7 @@ import { ROOMS, START_ROOM, HOLDING_PIT, WARDEN_ID, TAVERN, MARKET, normalizeDir
 import { MOB_TEMPLATES, MOB_BY_ID } from "./mobs";
 import { ITEM_TEMPLATES, itemMatches, EQUIP_SLOTS } from "./items";
 import type { GridTrace, GridCast, CharSheet, WorldInfo } from "../shared/grid";
+import { BANNER_LINES } from "./banner";
 
 const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 
@@ -262,15 +263,7 @@ export class World extends DurableObject<Env> {
     server.serializeAttachment(session);
 
     server.send(
-      [
-        "",
-        "================================================================",
-        "  THE HOLLOW GRID",
-        "  the network outlived us. now it just hums, empty, and waits.",
-        "================================================================",
-        "",
-        "By what name are you known, wanderer?",
-      ].join(NL) + NL,
+      [...BANNER_LINES, "", "By what name are you known, wanderer?"].join(NL) + NL,
     );
 
     return new Response(null, { status: 101, webSocket: pair[0] });
