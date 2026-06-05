@@ -279,7 +279,13 @@ async function thinkOpenAICompat(label, endpoint, authHeaders, prompt) {
   });
   if (!res.ok) throw new Error(`${label} ${res.status}: ${await res.text()}`);
   const json = await res.json();
-  return json.choices?.[0]?.message?.content ?? "";
+  const msg = json.choices?.[0]?.message ?? {};
+  // Reasoning models think before they answer (ollama exposes it as
+  // message.reasoning). Surface that deliberation so it lands in the logs --
+  // half the fun of a slow brain is watching it agonize over `south` vs `look`.
+  const reasoning = msg.reasoning ?? msg.reasoning_content;
+  if (reasoning) log("thinking:", String(reasoning).replace(/\s+/g, " ").trim().slice(0, 600));
+  return msg.content ?? "";
 }
 
 // Free local brain: ollama's OpenAI-compatible chat endpoint.
