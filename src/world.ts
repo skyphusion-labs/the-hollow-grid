@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env, Session } from "./types";
 import { mapFor, START_ROOM, HOLDING_PIT, WARDEN_ID, TAVERN, MARKET, normalizeDir, type Room } from "./rooms";
-import { MOB_TEMPLATES, MOB_BY_ID } from "./mobs";
+import { mobsFor, type MobTemplate } from "./mobs";
 import { ITEM_TEMPLATES, itemMatches, EQUIP_SLOTS } from "./items";
 import type { GridTrace, GridCast, CharSheet, WorldInfo } from "../shared/grid";
 import { BANNER_LINES } from "./banner";
@@ -109,11 +109,17 @@ export class World extends DurableObject<Env> {
   // and exit graph across worlds (the game logic and mobs anchor on ids); only
   // the prose differs, so arriving somewhere new still feels like somewhere new.
   private readonly rooms: Record<string, Room>;
+  // This deployment's bestiary (same WORLD_MAP key). Reuses template ids/rooms,
+  // so the by-id lookups below are stable; only the creatures' flavor differs.
+  private readonly mobTemplates: MobTemplate[];
+  private readonly mobById: Record<string, MobTemplate>;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.worldName = env.WORLD_NAME?.trim() || DEFAULT_WORLD_NAME;
     this.rooms = mapFor(env.WORLD_MAP);
+    this.mobTemplates = mobsFor(env.WORLD_MAP);
+    this.mobById = Object.fromEntries(this.mobTemplates.map((m) => [m.template, m]));
     ctx.blockConcurrencyWhile(async () => {
       const sql = this.ctx.storage.sql;
 
@@ -164,7 +170,7 @@ export class World extends DurableObject<Env> {
           respawn_at INTEGER NOT NULL DEFAULT 0
         )
       `);
-      for (const t of MOB_TEMPLATES) {
+      for (const t of this.mobTemplates) {
         sql.exec(
           "INSERT OR IGNORE INTO mobs (id, room, hp, max_hp, state, respawn_at) VALUES (?, ?, ?, ?, 'alive', 0)",
           t.template,
@@ -309,7 +315,7 @@ export class World extends DurableObject<Env> {
       .toArray();
     for (const m of due) {
       this.ctx.storage.sql.exec("UPDATE mobs SET state = 'alive', hp = max_hp WHERE id = ?", m.id);
-      this.broadcast(m.room, `${cap(MOB_BY_ID[m.id].name)} stalks into view.`);
+      this.broadcast(m.room, `${cap(this.mobById[m.id].name)} stalks into view.`);
     }
 
     // 2) Poison ticks (in or out of combat).
@@ -388,7 +394,7 @@ export class World extends DurableObject<Env> {
 
   private resolveRound(ws: WebSocket, s: Session): void {
     const mob = this.loadMob(s.target!);
-    const t = mob ? MOB_BY_ID[mob.id] : undefined;
+    const t = mob ? this.mobById[mob.id] : undefined;
 
     if (!mob || !t || mob.state === "dead" || mob.room !== s.room) {
       s.target = null;
@@ -441,7 +447,7 @@ export class World extends DurableObject<Env> {
     this.prompt(ws);
   }
 
-  private killMob(ws: WebSocket, s: Session, mob: MobRow, t: (typeof MOB_TEMPLATES)[number]): void {
+  private killMob(ws: WebSocket, s: Session, mob: MobRow, t: MobTemplate): void {
     this.ctx.storage.sql.exec(
       "UPDATE mobs SET state = 'dead', hp = 0, respawn_at = ? WHERE id = ?",
       Date.now() + t.respawnMs,
@@ -898,7 +904,7 @@ export class World extends DurableObject<Env> {
       this.prompt(ws);
       return;
     }
-    const t = MOB_BY_ID[mob.id];
+    const t = this.mobById[mob.id];
     if ((s.position ?? "standing") !== "standing") {
       s.position = "standing";
       this.line(ws, "You scramble to your feet.");
@@ -1596,7 +1602,7 @@ export class World extends DurableObject<Env> {
       }
     }
 
-    const mobs = this.livingMobsInRoom(s.room).map((m) => MOB_BY_ID[m.id].name);
+    const mobs = this.livingMobsInRoom(s.room).map((m) => this.mobById[m.id].name);
     if (mobs.length) lines.push(`You see: ${mobs.join(", ")}.`);
 
     const ground = this.groundItems(s.room).map((id) => ITEM_TEMPLATES[id].name);
@@ -1629,7 +1635,7 @@ export class World extends DurableObject<Env> {
       id: room.id,
       name: room.name,
       exits: Object.keys(room.exits),
-      mobs: this.livingMobsInRoom(s.room).map((m) => ({ id: m.id, name: MOB_BY_ID[m.id].name })),
+      mobs: this.livingMobsInRoom(s.room).map((m) => ({ id: m.id, name: this.mobById[m.id].name })),
       items: this.groundItems(s.room).map((id) => ({ id, name: ITEM_TEMPLATES[id].name })),
       players: this.sessions()
         .filter((o) => o.room === s.room && o.name !== s.name)
@@ -2243,7 +2249,7 @@ export class World extends DurableObject<Env> {
       this.prompt(ws);
       return;
     }
-    const t = MOB_BY_ID[mob.id];
+    const t = this.mobById[mob.id];
     const ratio = (t.maxHp + t.maxDmg * 5) / (s.maxHp + s.level * 10);
     const verdict =
       ratio < 0.4
@@ -2278,7 +2284,7 @@ export class World extends DurableObject<Env> {
     }
     const mob = this.livingMobsInRoom(s.room).find((m) => this.mobMatches(m.id, arg));
     if (mob) {
-      this.line(ws, MOB_BY_ID[mob.id].desc);
+      this.line(ws, this.mobById[mob.id].desc);
       this.prompt(ws);
       return;
     }
@@ -2568,7 +2574,7 @@ export class World extends DurableObject<Env> {
 
   private mobMatches(id: string, arg: string): boolean {
     const a = arg.toLowerCase();
-    return id === a || MOB_BY_ID[id].name.toLowerCase().includes(a);
+    return id === a || this.mobById[id].name.toLowerCase().includes(a);
   }
 
   // inventory + ground helpers (qty-based rows)
