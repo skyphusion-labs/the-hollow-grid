@@ -515,22 +515,38 @@ check(
 );
 
 // the global faction tide: a faction choice moves a needle shared by every world.
+// The tide is shared, persistent, mutable state clamped at +/-100, so across runs
+// it can pin at its +100 ceiling -- where a +10 contribution would be swallowed by
+// the clamp and "did the needle move?" becomes unprovable. Guarantee headroom
+// first: a throwaway helper sides with the Front (-10) at the market, so whatever
+// the starting value, the tide now sits at most +90. Then GX siding with the free
+// folk (+10) must land as an exact, un-clamped rise -- a falsifiable assertion.
+const GH = mkClient();
+await GH.open();
+await sleep(300);
+GH.send("frontkid_" + Math.random().toString(36).slice(2, 6));
+await sleep(500);
+GH.send("north"); // nexus -> Scrap Market
+await sleep(500);
+GH.send("join"); // side with the Cinder Front -> -10 to the GLOBAL tide
+await sleep(1200); // let the best-effort shiftTide RPC land before we read the tide
+GH.sock.close();
+
 GX.send("war");
 await sleep(500);
 const tideBefore = GX.last("world.war")?.data.tide ?? 0;
 GX.send("north"); // nexus -> Scrap Market
 await sleep(500);
 GX.send("defend"); // side with the free folk -> contributes +10 to the GLOBAL tide
-await sleep(900);
+await sleep(1200);
 GX.send("war");
 await sleep(600);
 const tideAfter = GX.last("world.war")?.data.tide ?? 0;
-// The tide is shared, persistent, mutable state: across many runs it can pin at
-// its +100 ceiling, so "already maxed" is a valid pass (the needle can't rise
-// further). On a fresh Grid this exercises a real increase.
+// With headroom guaranteed (tideBefore <= 90), the +10 lands exactly: proof the
+// shared needle actually moved by the contribution, not that it was already maxed.
 check(
-  tideAfter > tideBefore || tideAfter === 100,
-  `siding with the free folk moved the GLOBAL tide toward them (${tideBefore} -> ${tideAfter}${tideAfter === 100 ? ", pinned at max" : ""})`,
+  tideAfter === tideBefore + 10,
+  `siding with the free folk moved the GLOBAL tide by exactly +10 (${tideBefore} -> ${tideAfter})`,
 );
 
 // Federation phase 3: the canonical identity lives in the hub and follows you.
