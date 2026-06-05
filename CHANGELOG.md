@@ -6,6 +6,38 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.8.0
+
+Races and character creation, with the heart of the game made playable: you no
+longer watch the Cinder Front's persecution as a bystander, you choose where you
+stand in it.
+
+Why: The Hollow Grid is, at its core, about who counts as a person. Letting you
+BE one of the hunted turns the theme from something you observe into something
+you are.
+
+### Code
+- **Character creation gains a race step:** name -> race -> spawn. Seven races
+  (Human, Elf, Revenant, Ghoul, Chromed, Dustkin, Vatborn) in `src/races.ts`,
+  each defined more by its **Cinder Front stance** (accepted / tolerated /
+  hunted) than by stats. Mechanical leans are light (hp/damage/armor/regen,
+  Revenant poison immunity).
+- **Race is a federated, canonical attribute:** it lives on the `CharSheet`
+  (`shared/grid.ts`) and follows you across worlds. The hub carries the race id
+  as an opaque string and never gatekeeps it, so any world (including a third
+  party) can define its own races; an unrecognized race degrades gracefully.
+- **The faction-reactive rooms now read your race's stance** as well as your
+  faction: hunted races meet hostility at the Front's checkpoint and welcome at
+  the refugee camp; the market recruiter's rhetoric turns on you by name.
+- **The kapo:** an elf who joins the Cinder Front is branded `ashsworn`, a
+  permanent mark (write-once true at the hub; never clears, even on defection).
+  Heaviest morality cost on the board; the Front uses him with contempt, the free
+  folk recoil, and the public brand reads "ash-sworn" above any faction.
+- `race` and `ashsworn` surface on the `char.affects` and `char.identity` events
+  and in `whoami`. Smoke suite extended (race step threaded through every login,
+  plus a kapo phase): 84 checks, green. Players/characters tables and the hub
+  schema migrate in place.
+
 ## v0.7.0
 
 The federation made real, and shipped. Went from a single world to a live,

@@ -35,13 +35,19 @@ There are three contracts:
 client connects to /ws
 server  -> the login banner (ANSI) + "By what name are you known, wanderer?"
 client  -> <name>                 (first line sent = the character name)
+server  -> the race menu          (ONLY for a brand-new character; see below)
+client  -> <race>                 (a number 1..N or a race name)
 server  -> welcome line + the starting room (prose + @event room.info ...)
 ... play: client sends command lines, server replies with prose + @event ...
 ```
 
-A name that already exists resumes that character (its progression is loaded
-from the federation hub if one is bound; see section 3). There is no password in
-the reference build; identity is name-based and federated.
+A name that already exists resumes that character (its progression and race are
+loaded from the federation hub if one is bound; see section 3), and the race menu
+is skipped. A brand-new character must choose a race before entering the world.
+There is no password in the reference build; identity is name-based and federated.
+Race is a federated, canonical attribute, chosen once, that follows you across
+worlds; the hub carries it as an opaque string so any world may define its own
+races. (See docs/worlds.md.)
 
 ## 2. The structured `@event` channel
 
@@ -65,7 +71,7 @@ drift (any new player-affecting state must be emitted here).
 | --- | --- | --- |
 | `room.info` | a room is shown (`sendRoom`) | `id, name, exits[], mobs[], items[], players[]` |
 | `char.vitals` | room view + whenever vitals change | `hp, maxHp, level, xp, gold, room, inCombat, poisoned, position` |
-| `char.affects` | room view + when standing changes | `morality, addiction, faction, resisted` |
+| `char.affects` | room view + when standing changes | `morality, addiction, faction, resisted, race, ashsworn` |
 | `char.equipment` | on equip/remove/`eq` | `weapon, head, body, hands, feet` |
 | `char.died` | on death | `respawnRoom, hp, maxHp` |
 | `char.identity` | `whoami` | the federated `CharSheet` (see section 3) |
@@ -101,7 +107,11 @@ of truth for the contract is `shared/grid.ts`. The data types:
 ```
 GridTrace  = { world, node, kind, text, at }      // one shared-memory ledger entry
 GridCast   = { id, world, sender, text }           // one cross-world chat line
-CharSheet  = { level, xp, gold, faction, morality, title }   // the canonical character
+CharSheet  = { level, xp, gold, faction, morality, title, race, ashsworn }
+                                                   // the canonical character. race is an
+                                                   // opaque federated label (any world may
+                                                   // define races); ashsworn is the permanent
+                                                   // kapo brand, write-once true (see worlds.md).
 WorldInfo  = { id, url, last_seen }                // a registered world (a travel target)
 ```
 
