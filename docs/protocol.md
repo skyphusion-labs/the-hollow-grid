@@ -116,6 +116,8 @@ drift (any new player-affecting state must be emitted here).
 | `world.state` | login, `world`, and any living-world change | `tick, phase, weather` |
 | `world.war` | `war` reads the global tide | `tide` |
 | `grid.federation` | `ping all` reads the cross-world ledger | `traces[]` |
+| `grid.fallen` | `witness` reads the memorial roll | `fallen[] {world, name, room, at}` |
+| `grid.remembrance` | `witness <name>` keeps a fallen's memory | `fallen, world, room` |
 | `grid.ledger_stats` | a keeper runs `gridstats` | `total, kinds[] {kind, count}` |
 | `grid.ledger_pruned` | a keeper runs `gridprune` | `removed, before, after, kinds[]` |
 | `server.announce` | an admin `wall` broadcast | `from, text` |

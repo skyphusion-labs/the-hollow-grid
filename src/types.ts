@@ -73,6 +73,8 @@ export interface Session {
   dreamReadyAt?: number;
   /** when you can `mend` another player again, epoch ms (in-memory cooldown) */
   mendReadyAt?: number;
+  /** when you can hold another vigil (`witness`), epoch ms (in-memory cooldown) */
+  witnessReadyAt?: number;
   /** a custom title shown after the player's name (persisted) */
   title?: string;
 }

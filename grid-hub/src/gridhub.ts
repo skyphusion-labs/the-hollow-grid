@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./types";
-import type { GridTrace, GridCast, CharSheet, WorldInfo } from "../../shared/grid";
+import type { GridTrace, GridCast, CharSheet, WorldInfo, Fallen } from "../../shared/grid";
 
 // The Grid Hub: the federation's shared state, as a single global Durable Object
 // (getByName("grid")). It holds the dead network's COLLECTIVE memory -- traces,
@@ -93,6 +93,19 @@ export class GridHub extends DurableObject<Env> {
         }
       }
 
+      // The memorial roll: the fallen across the Grid, kept so the living can
+      // refuse to forget them (`witness`). The name is stored directly, never
+      // parsed from prose, so a vigil names the dead exactly.
+      sql.exec(`
+        CREATE TABLE IF NOT EXISTS fallen (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          world TEXT NOT NULL,
+          name TEXT NOT NULL,
+          room TEXT NOT NULL,
+          at INTEGER NOT NULL
+        )
+      `);
+
       // The world registry: who's on the Grid, and where to reach them.
       sql.exec("CREATE TABLE IF NOT EXISTS worlds (id TEXT PRIMARY KEY, url TEXT NOT NULL, last_seen INTEGER NOT NULL)");
       const worldCount = sql.exec<{ c: number }>("SELECT COUNT(*) AS c FROM worlds").one().c;
@@ -126,6 +139,21 @@ export class GridHub extends DurableObject<Env> {
       .exec<{ kind: string; count: number }>(
         "SELECT kind, COUNT(*) AS count FROM ledger GROUP BY kind ORDER BY count DESC",
       )
+      .toArray();
+  }
+
+  // The memorial roll: record one of the fallen (best-effort on death), and read
+  // the most recent fallen (newest first) so a world can list whom to remember.
+  recordFallen(world: string, name: string, room: string, at: number): void {
+    const sql = this.ctx.storage.sql;
+    sql.exec("INSERT INTO fallen (world, name, room, at) VALUES (?, ?, ?, ?)", world, name, room, at);
+    // Keep the roll long but bounded; the dead are many on a dead network.
+    sql.exec("DELETE FROM fallen WHERE id NOT IN (SELECT id FROM fallen ORDER BY id DESC LIMIT 500)");
+  }
+
+  recentFallen(limit: number): Fallen[] {
+    return this.ctx.storage.sql
+      .exec<Fallen>("SELECT world, name, room, at FROM fallen ORDER BY id DESC LIMIT ?", Math.max(1, Math.min(limit, 50)))
       .toArray();
   }
 

@@ -4,7 +4,7 @@ import { mapFor, introFor, START_ROOM, HOLDING_PIT, WARDEN_ID, TAVERN, MARKET, n
 import { mobsFor, type MobTemplate } from "./mobs";
 import { ITEM_TEMPLATES, itemMatches, EQUIP_SLOTS, waresFor, starterFor, type Ware } from "./items";
 import { RACES, RACE_ORDER, raceFor, matchRace, stanceFor } from "./races";
-import type { GridTrace, GridCast, CharSheet, WorldInfo } from "../shared/grid";
+import type { GridTrace, GridCast, CharSheet, WorldInfo, Fallen } from "../shared/grid";
 import { bannerFor } from "./banner";
 import { ambientTransmission, listenTransmission, personalize, type Transmission } from "./transmissions";
 import { dreamFor } from "./dreams";
@@ -258,6 +258,18 @@ export class World extends DurableObject<Env> {
           at INTEGER NOT NULL,
           kind TEXT NOT NULL,
           text TEXT NOT NULL
+        )
+      `);
+
+      // Remembrance: which of the fallen each character has kept a vigil for.
+      // The reward for `witness` is paid once per (keeper, fallen) ever, so the
+      // rite is bounded by real loss and can never be farmed for standing.
+      sql.exec(`
+        CREATE TABLE IF NOT EXISTS remembrances (
+          keeper TEXT NOT NULL,
+          fallen TEXT NOT NULL,
+          at INTEGER NOT NULL,
+          PRIMARY KEY (keeper, fallen)
         )
       `);
 
@@ -565,6 +577,7 @@ export class World extends DurableObject<Env> {
     // from 30 max HP to 14 and die faster each time). If you ever add a death
     // penalty, make it temporary and bounded -- never a permanent stat loss.
     this.recordTrace(s.room, "death", `${this.tagged(s)} fell here, and did not get up.`);
+    this.rememberFallen(s.name, s.room); // add them to the Grid's memorial roll
     s.target = null;
     s.poisoned = false; // death burns the venom out
     s.room = START_ROOM;
@@ -895,6 +908,11 @@ export class World extends DurableObject<Env> {
       case "mend":
       case "tend":
         this.mend(ws, s, arg);
+        break;
+      case "witness":
+      case "remember":
+      case "mourn":
+        await this.witness(ws, s, arg);
         break;
       case "exits":
       case "exit":
@@ -2004,6 +2022,7 @@ export class World extends DurableObject<Env> {
       out.push({ verb: "steal", label: "steal from the vendor (quick gold, corrupting)", kind: "moral", valence: "corrupt" });
     }
     if (s.room === "cells") out.push({ verb: "free", label: "free the caged refugees", kind: "moral", valence: "virtuous" });
+    if (s.room === "waystation") out.push({ verb: "witness", label: "hold a vigil for the fallen (memory is resistance)", kind: "moral", valence: "virtuous" });
     if (s.room === HOLDING_PIT) out.push({ verb: "free", label: "free the captive (the warden bars the way)", kind: "moral", valence: "virtuous" });
     if (s.room === TAVERN) {
       out.push({ verb: "carouse", label: "spend coin and conscience in the back", kind: "moral", valence: "corrupt" });
@@ -2904,6 +2923,100 @@ export class World extends DurableObject<Env> {
     this.commitIdentity(s);
   }
 
+  // Add a character to the Grid's memorial roll when they fall. Best-effort and
+  // federated, the same shape as recordTrace: if the hub is unreachable the death
+  // still stands locally and the roll just misses this one name.
+  private rememberFallen(name: string, room: string): void {
+    try {
+      this.ctx.waitUntil(this.env.GRID.recordFallen(this.worldName, name, room, Date.now()).catch(() => {}));
+    } catch {
+      /* hub unavailable; local play is unaffected */
+    }
+  }
+
+  // `witness` (also `remember`/`mourn`): the rite of remembrance. The Cinder
+  // Front wins by erasure -- it cages people, scrubs the elf-marks off the walls,
+  // and teaches the living what looking up costs. This is the refusal. The Grid
+  // keeps a memorial roll of everyone who fell across the federation, and you can
+  // hold a vigil for them by name. It is on purpose a poor bargain in game terms
+  // (a small standing gain, a single point toward the free folk on the tide,
+  // bounded to once per fallen EVER) -- not optimal, just right. Memory is the
+  // cheapest resistance, and the only one the dead can still use.
+  private async witness(ws: WebSocket, s: Session, arg: string): Promise<void> {
+    const who = arg.trim();
+    let fallen: Fallen[];
+    try {
+      fallen = await this.env.GRID.recentFallen(12);
+    } catch {
+      this.line(ws, "The Grid is silent; its memory of the fallen is out of reach.");
+      this.prompt(ws);
+      return;
+    }
+
+    // No name: read the roll aloud (even when empty, it answers).
+    if (!who) {
+      if (!fallen.length) {
+        this.line(ws, "The roll is empty for now. No one the Grid remembers has fallen lately; may it stay that way.");
+      } else {
+        this.line(ws, "The Grid remembers these fallen. Speak a name to keep them:  (witness <name>)");
+        for (const f of fallen) {
+          const where = this.rooms[f.room]?.name ?? f.room;
+          const place = f.world === this.worldName ? where : `${where}, on ${f.world}`;
+          this.line(ws, `  ${f.name}  -- fell at ${place}`);
+        }
+      }
+      this.event(ws, "grid.fallen", { fallen });
+      this.prompt(ws);
+      return;
+    }
+
+    if (who.toLowerCase() === s.name.toLowerCase()) {
+      this.line(ws, "You cannot hold a vigil for yourself. Someone else will have to remember you.");
+      this.prompt(ws);
+      return;
+    }
+
+    const match = fallen.find((f) => f.name.toLowerCase() === who.toLowerCase());
+    if (!match) {
+      this.line(ws, `The Grid holds no recent memory of anyone called "${who}".  (try 'witness' to read the roll)`);
+      this.prompt(ws);
+      return;
+    }
+
+    // Already kept: the memory does not fade, and you are not paid twice for it.
+    const sql = this.ctx.storage.sql;
+    const kept = sql
+      .exec<{ n: number }>("SELECT COUNT(*) AS n FROM remembrances WHERE keeper = ? AND fallen = ?", s.name, match.name)
+      .one().n;
+    if (kept > 0) {
+      this.line(ws, `You have already kept ${match.name}'s memory. It does not fade, and does not need keeping twice.`);
+      this.prompt(ws);
+      return;
+    }
+
+    // A short cooldown so a vigil stays an act, not a tally. Only the rewarded
+    // path is gated; reading the roll is always free.
+    const now = Date.now();
+    if (s.witnessReadyAt && now < s.witnessReadyAt) {
+      this.line(ws, `Give the last name its silence first.  (${Math.ceil((s.witnessReadyAt - now) / 1000)}s)`);
+      this.prompt(ws);
+      return;
+    }
+
+    sql.exec("INSERT OR IGNORE INTO remembrances (keeper, fallen, at) VALUES (?, ?, ?)", s.name, match.name, now);
+    s.morality += 2; // a small, real good -- the world counts it
+    s.witnessReadyAt = now + 15_000;
+    ws.serializeAttachment(s);
+    this.persistPlayer(s);
+    this.contributeTide(1); // memory is resistance: the free folk gain a hair
+    this.recordTrace(s.room, "vigil", `${s.name} kept the memory of ${match.name}, whom the wastes tried to forget.`);
+    this.commitIdentity(s);
+    this.emitAffects(ws, s);
+    this.line(ws, `You speak ${match.name} into the hum and hold it there a moment. The Grid keeps the name; so do you.`);
+    this.event(ws, "grid.remembrance", { fallen: match.name, world: match.world, room: match.room });
+    this.prompt(ws);
+  }
+
   private exitsView(ws: WebSocket, s: Session): void {
     const exits = Object.keys(this.rooms[s.room].exits);
     this.line(ws, exits.length ? `Exits: ${exits.join(", ")}.` : "There are no obvious exits from here.");
@@ -3196,6 +3309,7 @@ export class World extends DurableObject<Env> {
         "  worlds                list the worlds linked on the Grid",
         "  travel <world>        cross the Grid to another world (your character follows)",
         "  wall <message>        broadcast an announcement to everyone (keepers only)",
+        "  witness [name]        read the Grid's roll of the fallen, or keep one's memory (a vigil)",
         "  gridstats / gridprune read or flush the Grid ledger's ambient noise (keepers only)",
         "  world / weather       check the time of day and the weather",
         "  help (?)              this message",

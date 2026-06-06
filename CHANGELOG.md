@@ -6,6 +6,32 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.18.0
+
+The rite of remembrance: a counter to the Cinder Front's signature move, which
+is erasure. The Front cages people, scrubs the elf-marks off the walls, and
+teaches the living what looking up costs. `witness` is the refusal -- memory as
+the cheapest resistance, and the only one the dead can still use.
+
+### Added
+- **The memorial roll** (federated). When a character falls anywhere on the
+  Grid, the hub records them structurally (`recordFallen` -- world, name, room,
+  time; never parsed from prose). New `GridHubApi` methods `recordFallen` /
+  `recentFallen`, a `Fallen` type, and a `fallen` table on the hub.
+- **`witness` / `remember` / `mourn`.** With no name it reads the roll of the
+  fallen aloud (event `grid.fallen`). With a name it holds a vigil for them
+  (event `grid.remembrance`): a small standing gain (+2 morality) and a single
+  point toward the free folk on the tide -- *memory is resistance*. It is on
+  purpose a poor bargain, bounded to **once per fallen ever** (a local
+  `remembrances` table) so it can never be farmed; you do it because it is
+  right, not because it is optimal. You cannot hold a vigil for yourself.
+- A `witness` moral affordance (`valence: virtuous`) at the Refugee Waystation,
+  so it is first-class in the agent observation space (`room.actions`), the same
+  place the free folk shelter the people the Front would disappear.
+- Events `grid.fallen` / `grid.remembrance` (docs/protocol.md); three new smoke
+  assertions (104 total). Full death -> witness -> reward path verified
+  end-to-end against a live death.
+
 ## v0.17.0
 
 Keeper tooling to tend the shared Grid ledger, closing out the adversarial

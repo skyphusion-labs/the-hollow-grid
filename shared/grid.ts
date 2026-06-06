@@ -40,6 +40,14 @@ export type CharSheet = {
 // checked in (for liveness). Players `travel` between these.
 export type WorldInfo = { id: string; url: string; last_seen: number };
 
+// One of the fallen: a character who died somewhere on the Grid. The Cinder
+// Front's whole method is erasure -- it rounds people into cages and scrubs the
+// marks off the walls. The memorial roll is the counter: the federation keeps a
+// structured record of who fell and where, so the living can refuse to forget
+// them (`witness`). It carries the name directly, not parsed from prose, so the
+// rite is exact across worlds.
+export type Fallen = { world: string; name: string; room: string; at: number };
+
 // The methods a world may call on the hub. The hub's WorkerEntrypoint implements
 // this; a world's `GRID` service binding is typed directly as GridHubApi, so a
 // call is just `await env.GRID.record(...)` -- the same shape as the old in-Worker
@@ -71,4 +79,10 @@ export interface GridHubApi {
   // restrict that to ambient noise so meaningful traces can never be deleted.
   ledgerStats(): Promise<Array<{ kind: string; count: number }>>;
   pruneLedgerKinds(kinds: string[]): Promise<{ removed: number }>;
+
+  // The memorial roll: the fallen across the whole Grid, so any world can let the
+  // living hold a vigil for them (`witness`). Recording is best-effort on death;
+  // reading returns the most recent fallen, newest first.
+  recordFallen(world: string, name: string, room: string, at: number): Promise<void>;
+  recentFallen(limit: number): Promise<Fallen[]>;
 }

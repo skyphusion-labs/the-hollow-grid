@@ -828,6 +828,32 @@ await sleep(400);
 check(!NK.last("grid.ledger_stats") && /keeper of the Grid/i.test(NK.raw()), "gridstats is refused to a non-keeper");
 NK.sock.close();
 
+// --- Phase 11c: the rite of remembrance (witness) ----------------------------
+// `witness` reads the Grid's memorial roll of the fallen and lets the living
+// keep a name. The reward (standing + a hair of tide) is bounded to once per
+// fallen ever, so it cannot be farmed; here we assert the observable contract.
+// The full rewarded path (death -> witness -> +morality) is verified against a
+// live death; combat death is too non-deterministic to gate CI on.
+const VG = mkClient();
+await VG.open();
+await sleep(200);
+const wname = "witness_" + Math.random().toString(36).slice(2, 7);
+VG.send(wname);
+await sleep(400);
+await pickRace(VG);
+VG.send("witness");
+await sleep(500);
+const roll = VG.last("grid.fallen");
+check(!!roll && Array.isArray(roll.data.fallen), "witness reads the Grid's memorial roll of the fallen (grid.fallen)");
+VG.send("witness " + wname); // a vigil for yourself is refused
+await sleep(400);
+check(!VG.last("grid.remembrance") && /vigil for yourself/i.test(VG.raw()), "you cannot hold a vigil for yourself");
+const noone = "nobody_" + Math.random().toString(36).slice(2, 7);
+VG.send("witness " + noone); // an unknown name keeps no one and rewards nothing
+await sleep(400);
+check(!VG.last("grid.remembrance") && /no recent memory/i.test(VG.raw()), "witnessing an unknown name keeps no one (no grid.remembrance)");
+VG.sock.close();
+
 // --- Phase 12: federation phase 5 -- a SECOND, real world on the same Grid ----
 // Everything above ran against one world. This phase brings up a genuinely
 // separate deployment (Dustfall, the same code under its own name/url on port
