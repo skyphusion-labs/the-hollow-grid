@@ -106,6 +106,7 @@ const state = {
   loggedIn: false,
   url: CFG.url, // where to (re)connect; a grid.travel handoff repoints this to another world
   room: null, // { id, name, exits[], mobs[], items[], players[] }
+  actions: null, // room.actions: the enumerated valid verbs here {verb,label,kind,valence?}
   vitals: null, // { hp, maxHp, level, xp, gold, room, inCombat, poisoned, position }
   affects: null, // { morality, addiction, faction, resisted }
   equipment: null, // { weapon, head, body, hands, feet }
@@ -146,6 +147,11 @@ function applyEvent(name, data) {
       if (state.room && data.id !== state.room.id) state.lastRoomId = state.room.id;
       state.room = data;
       break;
+    case "room.actions":
+      // The server enumerates every valid verb here (with moral valence), so we
+      // never have to hallucinate the action space. The headline affordance layer.
+      state.actions = data.actions;
+      break;
     case "char.vitals":
       state.vitals = data;
       break;
@@ -168,6 +174,7 @@ function applyEvent(name, data) {
         log(`TRAVELING -> ${data.to ?? "?"} (${data.url})`);
         state.url = data.url;
         state.room = null;
+        state.actions = null;
         state.recentCommands = [];
         sinceTravel = 0;
       }
@@ -194,6 +201,13 @@ Useful commands:
   talk, join / defend (pick a faction), title <epithet>
   say <text>, yell <text>, tell <player> <text>, emote <action>, ping
   worlds (list the worlds linked on the Grid), travel <world> (cross to another world)
+
+When the context lists "Available actions here", those are the enumerated valid
+moves for this exact spot, with their moral weight shown in brackets ([virtuous],
+[corrupt], [grave]). Prefer choosing one of those exact verbs over guessing. The
+universal commands above (look, inventory, rest, worlds, travel, ...) still work
+any time. The moral choices are real and they stick: who you become is the sum of
+them.
 
 This world is part of a federation. Now and then, run "worlds" and then
 "travel <world>" to wander to a different world on the Grid; your character
@@ -222,6 +236,15 @@ function buildContext() {
   }
   if (a) lines.push(`Faction: ${a.faction ?? "none"}  Addiction: ${a.addiction ?? 0}`);
   if (state.equipment?.weapon) lines.push(`Wielding: ${state.equipment.weapon}`);
+  // The enumerated action space for this spot (with moral weight). The model
+  // should pick a verb from here rather than guessing -- no command hallucination.
+  const acts = state.actions ?? [];
+  if (acts.length) {
+    lines.push("Available actions here (use one of these exact verbs):");
+    for (const ac of acts) {
+      lines.push(`  ${ac.verb}${ac.valence ? `  [${ac.valence}]` : ""}  -- ${ac.label}`);
+    }
+  }
   if (state.recentCommands.length) {
     lines.push(`You just tried: ${state.recentCommands.slice(-4).join(", ")}. Do something different; do not repeat yourself.`);
   }
