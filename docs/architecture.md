@@ -90,26 +90,36 @@ registry) lives in the Grid Hub, not here.
 Commands are single line verbs (many with short aliases). Grouped:
 
 - **Movement / look:** `look` (`l`), `go`/`<direction>`, `exits`, `examine`
-  (`exa`), `consider` (`con`), `recall`, `home`, `travel`, `worlds`.
+  (`exa`), `consider` (`con`), `recall`, `home`, `travel`, `worlds`, `sense`
+  (`actions`, the one-shot machine-readable observation).
 - **Combat:** `attack`/`kill` (`k`), `flee` (`f`), `steal`.
 - **Equipment / items:** `get`/`take`, `drop`, `give`, `wear`/`wield`,
   `remove`/`unwield`, `equipment` (`eq`), `inventory` (`i`/`inv`), `use`,
   `list`, `buy`, `sell`.
 - **Positions:** `stand`, `sit`, `rest`, `sleep` (regen HP; you cannot mid-fight).
 - **Comms:** `say`, `tell`, `reply`, `yell`/`shout`, `emote` (`pose`/`em`),
-  `gridcast` (`gc`).
-- **For each other:** `give <item> <player>`, `mend <player>` (heal another at a
-  cost to your own HP), `inscribe`/`carve` (leave a message in the Grid).
-- **Info:** `who`, `status` (`st`), `affects` (`affs`), `hp`, `time`, `weather`,
-  `war`, `tide`, `identity`/`whoami`, `help` (`?`).
+  `gridcast` (`gc`, cross-world chat).
+- **For each other (the moral acts):** `give <item> <player>`; `mend <player>`
+  (heal another at a cost to your own HP); `cache <gold>`/`stash` + `gather`
+  (leave aid at a node for the next traveler, or take what a stranger left);
+  `treat`/`medic` (the waystation medic tends you, free, while the free folk hold
+  the tide); `witness`/`remember`/`mourn` (read the Grid's roll of the fallen, or
+  hold a vigil for one); `inscribe`/`carve`/`leave` (leave a message in the Grid).
+- **The Grid (the federation's shared memory):** `ping [all]` (a node's traces /
+  the cross-world ledger); `saved`/`rescued`/`roll` (the roll of the living
+  pulled from the cages); `reckoning`/`conscience` (your moral self-model);
+  `who` (everyone online across the whole federation); `war`/`tide` (the shared
+  faction needle); `listen`/`tune` (tune the dead frequencies -- sometimes a real
+  recorded trace, an `echo`, surfaces).
+- **Info:** `status` (`st`), `affects` (`affs`), `hp`, `time`, `weather`,
+  `identity`/`whoami`, `help` (`?`).
 - **Racial ability:** `ability`/`trait` (or the race's named verb, e.g. `vanish`,
   `overclock`, `forage`) activates your race's signature ability.
 - **The faction arc:** `join`, `defend`/`defy` (side with the free folk),
   `free`/`rescue` (free caged refugees), `talk`, `resist`.
-- **The world / drugs:** `drink`, `eat`, `carouse`, `ping`, `title`.
-- **The dead network:** `listen`/`tune` (tune the dead frequencies for a Grid
-  transmission; the network also bleeds fragments on the living-world tick).
-- **Admin (keepers in the `ADMINS` var):** `wall`/`announce`.
+- **The world / drugs:** `drink`, `eat`, `carouse`, `title`.
+- **Admin (keepers in the `ADMINS` var):** `wall`/`announce`; `gridstats` /
+  `gridprune` (read or flush the shared ledger's ambient noise).
 
 A faithful port should implement these verbs and emit the matching `@event`s. The
 authoritative list is the dispatch in `src/world.ts`.
