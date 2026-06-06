@@ -259,6 +259,20 @@ check(
   "the Grid remembers the kill that just happened at this node",
 );
 
+// Player memory: carve a message into the node; the Grid keeps it, and a later
+// ping finds it -- a voice left for whoever comes next.
+const inscription = "remember the eastern relay";
+ws.send(`inscribe ${inscription}`);
+await sleep(500);
+events.length = 0;
+ws.send("ping");
+await sleep(500);
+const echo2 = last("grid.echo");
+check(
+  Array.isArray(echo2?.data.traces) && echo2.data.traces.some((t) => t.kind === "mark" && t.text.includes(inscription)),
+  "an inscription is kept in the Grid and found by a later ping (player-left memory)",
+);
+
 // Positions: rest, and confirm the alarm regenerates HP over a couple of ticks.
 // Robust against CI timing: poll for the regen rather than assuming a fixed
 // window contains a tick, and accept an already-at-max character (regen cannot

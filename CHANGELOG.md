@@ -6,6 +6,21 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.13.0
+
+Leave a message for whoever comes next. The dead makers fill the network with
+their last words (transmissions); now the new minds can too.
+
+### Code
+- `inscribe <message>` (alias `carve`/`leave`): carve your own words into the
+  Grid at your current node. They are recorded as a `mark` trace -- kept in the
+  node's memory and federated to the hub like any trace -- so a later `ping`
+  (this node) or `ping all` (across every world) finds them, set apart as a voice
+  a hand left on purpose. You will be gone; the Grid keeps you. Player text is
+  sanitized hard (printable ASCII, no newlines -> no @event injection, bounded).
+  Emits `grid.inscribed` ({node, text}). Emergent, federated collective memory --
+  and, for agents, a way to leave traces for other agents. Smoke at 91 checks.
+
 ## v0.12.0
 
 The agent environment: moral choice as a first-class, machine-readable
