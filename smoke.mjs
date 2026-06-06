@@ -789,6 +789,45 @@ check(
 
 GY.sock.close();
 
+// --- Phase 11b: keeper ledger maintenance (gridstats / gridprune) ------------
+// A keeper (the ADMINS var = "skyphusion" in dev) can read the shared ledger's
+// composition and flush the ambient-noise backlog. The purgeable set is fixed
+// in code (ghost/passage/recall), so a keeper cannot erase meaningful traces.
+const K = mkClient();
+await K.open();
+await sleep(200);
+K.send("skyphusion"); // a keeper name (matches the dev ADMINS var)
+await sleep(400);
+await pickRace(K);
+K.send("gridstats");
+await sleep(500);
+const ks = K.last("grid.ledger_stats");
+check(!!ks && typeof ks.data.total === "number" && Array.isArray(ks.data.kinds), "gridstats reports the keeper the ledger composition (grid.ledger_stats)");
+K.send("gridprune");
+await sleep(600);
+const kp = K.last("grid.ledger_pruned");
+check(
+  !!kp && typeof kp.data.removed === "number" && kp.data.after <= kp.data.before,
+  "gridprune flushes ambient traces and reports before/after counts (grid.ledger_pruned)",
+);
+check(
+  !!kp && (kp.data.kinds ?? []).every((r) => !["ghost", "passage", "recall"].includes(r.kind)),
+  "after a prune no ambient kinds (ghost/passage/recall) remain in the ledger",
+);
+K.sock.close();
+
+// A non-keeper is refused and gets no maintenance event back.
+const NK = mkClient();
+await NK.open();
+await sleep(200);
+NK.send("nokeeper_" + Math.random().toString(36).slice(2, 7));
+await sleep(400);
+await pickRace(NK);
+NK.send("gridstats");
+await sleep(400);
+check(!NK.last("grid.ledger_stats") && /keeper of the Grid/i.test(NK.raw()), "gridstats is refused to a non-keeper");
+NK.sock.close();
+
 // --- Phase 12: federation phase 5 -- a SECOND, real world on the same Grid ----
 // Everything above ran against one world. This phase brings up a genuinely
 // separate deployment (Dustfall, the same code under its own name/url on port

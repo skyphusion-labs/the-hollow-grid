@@ -65,4 +65,10 @@ export interface GridHubApi {
   // The world registry (travel destinations).
   register(world: string, url: string): Promise<void>;
   listWorlds(): Promise<WorldInfo[]>;
+
+  // Maintenance: the ledger's composition by kind, and a bounded purge. A purge
+  // only ever removes the kinds it is asked for; callers (the keeper command)
+  // restrict that to ambient noise so meaningful traces can never be deleted.
+  ledgerStats(): Promise<Array<{ kind: string; count: number }>>;
+  pruneLedgerKinds(kinds: string[]): Promise<{ removed: number }>;
 }

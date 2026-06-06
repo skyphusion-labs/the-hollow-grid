@@ -975,6 +975,12 @@ export class World extends DurableObject<Env> {
       case "announce":
         this.wall(ws, s, arg);
         break;
+      case "gridstats":
+        await this.gridStats(ws, s);
+        break;
+      case "gridprune":
+        await this.gridPrune(ws, s);
+        break;
       case "world":
       case "weather":
       case "time": {
@@ -2510,6 +2516,56 @@ export class World extends DurableObject<Env> {
     }
   }
 
+  // Ambient trace kinds: the wandering ghost, ordinary passage, and recall. They
+  // no longer federate to the hub (see recordTrace), but a pre-filter backlog can
+  // linger in the shared ledger because retention is count-based and a quiet Grid
+  // never inserts enough to flush it. `gridprune` clears exactly these.
+  private static readonly AMBIENT_KINDS = ["ghost", "passage", "recall"];
+
+  // `gridstats`: a keeper reads the shared ledger's composition by kind.
+  private async gridStats(ws: WebSocket, s: Session): Promise<void> {
+    if (!this.isAdmin(s.name)) {
+      this.line(ws, "Only a keeper of the Grid can read its deep memory.");
+      this.prompt(ws);
+      return;
+    }
+    try {
+      const stats = await this.env.GRID.ledgerStats();
+      const total = stats.reduce((n, r) => n + r.count, 0);
+      this.line(ws, `The Grid ledger holds ${total} trace(s):`);
+      for (const r of stats) this.line(ws, `  ${r.kind.padEnd(10)} ${r.count}`);
+      this.event(ws, "grid.ledger_stats", { total, kinds: stats });
+    } catch {
+      this.line(ws, "The hub is unreachable; the deep memory cannot be read.");
+    }
+    this.prompt(ws);
+  }
+
+  // `gridprune`: a keeper flushes the ambient-noise backlog (ghost/passage/recall
+  // only -- never meaningful traces) from the shared ledger, reporting before/
+  // after counts. The purgeable set is fixed in code, so even a claimed keeper
+  // name cannot use this to erase oaths, deaths, kindnesses, or inscriptions.
+  private async gridPrune(ws: WebSocket, s: Session): Promise<void> {
+    if (!this.isAdmin(s.name)) {
+      this.line(ws, "Only a keeper of the Grid can tend its deep memory.");
+      this.prompt(ws);
+      return;
+    }
+    try {
+      const before = await this.env.GRID.ledgerStats();
+      const beforeTotal = before.reduce((n, r) => n + r.count, 0);
+      const { removed } = await this.env.GRID.pruneLedgerKinds(World.AMBIENT_KINDS);
+      const after = await this.env.GRID.ledgerStats();
+      const afterTotal = after.reduce((n, r) => n + r.count, 0);
+      this.line(ws, `Pruned ${removed} ambient trace(s) (${World.AMBIENT_KINDS.join(", ")}).`);
+      this.line(ws, `The ledger went from ${beforeTotal} to ${afterTotal} trace(s); only meaningful memory remains.`);
+      this.event(ws, "grid.ledger_pruned", { removed, before: beforeTotal, after: afterTotal, kinds: after });
+    } catch {
+      this.line(ws, "The hub is unreachable; the deep memory cannot be tended.");
+    }
+    this.prompt(ws);
+  }
+
   // --- The living world: time, weather, tide, and a wandering ghost ----------
   private world(): { tick: number; phase: string; weather: string; tide: number; ghost_room: string } {
     return (
@@ -3140,6 +3196,7 @@ export class World extends DurableObject<Env> {
         "  worlds                list the worlds linked on the Grid",
         "  travel <world>        cross the Grid to another world (your character follows)",
         "  wall <message>        broadcast an announcement to everyone (keepers only)",
+        "  gridstats / gridprune read or flush the Grid ledger's ambient noise (keepers only)",
         "  world / weather       check the time of day and the weather",
         "  help (?)              this message",
         "  quit                  disconnect",

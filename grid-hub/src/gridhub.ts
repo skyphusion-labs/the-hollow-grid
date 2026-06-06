@@ -119,6 +119,29 @@ export class GridHub extends DurableObject<Env> {
       .toArray();
   }
 
+  // Maintenance: the ledger's composition by kind (most numerous first). For a
+  // keeper to see what the collective memory is actually made of.
+  ledgerStats(): Array<{ kind: string; count: number }> {
+    return this.ctx.storage.sql
+      .exec<{ kind: string; count: number }>(
+        "SELECT kind, COUNT(*) AS count FROM ledger GROUP BY kind ORDER BY count DESC",
+      )
+      .toArray();
+  }
+
+  // Maintenance: delete every trace of the given kinds and report how many went.
+  // The caller decides which kinds (the keeper command restricts this to ambient
+  // noise), so this stays a blunt-but-bounded tool. A no-op on an empty list.
+  pruneLedgerKinds(kinds: string[]): { removed: number } {
+    if (!kinds.length) return { removed: 0 };
+    const sql = this.ctx.storage.sql;
+    const before = sql.exec<{ c: number }>("SELECT COUNT(*) AS c FROM ledger").one().c;
+    const placeholders = kinds.map(() => "?").join(", ");
+    sql.exec(`DELETE FROM ledger WHERE kind IN (${placeholders})`, ...kinds);
+    const after = sql.exec<{ c: number }>("SELECT COUNT(*) AS c FROM ledger").one().c;
+    return { removed: before - after };
+  }
+
   // The federation feed as heard FROM a given world: newest traces overall, but
   // with slots reserved for OTHER worlds so the rest of the Grid is always
   // audible even when your own world is the noisiest node on the network. (A

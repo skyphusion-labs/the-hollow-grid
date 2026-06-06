@@ -55,6 +55,13 @@ export class GridHubService extends WorkerEntrypoint<Env> implements GridHubApi 
   listWorlds(): Promise<WorldInfo[]> {
     return this.hub().listWorlds();
   }
+
+  ledgerStats(): Promise<Array<{ kind: string; count: number }>> {
+    return this.hub().ledgerStats();
+  }
+  pruneLedgerKinds(kinds: string[]): Promise<{ removed: number }> {
+    return this.hub().pruneLedgerKinds(kinds);
+  }
 }
 
 // The hub has no public HTTP surface of its own: worlds reach it only through the

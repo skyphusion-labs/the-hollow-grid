@@ -6,6 +6,25 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.17.0
+
+Keeper tooling to tend the shared Grid ledger, closing out the adversarial
+review's last open item (ambient-noise backlog).
+
+### Added
+- **`gridstats` / `gridprune`** (keeper-only, gated by the `ADMINS` var like
+  `wall`). `gridstats` reports the hub ledger's composition by kind;
+  `gridprune` flushes the ambient backlog. The federate filter already keeps new
+  `ghost`/`passage`/`recall` traces local, but a pre-filter backlog lingered
+  because hub retention is count-based and a quiet Grid never inserts enough to
+  flush it. `gridprune` clears exactly those three kinds. The purgeable set is
+  **fixed in code**, so even a claimed keeper name cannot erase meaningful
+  traces (oaths, deaths, kindnesses, inscriptions, quests).
+- Hub RPC gains `ledgerStats()` and `pruneLedgerKinds(kinds)` (`GridHubApi`).
+- New events `grid.ledger_stats` and `grid.ledger_pruned` (docs/protocol.md);
+  four new smoke assertions (keeper read, prune, ambient-gone, non-keeper
+  refused) -- 101 checks.
+
 ## v0.16.0
 
 Operational visibility: the world now exposes health probes for uptime
