@@ -101,3 +101,25 @@ empty `<buildStrategies/>`); a tags-only strategy will detect the change but log
 
 Agent requirements: Node 24+ on PATH (the smoke suite uses the global
 `WebSocket`).
+
+## Health endpoints + Cloudflare Access
+
+The world serves `GET /health` (liveness) and `GET /health/deep` (deep check;
+see docs/protocol.md). At the Worker layer both are unauthenticated; the prod
+deployment gates them at the edge with a Cloudflare Access self-hosted
+application:
+
+- **App** -- "The Hollow Grid Health", domain `hollow.skyphusion.org/health`
+  (covers `/health` and `/health/deep`; the rest of the site, including `/ws`
+  and the play client, stays public).
+- **Policies** -- mirror the other SkyPhusion apps: a `non_identity` "Health
+  Checks" policy admitting the shared `kuma-monitor` service token (so Uptime
+  Kuma can poll non-interactively with `CF-Access-Client-Id` /
+  `CF-Access-Client-Secret` headers), plus an `allow` email policy for the
+  operators (so a browser hit prompts for SSO).
+- **Monitoring** -- point a Kuma monitor at `https://hollow.skyphusion.org/health`
+  (60s) and `/health/deep` (5min), sending the `kuma-monitor` token headers.
+
+Access is configured via the Cloudflare API (account-level Zero Trust), not in
+`wrangler.jsonc`; it sits in front of the Worker, so the Worker code is
+unchanged.
