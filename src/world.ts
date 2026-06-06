@@ -6,6 +6,7 @@ import { ITEM_TEMPLATES, itemMatches, EQUIP_SLOTS, waresFor, starterFor, type Wa
 import { RACES, RACE_ORDER, raceFor, matchRace, stanceFor } from "./races";
 import type { GridTrace, GridCast, CharSheet, WorldInfo } from "../shared/grid";
 import { bannerFor } from "./banner";
+import { ambientTransmission, listenTransmission, personalize, type Transmission } from "./transmissions";
 
 const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 
@@ -25,6 +26,7 @@ const POISON_DMG = 1; // hp lost per tick while poisoned
 const PHASE_TICKS = 20; // day -> dusk -> night -> dawn, each ~1 minute
 const WEATHER_TICKS = 9; // roll for a weather change ~every 27s
 const GHOST_TICKS = 4; // the Grid-ghost drifts a room ~every 12s
+const TRANSMISSION_TICKS = 7; // roll for a dead-network transmission ~every 21s
 
 const PHASES = ["dawn", "day", "dusk", "night"] as const;
 const PHASE_LINE: Record<string, string> = {
@@ -898,6 +900,10 @@ export class World extends DurableObject<Env> {
         break;
       case "ping":
         await this.gridPing(ws, s, arg);
+        break;
+      case "listen":
+      case "tune":
+        this.listenGrid(ws, s);
         break;
       case "gridcast":
       case "gc":
@@ -2331,6 +2337,35 @@ export class World extends DurableObject<Env> {
     }
   }
 
+  // The dead network's voice, styled by register: the banal hum dim and cool, the
+  // human voices pale and close, the Grid's notice of YOU an unsettling magenta.
+  private formatTransmission(t: Transmission, name: string): string {
+    const color = t.kind === "self" ? "2;35" : t.kind === "human" ? "2;37" : t.kind === "ad" ? "2;33" : "2;36";
+    return `\x1b[${color}m  >> ${personalize(t.text, name)} <<\x1b[0m`;
+  }
+
+  // Push an ambient fragment to everyone online (personalized, so a `self`
+  // transmission says each listener's own name) on the structured channel + prose.
+  private broadcastTransmission(): void {
+    const t = ambientTransmission();
+    for (const ws of this.ctx.getWebSockets()) {
+      const s = ws.deserializeAttachment() as Session | null;
+      if (!s?.name) continue;
+      this.event(ws, "grid.transmission", { kind: t.kind, text: personalize(t.text, s.name) });
+      ws.send(NL + this.formatTransmission(t, s.name) + NL + "> ");
+    }
+  }
+
+  // `listen` / `tune`: deliberately tune the dead frequencies. Pulls a fragment
+  // for you alone, weighted toward the human voices -- the ones worth digging for.
+  private listenGrid(ws: WebSocket, s: Session): void {
+    const t = listenTransmission();
+    this.event(ws, "grid.transmission", { kind: t.kind, text: personalize(t.text, s.name) });
+    this.line(ws, "You go still and tune the dead frequencies. Something answers:");
+    this.line(ws, this.formatTransmission(t, s.name));
+    this.prompt(ws);
+  }
+
   private emitWorldState(ws: WebSocket): void {
     const w = this.world();
     this.event(ws, "world.state", { tick: w.tick, phase: w.phase, weather: w.weather, tide: w.tide });
@@ -2373,6 +2408,11 @@ export class World extends DurableObject<Env> {
 
     if (tick % GHOST_TICKS === 0) {
       ghost_room = this.driftGhost(ghost_room);
+    }
+
+    // The dead network bleeds a fragment of the world-that-was through the wire.
+    if (tick % TRANSMISSION_TICKS === 0 && Math.random() < 0.6) {
+      this.broadcastTransmission();
     }
 
     this.ctx.storage.sql.exec(
@@ -2794,6 +2834,7 @@ export class World extends DurableObject<Env> {
         "  who                   list survivors online",
         "  title <text>          set an epithet shown after your name (blank clears it)",
         "  ping [all]            query this node's Grid memory ('ping all' = the whole network)",
+        "  listen (tune)         tune the dead frequencies; hear what the network still plays",
         "  gridcast <message>    speak across EVERY world on the Grid (gc)",
         "  war / tide            the global Cinder Front vs free-folk war (all worlds)",
         "  whoami                your canonical self on the Grid (follows you everywhere)",

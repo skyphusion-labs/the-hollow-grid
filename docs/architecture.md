@@ -105,6 +105,8 @@ Commands are single line verbs (many with short aliases). Grouped:
 - **The faction arc:** `join`, `defend`/`defy` (side with the free folk),
   `free`/`rescue` (free caged refugees), `talk`, `resist`.
 - **The world / drugs:** `drink`, `eat`, `carouse`, `ping`, `title`.
+- **The dead network:** `listen`/`tune` (tune the dead frequencies for a Grid
+  transmission; the network also bleeds fragments on the living-world tick).
 - **Admin (keepers in the `ADMINS` var):** `wall`/`announce`.
 
 A faithful port should implement these verbs and emit the matching `@event`s. The

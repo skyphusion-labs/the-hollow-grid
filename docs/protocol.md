@@ -82,6 +82,7 @@ drift (any new player-affecting state must be emitted here).
 | `comm.yell` | a `yell` is heard | `from, text` |
 | `comm.gridcast` | cross-world `gridcast` relayed via the hub | `from, text` |
 | `grid.echo` | `ping` replays a node's traces | `node, traces[]` |
+| `grid.transmission` | the dead network bleeds a fragment (tick) or `listen` | `kind, text` |
 | `grid.worlds` | `worlds` lists the federation | `worlds[] {id, live, here}` |
 | `grid.travel` | `travel` hands you off | `to, url` |
 | `world.state` | login, `world`, and any living-world change | `tick, phase, weather, tide` |
