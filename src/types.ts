@@ -77,4 +77,8 @@ export interface Session {
   witnessReadyAt?: number;
   /** a custom title shown after the player's name (persisted) */
   title?: string;
+  /** you once sank deep into the cinders (write-once true; what redemption is FROM) */
+  strayed?: boolean;
+  /** you climbed back to real good after straying -- "the Returned" (write-once true) */
+  redeemed?: boolean;
 }

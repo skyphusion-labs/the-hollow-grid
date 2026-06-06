@@ -854,6 +854,38 @@ await sleep(400);
 check(!VG.last("grid.remembrance") && /no recent memory/i.test(VG.raw()), "witnessing an unknown name keeps no one (no grid.remembrance)");
 VG.sock.close();
 
+// --- Phase 11d: the redemption arc (stray -> return) -------------------------
+// The kapo's ash-mark is permanent, but everyone else who sinks into the cinders
+// can find their way back, and the world recognizes it. A non-elf pledges to the
+// Front at the dais (-25 -> strays), then defects to its face (+30, the bravest
+// act on the board) -> climbs back into the light as "the Returned".
+const RD = mkClient();
+await RD.open();
+await sleep(200);
+const rdname = "return_" + Math.random().toString(36).slice(2, 6);
+RD.send(rdname);
+await sleep(400);
+await pickRace(RD, "human"); // a non-elf: pledging is corruption, not the kapo brand
+for (const dir of ["east", "up", "north", "north", "north", "north", "north", "up"]) {
+  RD.send(dir);
+  await sleep(420);
+}
+check(RD.last("room.info")?.data.id === "dais", "the oathbreaker-to-be reaches the Ashmonger's dais");
+const rdmark = RD.raw().length;
+RD.send("join"); // pledge to the Front: -25 morality, sworn to the cinders
+await sleep(650);
+check(/strayed a long way/i.test(RD.raw().slice(rdmark)), "sinking into the Front strays you (the Grid marks it, write-once)");
+check(
+  RD.last("char.affects")?.data.morality <= -20 && RD.last("char.affects")?.data.faction === "front",
+  "the dais oath leaves you deep in the cinders, sworn to the Front",
+);
+RD.send("defy"); // turn on the Front to its face: +30, back toward the light
+await sleep(750);
+const redeem = RD.last("grid.redemption");
+check(!!redeem && redeem.data.title === "the Returned", "defecting back to the light makes a strayed soul the Returned (grid.redemption)");
+check(RD.last("char.affects")?.data.faction === "ally", "the Returned stands with the free folk, no longer the Front");
+RD.sock.close();
+
 // --- Phase 12: federation phase 5 -- a SECOND, real world on the same Grid ----
 // Everything above ran against one world. This phase brings up a genuinely
 // separate deployment (Dustfall, the same code under its own name/url on port

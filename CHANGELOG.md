@@ -6,6 +6,35 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.19.0
+
+The redemption arc: the counterweight to the kapo's permanence. The ash-sworn
+brand never lifts -- that is the world's one unforgivable thing -- but almost
+everyone else who sinks into the cinders can find their way back, and when they
+do, the world recognizes it. Mercy is real; some things still cannot be undone.
+
+### Added
+- **Two write-once standing transitions, checked at a single command chokepoint
+  (`moralArc` in `webSocketMessage`) so no scattered morality site can drift:**
+  - **stray** -- morality falls to `STRAY_FLOOR` (-20; the dais oath is -25, the
+    kapo brand -40). A private mark; the shame is not broadcast.
+  - **return** -- a strayed soul climbs back to `REDEEM_CEIL` (+5) and no longer
+    stands with the Front. Reachable in one stroke by defecting at the
+    Ashmonger's dais (the +30 turn lands a fresh oathbreaker at +5), or by
+    sustained good works. They earn the title **"the Returned"** (federated, so
+    it follows them across worlds), a `redemption` trace, and the event
+    `grid.redemption`. The free folk meet their eyes again.
+- **The kapo carve-out.** An ash-sworn character walks the same arc, but the
+  brand does not lift: crossing the ceiling gives a private `penance` (not a
+  federation banner) and the acknowledgment that the ash never washes off --
+  never "the Returned". Good done is real and named as such; it is just not
+  absolution. Both paths verified end-to-end (human -> Returned; elf/kapo ->
+  penance).
+- `whoami` shows where you stand on the arc (strayed / the Returned /
+  ash-marked-and-good-anyway). New columns `strayed`/`redeemed` on `players`.
+- Event `grid.redemption` (docs/protocol.md); six new smoke assertions
+  (110 total).
+
 ## v0.18.0
 
 The rite of remembrance: a counter to the Cinder Front's signature move, which

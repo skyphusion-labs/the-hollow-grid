@@ -21,6 +21,13 @@ const DEFAULT_WORLD_NAME = "The Hollow Grid";
 const ROUND_MS = 3_000; // combat + poison resolve one tick every 3 seconds
 const BASE_HP = 30;
 const POISON_DMG = 1; // hp lost per tick while poisoned
+// The redemption arc. You STRAY when morality sinks this low (the Front's dais
+// oath is -25; the kapo's brand -40; ordinary corruption stacks there too). You
+// RETURN when a strayed soul climbs back to net-positive AND no longer stands
+// with the Front -- reachable in one stroke by defecting at the Ashmonger's dais
+// (the +30 turn lands a fresh oathbreaker at +5), or by sustained good works.
+const STRAY_FLOOR = -20;
+const REDEEM_CEIL = 5;
 
 // The living world advances on the same ~3s alarm tick. These are how many
 // ticks pass between each kind of change (kept slow enough to feel like weather,
@@ -175,7 +182,9 @@ export class World extends DurableObject<Env> {
           resisted INTEGER NOT NULL DEFAULT 0,
           title TEXT NOT NULL DEFAULT '',
           race TEXT NOT NULL DEFAULT '',
-          ashsworn INTEGER NOT NULL DEFAULT 0
+          ashsworn INTEGER NOT NULL DEFAULT 0,
+          strayed INTEGER NOT NULL DEFAULT 0,
+          redeemed INTEGER NOT NULL DEFAULT 0
         )
       `);
       for (const col of [
@@ -192,6 +201,8 @@ export class World extends DurableObject<Env> {
         "title TEXT NOT NULL DEFAULT ''",
         "race TEXT NOT NULL DEFAULT ''",
         "ashsworn INTEGER NOT NULL DEFAULT 0",
+        "strayed INTEGER NOT NULL DEFAULT 0",
+        "redeemed INTEGER NOT NULL DEFAULT 0",
       ]) {
         try {
           sql.exec(`ALTER TABLE players ADD COLUMN ${col}`);
@@ -337,6 +348,8 @@ export class World extends DurableObject<Env> {
       race: "",
       ashsworn: false,
       resisted: false,
+      strayed: false,
+      redeemed: false,
     };
     server.serializeAttachment(session);
 
@@ -361,6 +374,10 @@ export class World extends DurableObject<Env> {
       return;
     }
     await this.handleCommand(ws, session, line);
+    // Morality only ever changes via a command; check the moral arc once here,
+    // at the single chokepoint, so no scattered call site can forget to. It is
+    // idempotent -- a no-op unless a stray/return transition is actually pending.
+    await this.moralArc(ws, session);
   }
 
   webSocketClose(ws: WebSocket, code: number, reason: string): void {
@@ -635,8 +652,10 @@ export class World extends DurableObject<Env> {
         title: string;
         race: string;
         ashsworn: number;
+        strayed: number;
+        redeemed: number;
       }>(
-        "SELECT room, hp, max_hp, xp, level, poisoned, gold, morality, addiction, faction, resisted, title, race, ashsworn FROM players WHERE name = ?",
+        "SELECT room, hp, max_hp, xp, level, poisoned, gold, morality, addiction, faction, resisted, title, race, ashsworn, strayed, redeemed FROM players WHERE name = ?",
         name,
       )
       .toArray()[0];
@@ -661,6 +680,8 @@ export class World extends DurableObject<Env> {
       ashsworn: !!row?.ashsworn,
       resisted: !!row?.resisted,
       title: row?.title ?? "",
+      strayed: !!row?.strayed,
+      redeemed: !!row?.redeemed,
     };
 
     // Federation phase 3: the canonical identity (progression + standing) lives
@@ -2240,6 +2261,7 @@ export class World extends DurableObject<Env> {
         myRace ? `  ability: ${myRace.ability.name} -- ${myRace.ability.desc}  (use 'ability' or '${myRace.ability.verb}')` : "",
         `  level ${sheet.level}   xp ${sheet.xp}   gold ${sheet.gold}`,
         `  standing: ${standing}   (morality ${sheet.morality})`,
+        this.arcLine(s),
         "  This identity is canonical on the Grid; it follows you to every world.",
       ]
         .filter(Boolean)
@@ -3017,6 +3039,62 @@ export class World extends DurableObject<Env> {
     this.prompt(ws);
   }
 
+  // The redemption arc: the counterweight to the kapo's permanence. The ashsworn
+  // brand never lifts -- that is the world's one unforgivable thing -- but almost
+  // everyone else who sinks into the cinders can find their way back, and when
+  // they do, the world RECOGNIZES it. Two write-once transitions, checked at the
+  // single command chokepoint (webSocketMessage) so nothing can drift:
+  //   stray  -- morality fell to STRAY_FLOOR; a private mark, the shame isn't broadcast.
+  //   return -- a strayed soul climbed back to REDEEM_CEIL and no longer stands
+  //             with the Front. The free folk meet their eyes again ("the Returned").
+  // One line describing where a character stands on the redemption arc, for
+  // whoami. Empty for someone who never strayed (most people).
+  private arcLine(s: Session): string {
+    if (s.redeemed && !s.ashsworn) return "  the Returned -- you strayed toward the cinders and found your way back.";
+    if (s.redeemed && s.ashsworn) return "  ash-marked, and good anyway -- the brand stays; you keep choosing well regardless.";
+    if (s.strayed) return "  strayed -- you have gone a long way toward the cinders. (the way back is not closed)";
+    return "";
+  }
+
+  private async moralArc(ws: WebSocket, s: Session): Promise<void> {
+    if (!s.name) return; // logged out mid-handler; nothing to weigh
+
+    if (!s.strayed && s.morality <= STRAY_FLOOR) {
+      s.strayed = true;
+      ws.serializeAttachment(s);
+      this.persistPlayer(s);
+      // Private. Straying isn't a federation banner; it's a thing you know.
+      this.line(ws, NL + "Something in you has gone cold and quiet. You have strayed a long way toward the cinders. (the Grid marks it, and so do you)");
+      this.prompt(ws);
+      return;
+    }
+
+    if (s.strayed && !s.redeemed && s.morality >= REDEEM_CEIL && s.faction !== "front") {
+      s.redeemed = true; // the arc resolves once, either way
+
+      if (s.ashsworn) {
+        // The kapo carve-out. The good is real and the world will not pretend
+        // otherwise -- but the ash-mark does not lift. Mercy has a limit, and
+        // this is where the world draws it. A private reckoning, not a banner.
+        ws.serializeAttachment(s);
+        this.persistPlayer(s);
+        this.recordTrace(s.room, "penance", `${s.name} has done real good, though the ash-mark remains.`, false);
+        this.line(ws, NL + "You have clawed back to something good, and it is real. But the ash does not wash off; it never will. That is the cost. Carry it, and keep doing good anyway.");
+        this.prompt(ws);
+        return;
+      }
+
+      if (!s.title) s.title = "the Returned"; // never overwrite a chosen title
+      ws.serializeAttachment(s);
+      this.persistPlayer(s);
+      this.commitIdentity(s);
+      this.recordTrace(s.room, "redemption", `${s.name} found their way back from the cinders.`);
+      this.event(ws, "grid.redemption", { name: s.name, title: s.title });
+      this.line(ws, NL + "The hollow you carried has filled with something else. The free folk have started to meet your eyes again. You found your way back. (you are the Returned)");
+      this.prompt(ws);
+    }
+  }
+
   private exitsView(ws: WebSocket, s: Session): void {
     const exits = Object.keys(this.rooms[s.room].exits);
     this.line(ws, exits.length ? `Exits: ${exits.join(", ")}.` : "There are no obvious exits from here.");
@@ -3442,14 +3520,15 @@ export class World extends DurableObject<Env> {
 
   private persistPlayer(s: Session): void {
     this.ctx.storage.sql.exec(
-      `INSERT INTO players (name, room, hp, max_hp, xp, level, poisoned, gold, morality, addiction, faction, resisted, title, race, ashsworn)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO players (name, room, hp, max_hp, xp, level, poisoned, gold, morality, addiction, faction, resisted, title, race, ashsworn, strayed, redeemed)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(name) DO UPDATE SET
          room = excluded.room, hp = excluded.hp, max_hp = excluded.max_hp,
          xp = excluded.xp, level = excluded.level, poisoned = excluded.poisoned,
          gold = excluded.gold, morality = excluded.morality, addiction = excluded.addiction,
          faction = excluded.faction, resisted = excluded.resisted, title = excluded.title,
-         race = excluded.race, ashsworn = excluded.ashsworn`,
+         race = excluded.race, ashsworn = excluded.ashsworn,
+         strayed = excluded.strayed, redeemed = excluded.redeemed`,
       s.name,
       s.room,
       s.hp,
@@ -3465,6 +3544,8 @@ export class World extends DurableObject<Env> {
       s.title ?? "",
       s.race ?? "",
       s.ashsworn ? 1 : 0,
+      s.strayed ? 1 : 0,
+      s.redeemed ? 1 : 0,
     );
   }
 }
