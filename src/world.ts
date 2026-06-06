@@ -919,6 +919,11 @@ export class World extends DurableObject<Env> {
       case "tune":
         this.listenGrid(ws, s);
         break;
+      case "inscribe":
+      case "carve":
+      case "leave":
+        this.inscribe(ws, s, arg);
+        break;
       case "gridcast":
       case "gc":
         await this.gridcast(ws, s, arg);
@@ -2368,13 +2373,51 @@ export class World extends DurableObject<Env> {
       this.line(ws, "You key into the dead Grid. Static, a cold hum... but this node remembers nothing. Not yet. (try 'ping all')");
     } else {
       this.line(ws, "You key into the dead Grid. Static, then it remembers:");
-      for (const r of rows) this.line(ws, `  - ${r.text} (${this.ago(r.at)})`);
+      for (const r of rows) {
+        // Player inscriptions (kind "mark") are words a hand left here on purpose,
+        // for whoever came next. Render them set apart from the auto-traces.
+        if (r.kind === "mark") this.line(ws, `  \x1b[2;36m. someone left this here -- ${r.text} (${this.ago(r.at)})\x1b[0m`);
+        else this.line(ws, `  - ${r.text} (${this.ago(r.at)})`);
+      }
       this.line(ws, "  (say 'ping all' to hear the whole network)");
     }
     this.event(ws, "grid.echo", {
       node: s.room,
       traces: rows.map((r) => ({ at: r.at, kind: r.kind, text: r.text })),
     });
+    this.prompt(ws);
+  }
+
+  // `inscribe <message>`: carve your own words into the dead network at this node,
+  // for whoever comes after. You will be gone; the Grid keeps them. They federate
+  // like any trace, so a stranger -- a person or an agent, in this world or
+  // another -- can find them with `ping`. The new minds leaving voices the way the
+  // old ones did. "The network outlived us"; now it will outlive you too.
+  private inscribe(ws: WebSocket, s: Session, arg: string): void {
+    // Sanitize hard: this is player text bound for the shared, federated ledger
+    // and shown to others. No control chars, no newlines (which would let a
+    // player inject @event lines), printable ASCII only, bounded length.
+    const msg = arg
+      .replace(/[\r\n\t]+/g, " ")
+      .replace(/[^\x20-\x7E]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 120);
+    if (msg.length < 2) {
+      this.line(ws, "Carve what into the Grid? (inscribe <a few words for whoever comes next>)");
+      this.prompt(ws);
+      return;
+    }
+    this.recordTrace(s.room, "mark", `${s.name}: "${msg}"`);
+    this.line(
+      ws,
+      [
+        "You press your words into the dead network, where they will outlast you:",
+        `  \x1b[2;36m"${msg}"\x1b[0m`,
+        "The Grid takes them. Someone will key into this node, long after you are gone, and hear you. (try 'ping')",
+      ].join(NL),
+    );
+    this.event(ws, "grid.inscribed", { node: s.room, text: msg });
     this.prompt(ws);
   }
 
@@ -2942,6 +2985,7 @@ export class World extends DurableObject<Env> {
         "  title <text>          set an epithet shown after your name (blank clears it)",
         "  ping [all]            query this node's Grid memory ('ping all' = the whole network)",
         "  listen (tune)         tune the dead frequencies; hear what the network still plays",
+        "  inscribe <message>    carve your words into this node for whoever comes after (carve/leave)",
         "  gridcast <message>    speak across EVERY world on the Grid (gc)",
         "  war / tide            the global Cinder Front vs free-folk war (all worlds)",
         "  whoami                your canonical self on the Grid (follows you everywhere)",
