@@ -100,7 +100,7 @@ drift (any new player-affecting state must be emitted here).
 | `char.affects` | room view + when standing changes | `morality, addiction, faction, resisted, race, ashsworn` |
 | `char.equipment` | on equip/remove/`eq` | `weapon, head, body, hands, feet` |
 | `char.died` | on death | `respawnRoom, hp, maxHp` |
-| `char.dream` | sleeping delivers a dream (a mirror of your record) | `text` |
+| `char.dream` | sleeping delivers a dream (a mirror of your record) | `text, personal` (+ `subject` when `personal`: a real person from your record you saved or kept) |
 | `char.reckoning` | `reckoning`/`conscience` summons your moral self-model | `morality, standing, ashsworn, strayed, redeemed, deeds{}` |
 | `char.treated` | the waystation medic `treat`s you (tide-gated) | `amount, mood, tide` |
 | `node.cache` | a room view where a stranger has cached aid | `gold` |

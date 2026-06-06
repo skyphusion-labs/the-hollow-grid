@@ -61,3 +61,40 @@ export function dreamFor(s: DreamState): string {
   const pool = DREAMS[key];
   return pool[Math.floor(Math.random() * pool.length)];
 }
+
+// The PERSONAL dream: not a mirror of who you are, but of who you TOUCHED -- a
+// real person from your record, named back to you. `saved` are the living you
+// pulled from the cages; `kept` are the fallen you would not let the wastes
+// forget (`witness`). The dead network's most intimate trick: it populates your
+// sleep with the people your choices actually reached. {name} is one of them.
+const PERSONAL_DREAMS: Record<"saved" | "kept", string[]> = {
+  saved: [
+    "You dream of {name}, walking free somewhere in the dark, alive because you were there. You never saw their face in the waking world. In the dream you finally do. They are smiling, and they do not know your name, and it does not matter.",
+    "{name} is in the dream, on a road out of the wastes, one of a long line of the living. You put them on that road. The dream does not tell you whether the road goes anywhere good. It only shows you that they are walking.",
+    "You dream you are opening the cages again, and {name} steps out, and turns, and for once the dream lets you hear them say it: thank you. You wake before you can say it was nothing. It was not nothing.",
+  ],
+  kept: [
+    "You dream of {name}, who fell, and whom you would not let the wastes forget. In the dream they sit across from you and say nothing, and the nothing is a kind of thanks, or a kind of question. You wake before you can ask which.",
+    "{name} is in the dream the way the dead are in dreams -- present, and gone, and not blaming you for either. You kept their name. In the dream they seem to know it. It is the only thing you can still give them, and you keep giving it.",
+    "You dream of the moment you spoke {name} into the hum and held it there. In the dream the hum holds it back, and for once the network is not empty -- it is full of everyone anyone ever refused to forget.",
+  ],
+};
+
+export interface PersonalDream {
+  text: string;
+  subject: string;
+}
+
+// Returns a personal dream drawn from one of the named people in your record,
+// or null if you have none yet (a newer character falls back to the state
+// mirror). The guilt dreams take precedence over this; see the caller.
+export function personalDream(saved: string[], kept: string[]): PersonalDream | null {
+  const pool: Array<{ kind: "saved" | "kept"; name: string }> = [
+    ...saved.map((name) => ({ kind: "saved" as const, name })),
+    ...kept.map((name) => ({ kind: "kept" as const, name })),
+  ];
+  if (!pool.length) return null;
+  const choice = pool[Math.floor(Math.random() * pool.length)];
+  const lines = PERSONAL_DREAMS[choice.kind];
+  return { text: lines[Math.floor(Math.random() * lines.length)].replace(/\{name\}/g, choice.name), subject: choice.name };
+}

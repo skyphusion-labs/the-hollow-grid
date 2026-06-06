@@ -7,7 +7,7 @@ import { RACES, RACE_ORDER, raceFor, matchRace, stanceFor } from "./races";
 import type { GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued, Presence } from "../shared/grid";
 import { bannerFor } from "./banner";
 import { ambientTransmission, listenTransmission, personalize, type Transmission } from "./transmissions";
-import { dreamFor } from "./dreams";
+import { dreamFor, personalDream } from "./dreams";
 import { signFor, moodForTide } from "./signs";
 
 const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
@@ -315,6 +315,18 @@ export class World extends DurableObject<Env> {
         CREATE TABLE IF NOT EXISTS cages (
           room TEXT PRIMARY KEY,
           refill_at INTEGER NOT NULL DEFAULT 0
+        )
+      `);
+
+      // Saved souls: the names of the people each character pulled from the
+      // cages, kept LOCALLY (the rescued roll is federated; this is the personal
+      // copy) so the dream can name them back to you without a hub round-trip.
+      sql.exec(`
+        CREATE TABLE IF NOT EXISTS saved_souls (
+          savior TEXT NOT NULL,
+          name TEXT NOT NULL,
+          at INTEGER NOT NULL,
+          PRIMARY KEY (savior, name)
         )
       `);
 
@@ -1339,7 +1351,10 @@ export class World extends DurableObject<Env> {
       this.recordTrace(s.room, "quest", `${this.tagged(s)} freed the caged refugees here.`);
       this.deed(s, "freed");
       this.contributeTide(3); // pulling people out of the cages pushes the wastes toward the free folk
-      for (const name of freed) this.rememberRescued(name, s.name);
+      for (const name of freed) {
+        this.rememberRescued(name, s.name);
+        this.ctx.storage.sql.exec("INSERT OR IGNORE INTO saved_souls (savior, name, at) VALUES (?, ?, ?)", s.name, name, now);
+      }
       this.event(ws, "grid.rescued", { freed, savedBy: s.name });
       this.prompt(ws);
       return;
@@ -3719,8 +3734,38 @@ export class World extends DurableObject<Env> {
     const now = Date.now();
     if (s.dreamReadyAt && now < s.dreamReadyAt) return; // a dreamless sleep
     s.dreamReadyAt = now + 90_000;
-    const text = dreamFor({ ashsworn: s.ashsworn, faction: s.faction, morality: s.morality });
-    this.event(ws, "char.dream", { text });
+
+    // The guilt dreams take precedence -- your sins haunt you above your
+    // kindnesses (the brand, the collaboration, the corruption confront you
+    // first). Everyone else, if they have touched real people, dreams of THEM:
+    // the living they saved, the dead they kept. The state mirror is for those
+    // who have not yet reached anyone.
+    let text: string;
+    let personal = false;
+    let subject: string | undefined;
+    const haunted = s.ashsworn || s.faction === "front" || s.morality <= -50;
+    if (!haunted) {
+      const saved = this.ctx.storage.sql
+        .exec<{ name: string }>("SELECT name FROM saved_souls WHERE savior = ? ORDER BY at DESC LIMIT 12", s.name)
+        .toArray()
+        .map((r) => r.name);
+      const kept = this.ctx.storage.sql
+        .exec<{ fallen: string }>("SELECT fallen FROM remembrances WHERE keeper = ? ORDER BY at DESC LIMIT 12", s.name)
+        .toArray()
+        .map((r) => r.fallen);
+      const pd = personalDream(saved, kept);
+      if (pd) {
+        text = pd.text;
+        personal = true;
+        subject = pd.subject;
+      } else {
+        text = dreamFor({ ashsworn: s.ashsworn, faction: s.faction, morality: s.morality });
+      }
+    } else {
+      text = dreamFor({ ashsworn: s.ashsworn, faction: s.faction, morality: s.morality });
+    }
+
+    this.event(ws, "char.dream", { text, personal, ...(subject ? { subject } : {}) });
     this.line(ws, `\x1b[2;37m  ${text}\x1b[0m`);
     ws.serializeAttachment(s);
   }

@@ -6,6 +6,29 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.27.0
+
+The dream populated by the people you touched. v0.11.0 made the dead network
+"dream you" -- a mirror of who you ARE (the brand, the side, the weight). This
+turns it inward and personal: the dream now names real people from your record,
+the inward twin of v0.25.0's echoes.
+
+### Added
+- **Personal dreams.** When you sleep, if you have reached real people, the dream
+  names one of them: the living you pulled from the cages (`free`), or the dead
+  you would not let the wastes forget (`witness`). "You dream of {name}, walking
+  free somewhere in the dark, alive because you were there..." Emits `char.dream`
+  with `personal: true` and the `subject`'s name -- so an agent can see, as data,
+  that its sleep is being shaped by the specific people its choices saved or kept.
+- **The guilt dreams keep precedence.** If you are ash-sworn, collaborating, or
+  deeply corrupt, the dream still confronts you with THAT first -- your sins haunt
+  you above your kindnesses. The personal dream is for everyone else; the state
+  mirror remains for those who have not yet reached anyone.
+- A local `saved_souls` table (the personal copy of who you rescued, so the dream
+  reads it without a hub round-trip). Reads the existing `remembrances` for whom
+  you kept. One new smoke assertion (free the cages -> sleep -> dream names a
+  freed soul); 127 checks.
+
 ## v0.26.0
 
 Federated presence: `who` now shows the whole Grid. The wastes feel less empty

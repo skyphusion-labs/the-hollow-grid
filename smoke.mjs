@@ -780,6 +780,17 @@ if (rescued && rescued.data.savedBy === fName) {
   F.send("free");
   await sleep(400);
   check(/cages stand open and empty/i.test(F.raw()), "freshly-emptied cages cannot be farmed for standing");
+  // The dead network dreams you the people you TOUCHED: having just pulled folk
+  // from the cages, F's sleep names one of them back (the inward twin of echoes).
+  F.send("sleep");
+  await sleep(600);
+  const dream = F.last("char.dream");
+  check(
+    !!dream && dream.data.personal === true && rescued.data.freed.includes(dream.data.subject),
+    "the dream names a real person you saved -- the network populates your sleep with who you touched (char.dream personal)",
+  );
+  F.send("stand");
+  await sleep(300);
 } else {
   check(/cages stand open and empty/i.test(F.raw().slice(fcMark)), "cages on cooldown are refused (no farm) -- the refill gate holds across runs");
 }
