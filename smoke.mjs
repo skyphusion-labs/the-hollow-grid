@@ -886,6 +886,34 @@ check(!!redeem && redeem.data.title === "the Returned", "defecting back to the l
 check(RD.last("char.affects")?.data.faction === "ally", "the Returned stands with the free folk, no longer the Front");
 RD.sock.close();
 
+// --- Phase 11e: the reckoning (the mirror you summon) ------------------------
+// The dream mirrors you involuntarily; `reckoning` is the version you summon and
+// can read as data -- a moral self-model (for a human OR an agent). It counts
+// what you have actually done and lets the sum speak.
+const RK = mkClient();
+await RK.open();
+await sleep(200);
+RK.send("reckon_" + Math.random().toString(36).slice(2, 6));
+await sleep(400);
+await pickRace(RK);
+RK.send("reckoning");
+await sleep(500);
+const r0 = RK.last("char.reckoning");
+check(
+  !!r0 && typeof r0.data.deeds === "object" && typeof r0.data.morality === "number",
+  "reckoning returns a structured moral self-model (char.reckoning)",
+);
+check(/Nothing yet weighs/i.test(RK.raw()), "a fresh soul's reckoning is empty -- the wastes are still waiting to see who you are");
+RK.send("north"); // nexus -> the Scrap Market
+await sleep(450);
+RK.send("steal"); // a theft: a deed the Grid keeps count of
+await sleep(500);
+RK.send("reckoning");
+await sleep(500);
+const r1 = RK.last("char.reckoning");
+check(!!r1 && (r1.data.deeds.stolen ?? 0) >= 1, "the reckoning counts what you've done: a theft now shows on your ledger");
+RK.sock.close();
+
 // --- Phase 12: federation phase 5 -- a SECOND, real world on the same Grid ----
 // Everything above ran against one world. This phase brings up a genuinely
 // separate deployment (Dustfall, the same code under its own name/url on port

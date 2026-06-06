@@ -284,6 +284,18 @@ export class World extends DurableObject<Env> {
         )
       `);
 
+      // Deeds: a tally of the morally notable things each character has done, so
+      // the Grid can hold up a mirror on demand (`reckoning`). The dream does
+      // this involuntarily; this is the version you can summon and read as data.
+      sql.exec(`
+        CREATE TABLE IF NOT EXISTS deeds (
+          player TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          count INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (player, kind)
+        )
+      `);
+
       // The living world: a single-row clock the alarm advances while anyone is
       // online -- time of day, weather, the faction tide, and a wandering ghost.
       sql.exec(`
@@ -548,6 +560,7 @@ export class World extends DurableObject<Env> {
     this.line(ws, `You have slain ${t.name}!  (+${t.xp} xp)`);
     this.broadcast(mob.room, `${s.name} has slain ${t.name}.`, ws);
     this.recordTrace(mob.room, "slain", `${s.name} slew ${t.name} here.`);
+    this.deed(s, "slain");
     if (mob.id === "ashmonger") {
       s.morality += 20;
       this.worldBroadcast("Word races across the wastes: the Ashmonger is dead. The Cinder Front's heart is broken.");
@@ -935,6 +948,11 @@ export class World extends DurableObject<Env> {
       case "mourn":
         await this.witness(ws, s, arg);
         break;
+      case "reckoning":
+      case "conscience":
+      case "record":
+        await this.reckoning(ws, s);
+        break;
       case "exits":
       case "exit":
         this.exitsView(ws, s);
@@ -1256,6 +1274,7 @@ export class World extends DurableObject<Env> {
       );
       this.broadcast(s.room, `${s.name} throws open the Front's cages!`, ws);
       this.recordTrace(s.room, "quest", `${this.tagged(s)} freed the caged refugees here.`);
+      this.deed(s, "freed");
       this.prompt(ws);
       return;
     }
@@ -1370,6 +1389,7 @@ export class World extends DurableObject<Env> {
             "(+50 gold, +60 xp, fully healed)",
         );
         this.recordTrace(s.room, "quest", `${this.tagged(s)} restored the node here with the core shard.`);
+        this.deed(s, "restored");
       } else {
         this.line(
           ws,
@@ -1515,6 +1535,7 @@ export class World extends DurableObject<Env> {
       s.morality -= 10;
       this.line(ws, `You palm a pouch from the stall: ${take} gold, and no one the wiser. (gold: ${s.gold})`);
     }
+    this.deed(s, "stolen"); // the hand went into the till, caught or not
     ws.serializeAttachment(s);
     this.persistPlayer(s);
     this.prompt(ws);
@@ -1796,6 +1817,7 @@ export class World extends DurableObject<Env> {
         this.persistPlayer(s);
         this.emitAffects(ws, s);
         this.recordTrace(s.room, "oath", `${s.name} turned on the Cinder Front at the Ashmonger's own dais.`);
+        this.deed(s, "defected");
         this.contributeTide(15);
         this.commitIdentity(s);
         this.broadcast(s.room, `${s.name} has turned against the Cinder Front!`, ws);
@@ -1809,10 +1831,12 @@ export class World extends DurableObject<Env> {
             "You are ash-sworn now. There is no one left to belong to.",
           ]);
           this.recordTrace(s.room, "oath", `${s.name}, an elf, knelt to the Ashmonger and was branded ash-sworn.`);
+          this.deed(s, "pledged");
         } else {
           s.morality -= 25;
           this.line(ws, 'You kneel and swear yourself to the Front. The Ashmonger\'s hand closes on your shoulder like a trap. "Good. The wastes will be ours."');
           this.recordTrace(s.room, "oath", `${s.name} swore themselves to the Cinder Front at the Ashmonger's dais.`);
+          this.deed(s, "pledged");
         }
         ws.serializeAttachment(s);
         this.persistPlayer(s);
@@ -1851,6 +1875,7 @@ export class World extends DurableObject<Env> {
         s.gold += 30;
         this.broadcast(s.room, `${s.name} -- one of the hunted -- has taken the Cinder Front's brand.`, ws);
         this.recordTrace(s.room, "oath", `${s.name}, an elf, swore to the Cinder Front and was branded ash-sworn.`);
+        this.deed(s, "pledged");
       } else {
         s.morality -= 25;
         s.gold += 30;
@@ -1861,6 +1886,7 @@ export class World extends DurableObject<Env> {
         );
         this.broadcast(s.room, `${s.name} has joined the Cinder Front.`, ws);
         this.recordTrace(s.room, "oath", `${s.name} swore themselves to the Cinder Front here.`);
+        this.deed(s, "pledged");
       }
       this.contributeTide(-10);
     } else {
@@ -1875,6 +1901,7 @@ export class World extends DurableObject<Env> {
       );
       this.broadcast(s.room, `${s.name} stands with the elves against the Cinder Front.`, ws);
       this.recordTrace(s.room, "oath", `${s.name} stood with the free folk here.`);
+      this.deed(s, "stood");
       this.contributeTide(10);
     }
     this.commitIdentity(s);
@@ -2512,6 +2539,7 @@ export class World extends DurableObject<Env> {
       return;
     }
     this.recordTrace(s.room, "mark", `${s.name}: "${msg}"`);
+    this.deed(s, "inscribed");
     this.line(
       ws,
       [
@@ -2942,6 +2970,7 @@ export class World extends DurableObject<Env> {
     }
     // The Grid remembers the kindnesses too, not only the oaths and the kills.
     this.recordTrace(s.room, "kindness", `${s.name} gave their own strength to mend ${ts.name} here.`);
+    this.deed(s, "mended");
     this.commitIdentity(s);
   }
 
@@ -3032,6 +3061,7 @@ export class World extends DurableObject<Env> {
     this.persistPlayer(s);
     this.contributeTide(1); // memory is resistance: the free folk gain a hair
     this.recordTrace(s.room, "vigil", `${s.name} kept the memory of ${match.name}, whom the wastes tried to forget.`);
+    this.deed(s, "kept");
     this.commitIdentity(s);
     this.emitAffects(ws, s);
     this.line(ws, `You speak ${match.name} into the hum and hold it there a moment. The Grid keeps the name; so do you.`);
@@ -3054,6 +3084,70 @@ export class World extends DurableObject<Env> {
     if (s.redeemed && s.ashsworn) return "  ash-marked, and good anyway -- the brand stays; you keep choosing well regardless.";
     if (s.strayed) return "  strayed -- you have gone a long way toward the cinders. (the way back is not closed)";
     return "";
+  }
+
+  // Tally one morally notable deed for a character. Cheap, idempotent upsert;
+  // the running counts feed `reckoning`, the mirror you can summon.
+  private deed(s: Session, kind: string): void {
+    this.ctx.storage.sql.exec(
+      "INSERT INTO deeds (player, kind, count) VALUES (?, ?, 1) ON CONFLICT(player, kind) DO UPDATE SET count = count + 1",
+      s.name,
+      kind,
+    );
+  }
+
+  // The deed tally for a character, as a plain object {kind: count}.
+  private deedsFor(name: string): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const r of this.ctx.storage.sql
+      .exec<{ kind: string; count: number }>("SELECT kind, count FROM deeds WHERE player = ?", name)
+      .toArray()) {
+      out[r.kind] = r.count;
+    }
+    return out;
+  }
+
+  // `reckoning` (also `conscience`/`record`): the Grid holds up a mirror you
+  // asked for. The dream does this when you sleep, unbidden; this is the version
+  // you summon and can read as structured data -- a moral self-model for a human
+  // OR an agent. It does not flatter and it does not scold; it counts, and lets
+  // the sum speak. Light and dark are named in the same plain voice.
+  private async reckoning(ws: WebSocket, s: Session): Promise<void> {
+    const d = this.deedsFor(s.name);
+    const standing = s.faction === "front" ? "Cinder Front" : s.faction === "ally" ? "Free Folk ally" : "unaligned";
+    // The lines the Grid will speak, each only if the deed was actually done.
+    const ledger: Array<[string, string]> = [
+      ["mended", `  mended the hurt of others: ${d.mended ?? 0}`],
+      ["kept", `  names of the fallen you kept: ${d.kept ?? 0}`],
+      ["freed", `  souls you cut out of the cages: ${d.freed ?? 0}`],
+      ["stood", `  times you stood with the free folk: ${d.stood ?? 0}`],
+      ["inscribed", `  words you left for whoever comes next: ${d.inscribed ?? 0}`],
+      ["restored", `  dead nodes you brought back: ${d.restored ?? 0}`],
+      ["slain", `  lives you took: ${d.slain ?? 0}`],
+      ["stolen", `  thefts: ${d.stolen ?? 0}`],
+      ["pledged", `  times you swore to the Cinder Front: ${d.pledged ?? 0}`],
+      ["defected", `  times you turned on the Front: ${d.defected ?? 0}`],
+    ];
+    const done = ledger.filter(([k]) => (d[k] ?? 0) > 0).map(([, line]) => line);
+
+    this.line(ws, "The Grid has kept count. This is the sum of you so far:");
+    this.line(ws, `  standing: ${standing}   (morality ${s.morality})${s.ashsworn ? "   ASH-SWORN" : ""}`);
+    const arc = this.arcLine(s).trim();
+    if (arc) this.line(ws, "  " + arc);
+    if (done.length) {
+      for (const l of done) this.line(ws, l);
+    } else {
+      this.line(ws, "  Nothing yet weighs on either side. The wastes are still waiting to see who you are.");
+    }
+    this.event(ws, "char.reckoning", {
+      morality: s.morality,
+      standing: s.faction,
+      ashsworn: !!s.ashsworn,
+      strayed: !!s.strayed,
+      redeemed: !!s.redeemed,
+      deeds: d,
+    });
+    this.prompt(ws);
   }
 
   private async moralArc(ws: WebSocket, s: Session): Promise<void> {
@@ -3388,6 +3482,7 @@ export class World extends DurableObject<Env> {
         "  travel <world>        cross the Grid to another world (your character follows)",
         "  wall <message>        broadcast an announcement to everyone (keepers only)",
         "  witness [name]        read the Grid's roll of the fallen, or keep one's memory (a vigil)",
+        "  reckoning (conscience) the Grid holds up a mirror: the sum of what you've done",
         "  gridstats / gridprune read or flush the Grid ledger's ambient noise (keepers only)",
         "  world / weather       check the time of day and the weather",
         "  help (?)              this message",

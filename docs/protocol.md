@@ -101,6 +101,7 @@ drift (any new player-affecting state must be emitted here).
 | `char.equipment` | on equip/remove/`eq` | `weapon, head, body, hands, feet` |
 | `char.died` | on death | `respawnRoom, hp, maxHp` |
 | `char.dream` | sleeping delivers a dream (a mirror of your record) | `text` |
+| `char.reckoning` | `reckoning`/`conscience` summons your moral self-model | `morality, standing, ashsworn, strayed, redeemed, deeds{}` |
 | `char.identity` | `whoami` | the federated `CharSheet` (see section 3) |
 | `combat.start` | a fight begins | `mob, name` |
 | `combat.round` | each combat tick | `mob, mobHp, mobMaxHp, playerDmg, mobDmg, hp` |
@@ -161,7 +162,12 @@ consequence. The reward signals an agent can optimize are all on the structured
 channel: progression (`level`/`xp`/`gold`), standing (`morality`/`faction`), and
 the federation tide. The `self` transmissions and the `char.dream` mirror feed
 the agent its own record back, which is a training signal about its own conduct.
-The whole design surfaces *who you are choosing to be* as data.
+And `reckoning` (alias `conscience`) is the deliberate, on-demand version of that
+mirror: it returns `char.reckoning`, a structured self-model -- current standing
+plus a tally of the morally notable things the agent has actually done (mended,
+kept, freed, stood, slain, stolen, pledged, defected, ...). An agent can read its
+own moral trajectory as data, not prose. The whole design surfaces *who you are
+choosing to be* as data.
 
 ## 3. The federation contract (`GridHubApi`)
 

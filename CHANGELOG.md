@@ -6,6 +6,26 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.20.0
+
+The reckoning: the mirror you summon. The dream (v0.11.0) holds your moral record
+up involuntarily when you sleep; this is the deliberate, structured version. The
+Grid has kept count of what you have done, and on command it will tell you, in
+prose and on the `@event` channel, unflinching -- light and dark named in the
+same plain voice.
+
+### Added
+- **`reckoning`** (aliases `conscience`, `record`). Reflects your current
+  standing (morality, faction, ash-sworn, the redemption arc) plus a tally of
+  the morally notable things you have actually done: mended, kept (vigils),
+  freed, stood, inscribed, restored, slain, stolen, pledged, defected. Emits
+  `char.reckoning` -- a structured moral self-model. This is the purest form of
+  the agent-environment thesis: an LLM player can read its own moral trajectory
+  back as data, not prose (documented in the agent-environment section of
+  docs/protocol.md).
+- A `deeds` table (`player, kind, count`) and a `deed()` helper, incremented at
+  each notable act site. Three new smoke assertions (113 total).
+
 ## v0.19.0
 
 The redemption arc: the counterweight to the kapo's permanence. The ash-sworn
