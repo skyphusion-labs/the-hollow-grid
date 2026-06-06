@@ -6,6 +6,29 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.24.0
+
+Recognition: who you've chosen to be precedes you. Until now nearly all of a
+character's moral weight was tracked privately and mirrored back to THEM
+(reckoning, dreams). This is the social face of it -- moral choice made
+consequential in how OTHERS regard you, and (for an agent) perceivable as data
+about other minds, not just its own.
+
+### Added
+- **`look <player>` now reads their moral standing.** An evocative line for a
+  human (the ash-sworn give people pause; the Returned carry themselves like
+  someone who walked back from the cinders; the deeply corrupt make people keep
+  their hands visible), plus the event **`player.read`** (`name, title, faction,
+  ashsworn, regard`) -- so an agent can perceive another's standing as a token
+  (`branded`/`returned`/`cold`/`honored`/`feared`/`trusted`/`front`/`neutral`).
+  This extends the agent-environment thesis from self-perception to social
+  perception.
+- **Your reputation precedes you into a room.** Arrivals now surface the
+  redemption arc, not just faction/brand: "X, the Returned, arrives" /
+  "X, hollow-eyed, arrives" / "X, ash-sworn, arrives" (`arrivalTag`).
+- Two new smoke assertions (the `branded` read of the kapo, the structured
+  `player.read`); 123 checks.
+
 ## v0.23.0
 
 The cache: asynchronous mutual aid. `mend` is care between two players who are

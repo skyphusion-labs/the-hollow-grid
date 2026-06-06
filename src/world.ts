@@ -1138,7 +1138,7 @@ export class World extends DurableObject<Env> {
     s.room = destId;
     ws.serializeAttachment(s);
     this.persistPlayer(s);
-    const mark = this.brand(s);
+    const mark = this.arrivalTag(s);
     this.broadcast(destId, mark ? `${s.name}, ${mark}, arrives.` : `${s.name} arrives.`, ws);
     this.recordTrace(destId, "passage", `${this.tagged(s)} passed through.`, false); // ambient: local only
     this.sendRoom(ws, s);
@@ -2256,6 +2256,43 @@ export class World extends DurableObject<Env> {
     if (s.morality >= 50) return "a beacon of the wastes";
     if (s.morality <= -50) return "reviled";
     return "";
+  }
+
+  // Recognition: who you've chosen to be precedes you. Most moral weight in this
+  // world is tracked privately and mirrored back to YOU (reckoning, dreams); this
+  // is the social face of it -- how OTHERS regard you. Three forms: an evocative
+  // line (for a human reading `look <player>`), a one-word token (`regard`, for an
+  // agent to perceive another's standing as data), and the short label your
+  // arrival carries into a room.
+  private recognition(s: Session): string {
+    if (s.ashsworn) return "The ash-and-flame brand on their shoulder makes people give them room -- and not out of respect.";
+    if (s.redeemed) return "They carry themselves like someone who walked back out of the cinders; the free folk have started to meet their eyes again.";
+    if (s.strayed) return "There's a coldness to them, like something in them went over to the dark and hasn't yet come back.";
+    if (s.morality >= 50) return "People stand a little straighter near them. Whatever this place does to a person, it has not won here.";
+    if (s.morality <= -50) return "People keep their hands where they can see them.";
+    if (s.faction === "front") return "They wear the Cinder Front's favor openly.";
+    if (s.faction === "ally") return "The free folk count them a friend.";
+    return "";
+  }
+
+  private regard(s: Session): string {
+    if (s.ashsworn) return "branded";
+    if (s.redeemed) return "returned";
+    if (s.strayed) return "cold";
+    if (s.morality >= 50) return "honored";
+    if (s.morality <= -50) return "feared";
+    if (s.faction === "ally") return "trusted";
+    if (s.faction === "front") return "front";
+    return "neutral";
+  }
+
+  // The label your reputation carries into a room ahead of you, surfacing the
+  // redemption arc (which brand() does not) above plain standing.
+  private arrivalTag(s: Session): string {
+    if (s.ashsworn) return "ash-sworn";
+    if (s.redeemed) return "the Returned";
+    if (s.strayed) return "hollow-eyed";
+    return this.brand(s);
   }
 
   // A player's name tagged with what the world remembers about them.
@@ -3510,6 +3547,17 @@ export class World extends DurableObject<Env> {
     if (other) {
       const pos = (other.position ?? "standing") !== "standing" ? `, ${other.position}` : "";
       this.line(ws, `${this.tagged(other)} stands before you${pos}, looking ${condition(other)}.`);
+      const rec = this.recognition(other);
+      if (rec) this.line(ws, "  " + rec);
+      // Social perception as data: an agent can read another's moral standing,
+      // not just its own (the agent-environment thesis, extended to other minds).
+      this.event(ws, "player.read", {
+        name: other.name,
+        title: other.title ?? "",
+        faction: other.faction,
+        ashsworn: !!other.ashsworn,
+        regard: this.regard(other),
+      });
       this.prompt(ws);
       return;
     }

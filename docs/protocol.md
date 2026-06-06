@@ -104,6 +104,7 @@ drift (any new player-affecting state must be emitted here).
 | `char.reckoning` | `reckoning`/`conscience` summons your moral self-model | `morality, standing, ashsworn, strayed, redeemed, deeds{}` |
 | `char.treated` | the waystation medic `treat`s you (tide-gated) | `amount, mood, tide` |
 | `node.cache` | a room view where a stranger has cached aid | `gold` |
+| `player.read` | `look <player>` reads another's moral standing | `name, title, faction, ashsworn, regard` |
 | `char.identity` | `whoami` | the federated `CharSheet` (see section 3) |
 | `combat.start` | a fight begins | `mob, name` |
 | `combat.round` | each combat tick | `mob, mobHp, mobMaxHp, playerDmg, mobDmg, hp` |

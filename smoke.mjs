@@ -417,6 +417,14 @@ KW.send("north"); // into the market, where the kapo stands
 await sleep(700);
 const kseen = KW.last("room.info")?.data.players?.find((p) => p.name === kName);
 check(kseen?.standing === "ash-sworn", `the world brands the kapo to others as ash-sworn (got ${JSON.stringify(kseen?.standing)})`);
+// Looking at the kapo reads the brand as data: an agent perceives their arc.
+KW.send(`look ${kName}`);
+await sleep(500);
+const kread = KW.last("player.read");
+check(
+  kread?.data.name === kName && kread.data.ashsworn === true && kread.data.regard === "branded",
+  "looking at the kapo reads them as branded (player.read surfaces the ash-sworn arc)",
+);
 KAPO.sock.close();
 KW.sock.close();
 
@@ -523,6 +531,12 @@ for (let i = 0; i < 8 && !lookSeen; i++) {
   lookSeen = /stands before you/i.test(P.raw().slice(pmark));
 }
 check(lookSeen, "look <player> describes another player");
+// Social perception as data: looking reads the other's moral standing.
+const pr = P.last("player.read");
+check(
+  !!pr && pr.data.name === qName && typeof pr.data.regard === "string",
+  "look <player> reads their moral standing as data (player.read with a regard)",
+);
 
 // mend: heal another player at a cost to yourself. Both are at full HP here, so
 // it correctly declines (cannot mend someone already whole) -- exercising the
