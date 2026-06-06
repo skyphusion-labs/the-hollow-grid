@@ -68,6 +68,23 @@ async function pickRace(client, race = "human") {
   await sleep(400);
 }
 
+// `war` does an async hub RPC, so its reply can outlast a fixed wait under CI
+// load. Poll for it (retrying the command once). Read the tide from the FRESH
+// prose after a mark -- not last("world.war"), which would return a stale prior
+// reading before the new reply lands (breaking a before/after comparison).
+async function readWarTide(client) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const mark = client.raw().length;
+    client.send("war");
+    for (let i = 0; i < 12; i++) {
+      await sleep(400);
+      const m = client.raw().slice(mark).match(/tide ([+-]?\d+)/i);
+      if (m) return parseInt(m[1], 10);
+    }
+  }
+  return undefined;
+}
+
 let failures = 0;
 function check(cond, msg) {
   console.log(`${cond ? "ok  " : "FAIL"}  ${msg}`);
@@ -684,16 +701,12 @@ GH.send("join"); // side with the Cinder Front -> -10 to the GLOBAL tide
 await sleep(1200); // let the best-effort shiftTide RPC land before we read the tide
 GH.sock.close();
 
-GX.send("war");
-await sleep(500);
-const tideBefore = GX.last("world.war")?.data.tide ?? 0;
+const tideBefore = (await readWarTide(GX)) ?? 0;
 GX.send("north"); // nexus -> Scrap Market
 await sleep(500);
 GX.send("defend"); // side with the free folk -> contributes +10 to the GLOBAL tide
 await sleep(1200);
-GX.send("war");
-await sleep(600);
-const tideAfter = GX.last("world.war")?.data.tide ?? 0;
+const tideAfter = (await readWarTide(GX)) ?? 0;
 // With headroom guaranteed (tideBefore <= 90), the +10 lands exactly: proof the
 // shared needle actually moved by the contribution, not that it was already maxed.
 check(
@@ -799,18 +812,14 @@ if (!dustfallUp) {
 
   // The global tide is one needle for the whole federation: read from Dustfall it
   // must equal the value the primary world reads from the same hub.
-  D.send("war");
-  await sleep(600);
-  const tideDust = D.last("world.war")?.data.tide;
+  const tideDust = await readWarTide(D);
   const P = mkClient();
   await P.open();
   await sleep(300);
   P.send("crosscheck_" + Math.random().toString(36).slice(2, 6));
   await sleep(500);
   await pickRace(P);
-  P.send("war");
-  await sleep(600);
-  const tidePrimary = P.last("world.war")?.data.tide;
+  const tidePrimary = await readWarTide(P);
   check(
     typeof tideDust === "number" && tideDust === tidePrimary,
     `the global tide is shared across deployments (Dustfall reads ${tideDust}, primary reads ${tidePrimary})`,
