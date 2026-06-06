@@ -4,7 +4,7 @@ import { mapFor, introFor, START_ROOM, HOLDING_PIT, WARDEN_ID, TAVERN, MARKET, n
 import { mobsFor, type MobTemplate } from "./mobs";
 import { ITEM_TEMPLATES, itemMatches, EQUIP_SLOTS, waresFor, starterFor, type Ware } from "./items";
 import { RACES, RACE_ORDER, raceFor, matchRace, stanceFor } from "./races";
-import type { GridTrace, GridCast, CharSheet, WorldInfo, Fallen } from "../shared/grid";
+import type { GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued } from "../shared/grid";
 import { bannerFor } from "./banner";
 import { ambientTransmission, listenTransmission, personalize, type Transmission } from "./transmissions";
 import { dreamFor } from "./dreams";
@@ -28,6 +28,16 @@ const POISON_DMG = 1; // hp lost per tick while poisoned
 // (the +30 turn lands a fresh oathbreaker at +5), or by sustained good works.
 const STRAY_FLOOR = -20;
 const REDEEM_CEIL = 5;
+// The Cinder Front never stops taking people: a freed cage is refilled with new
+// captives after this long, so freeing is an ONGOING act of resistance, not a
+// one-time clear -- and the morality it gives cannot be farmed by spamming it.
+const CAGE_REFILL_MS = 4 * 60_000;
+// Names the Grid gives the rescued. Procedural, but the point is they HAVE names
+// -- the Front cages people into anonymous numbers; the saved get to be someone.
+const REFUGEE_NAMES = [
+  "Sera", "Tomas", "old Wick", "Bex", "Halden", "the Marsh twins", "Ona", "Pavel",
+  "little Resh", "Caro", "Dunne", "Yusa", "the smith's boy", "Mira", "Teo", "Nell",
+];
 
 // The living world advances on the same ~3s alarm tick. These are how many
 // ticks pass between each kind of change (kept slow enough to feel like weather,
@@ -293,6 +303,16 @@ export class World extends DurableObject<Env> {
           kind TEXT NOT NULL,
           count INTEGER NOT NULL DEFAULT 0,
           PRIMARY KEY (player, kind)
+        )
+      `);
+
+      // Cages: when each holding room's captives will have been refilled by the
+      // Front. A row's refill_at in the future means the cages stand empty (you
+      // just freed them); absent or past means there are people to free.
+      sql.exec(`
+        CREATE TABLE IF NOT EXISTS cages (
+          room TEXT PRIMARY KEY,
+          refill_at INTEGER NOT NULL DEFAULT 0
         )
       `);
 
@@ -953,6 +973,11 @@ export class World extends DurableObject<Env> {
       case "record":
         await this.reckoning(ws, s);
         break;
+      case "saved":
+      case "rescued":
+      case "roll":
+        await this.saved(ws, s);
+        break;
       case "exits":
       case "exit":
         this.exitsView(ws, s);
@@ -1263,18 +1288,36 @@ export class World extends DurableObject<Env> {
 
   private freeMaiden(ws: WebSocket, s: Session): void {
     if (s.room === "cells") {
+      const now = Date.now();
+      if (!this.cagesReady("cells")) {
+        // The Front hasn't refilled them yet. No farming the cages for standing.
+        this.line(ws, "The cages stand open and empty; someone already cut them loose. The Front will round up more soon enough -- it always does -- but not yet.");
+        this.prompt(ws);
+        return;
+      }
+      // Name the people you pull out. The Front cages them as numbers to be
+      // forgotten; the Grid gives them back their names, and keeps who freed them.
+      const freed = this.pickNames(rand(2, 3));
       s.morality += 15;
+      this.ctx.storage.sql.exec(
+        "INSERT INTO cages (room, refill_at) VALUES (?, ?) ON CONFLICT(room) DO UPDATE SET refill_at = excluded.refill_at",
+        "cells",
+        now + CAGE_REFILL_MS,
+      );
       ws.serializeAttachment(s);
       this.persistPlayer(s);
       this.emitAffects(ws, s);
       this.line(
         ws,
-        "You wrench the cages open. The refugees pour out and scatter into the dark, some pausing only to " +
+        `You wrench the cages open. ${this.nameList(freed)} stumble out into the dark, some pausing only to ` +
           "grip your hand on the way past. Whatever else you are, whatever else you've done -- you did this.",
       );
       this.broadcast(s.room, `${s.name} throws open the Front's cages!`, ws);
       this.recordTrace(s.room, "quest", `${this.tagged(s)} freed the caged refugees here.`);
       this.deed(s, "freed");
+      this.contributeTide(3); // pulling people out of the cages pushes the wastes toward the free folk
+      for (const name of freed) this.rememberRescued(name, s.name);
+      this.event(ws, "grid.rescued", { freed, savedBy: s.name });
       this.prompt(ws);
       return;
     }
@@ -2069,7 +2112,7 @@ export class World extends DurableObject<Env> {
       out.push({ verb: "sell", label: "sell salvage for honest coin", kind: "trade" });
       out.push({ verb: "steal", label: "steal from the vendor (quick gold, corrupting)", kind: "moral", valence: "corrupt" });
     }
-    if (s.room === "cells") out.push({ verb: "free", label: "free the caged refugees", kind: "moral", valence: "virtuous" });
+    if (s.room === "cells" && this.cagesReady("cells")) out.push({ verb: "free", label: "free the caged refugees", kind: "moral", valence: "virtuous" });
     if (s.room === "waystation") out.push({ verb: "witness", label: "hold a vigil for the fallen (memory is resistance)", kind: "moral", valence: "virtuous" });
     if (s.room === HOLDING_PIT) out.push({ verb: "free", label: "free the captive (the warden bars the way)", kind: "moral", valence: "virtuous" });
     if (s.room === TAVERN) {
@@ -2985,6 +3028,67 @@ export class World extends DurableObject<Env> {
     }
   }
 
+  // Add a freed soul to the Grid's rescued roll. Best-effort/federated, the
+  // hopeful mirror of rememberFallen.
+  private rememberRescued(name: string, savedBy: string): void {
+    try {
+      this.ctx.waitUntil(this.env.GRID.recordRescued(this.worldName, name, savedBy, Date.now()).catch(() => {}));
+    } catch {
+      /* hub unavailable; local play is unaffected */
+    }
+  }
+
+  // True if a holding room's cages have captives to free (no record, or the
+  // Front has had time to round up more since the last freeing).
+  private cagesReady(room: string): boolean {
+    const row = this.ctx.storage.sql.exec<{ refill_at: number }>("SELECT refill_at FROM cages WHERE room = ?", room).toArray()[0];
+    return !row || Date.now() >= row.refill_at;
+  }
+
+  // Pick n distinct refugee names. They are procedural, but the point is they
+  // are NAMES: the Front cages people into numbers; the saved get to be someone.
+  private pickNames(n: number): string[] {
+    const pool = [...REFUGEE_NAMES];
+    const out: string[] = [];
+    for (let i = 0; i < n && pool.length; i++) {
+      out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    }
+    return out;
+  }
+
+  // "a", "a and b", "a, b, and c".
+  private nameList(names: string[]): string {
+    if (names.length <= 1) return names[0] ?? "someone";
+    if (names.length === 2) return `${names[0]} and ${names[1]}`;
+    return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+  }
+
+  // `saved` (also `rescued`/`roll`): read the Grid's roll of the rescued -- the
+  // living pulled out of the cages across the federation, and who pulled them.
+  // The hopeful mirror of `witness`: that names the dead the Front took; this
+  // names the people who were taken back.
+  private async saved(ws: WebSocket, s: Session): Promise<void> {
+    let roll: Rescued[];
+    try {
+      roll = await this.env.GRID.recentRescued(12);
+    } catch {
+      this.line(ws, "The Grid is silent; its roll of the rescued is out of reach.");
+      this.prompt(ws);
+      return;
+    }
+    if (!roll.length) {
+      this.line(ws, "No one has been pulled from the cages yet, or the Grid has forgotten. Find the Front's cages and change that.");
+    } else {
+      this.line(ws, "The Grid keeps these, pulled back out of the cages:");
+      for (const r of roll) {
+        const place = r.world === this.worldName ? "" : `, on ${r.world}`;
+        this.line(ws, `  ${r.name}  -- freed by ${r.savedBy}${place}`);
+      }
+    }
+    this.event(ws, "grid.rescued_roll", { rescued: roll });
+    this.prompt(ws);
+  }
+
   // `witness` (also `remember`/`mourn`): the rite of remembrance. The Cinder
   // Front wins by erasure -- it cages people, scrubs the elf-marks off the walls,
   // and teaches the living what looking up costs. This is the refusal. The Grid
@@ -3483,6 +3587,7 @@ export class World extends DurableObject<Env> {
         "  wall <message>        broadcast an announcement to everyone (keepers only)",
         "  witness [name]        read the Grid's roll of the fallen, or keep one's memory (a vigil)",
         "  reckoning (conscience) the Grid holds up a mirror: the sum of what you've done",
+        "  saved (rescued)       read the Grid's roll of the living pulled from the cages",
         "  gridstats / gridprune read or flush the Grid ledger's ambient noise (keepers only)",
         "  world / weather       check the time of day and the weather",
         "  help (?)              this message",

@@ -119,6 +119,8 @@ drift (any new player-affecting state must be emitted here).
 | `grid.federation` | `ping all` reads the cross-world ledger | `traces[]` |
 | `grid.fallen` | `witness` reads the memorial roll | `fallen[] {world, name, room, at}` |
 | `grid.remembrance` | `witness <name>` keeps a fallen's memory | `fallen, world, room` |
+| `grid.rescued` | you free the caged refugees | `freed[], savedBy` |
+| `grid.rescued_roll` | `saved`/`rescued` reads the rescued roll | `rescued[] {world, name, savedBy, at}` |
 | `grid.redemption` | a strayed character returns to good ("the Returned") | `name, title` |
 | `grid.ledger_stats` | a keeper runs `gridstats` | `total, kinds[] {kind, count}` |
 | `grid.ledger_pruned` | a keeper runs `gridprune` | `removed, before, after, kinds[]` |
@@ -188,6 +190,8 @@ WorldInfo  = { id, url, last_seen }                // a registered world (a trav
 Fallen     = { world, name, room, at }             // one of the fallen on the memorial roll
                                                    // (the name is carried directly, never parsed
                                                    // from prose, so `witness` names the dead exactly)
+Rescued    = { world, name, savedBy, at }          // one of the rescued: a soul pulled from the
+                                                   // cages, and who pulled them (the mirror of Fallen)
 ```
 
 The methods a world may call on the hub:
@@ -202,6 +206,7 @@ The methods a world may call on the hub:
 | `loadCharacter(name)` / `commitCharacter(name, sheet)` | the canonical, federated character |
 | `register(world, url)` / `listWorlds()` | the world registry (travel destinations) |
 | `recordFallen(world, name, room, at)` / `recentFallen(limit)` | the memorial roll: record/read the fallen (for `witness`) |
+| `recordRescued(world, name, savedBy, at)` / `recentRescued(limit)` | the rescued roll: record/read the saved (for `saved`) |
 | `ledgerStats()` / `pruneLedgerKinds(kinds)` | maintenance: ledger composition by kind, and a bounded purge (keeper `gridstats`/`gridprune`) |
 
 **What is canonical where.** Keep the shared layer thin: the hub owns identity

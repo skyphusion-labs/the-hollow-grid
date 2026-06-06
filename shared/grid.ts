@@ -48,6 +48,11 @@ export type WorldInfo = { id: string; url: string; last_seen: number };
 // rite is exact across worlds.
 export type Fallen = { world: string; name: string; room: string; at: number };
 
+// The hopeful mirror of the memorial roll: one of the rescued -- a soul cut out
+// of the Cinder Front's cages. The Front cages people to be forgotten; the Grid
+// keeps the names of the ones who were pulled back out, and who pulled them.
+export type Rescued = { world: string; name: string; savedBy: string; at: number };
+
 // The methods a world may call on the hub. The hub's WorkerEntrypoint implements
 // this; a world's `GRID` service binding is typed directly as GridHubApi, so a
 // call is just `await env.GRID.record(...)` -- the same shape as the old in-Worker
@@ -85,4 +90,9 @@ export interface GridHubApi {
   // reading returns the most recent fallen, newest first.
   recordFallen(world: string, name: string, room: string, at: number): Promise<void>;
   recentFallen(limit: number): Promise<Fallen[]>;
+
+  // The rescued roll: the living pulled out of the Front's cages, and who pulled
+  // them. The hopeful mirror of the memorial roll; read it with `saved`.
+  recordRescued(world: string, name: string, savedBy: string, at: number): Promise<void>;
+  recentRescued(limit: number): Promise<Rescued[]>;
 }

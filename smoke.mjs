@@ -631,7 +631,8 @@ G.sock.close();
 const F = mkClient();
 await F.open();
 await sleep(300);
-F.send("ftest_" + Math.random().toString(36).slice(2, 6));
+const fName = "ftest_" + Math.random().toString(36).slice(2, 6);
+F.send(fName);
 await sleep(500);
 await pickRace(F);
 // Walk out to the stronghold: nexus -> workshop -> roof -> dunes -> checkpoint -> gate
@@ -649,10 +650,38 @@ check(Array.isArray(mu?.data.mobs) && mu.data.mobs.some((m) => m.id === "trooper
 
 F.send("west"); // muster -> the cages
 await sleep(500);
-let fmark = F.raw().length;
+const fcMark = F.raw().length;
 F.send("free");
-await sleep(400);
-check(/refugees pour out|throws open/i.test(F.raw().slice(fmark)), "you can free the caged refugees in the stronghold");
+await sleep(500);
+const rescued = F.last("grid.rescued");
+// The cages are SHARED, time-refilled world state, so a prior run (or another
+// player) may have just emptied them. Cover both states so the test is robust to
+// rerun -- in CI's fresh state it takes the freed branch (full coverage).
+if (rescued && rescued.data.savedBy === fName) {
+  check(
+    Array.isArray(rescued.data.freed) && rescued.data.freed.length >= 1,
+    "freeing the cages names the people you pulled out (grid.rescued)",
+  );
+  // Freeing again at once is refused: the Front hasn't refilled them (no farm).
+  F.send("free");
+  await sleep(400);
+  check(/cages stand open and empty/i.test(F.raw()), "freshly-emptied cages cannot be farmed for standing");
+} else {
+  check(/cages stand open and empty/i.test(F.raw().slice(fcMark)), "cages on cooldown are refused (no farm) -- the refill gate holds across runs");
+}
+// Either way, the rescued are kept on the federated roll, named, with who freed
+// them -- the hopeful mirror of the memorial roll. (Non-empty: someone freed at
+// some point this run or a prior one.)
+F.send("saved");
+await sleep(500);
+const sroll = F.last("grid.rescued_roll");
+check(
+  !!sroll &&
+    Array.isArray(sroll.data.rescued) &&
+    sroll.data.rescued.length >= 1 &&
+    sroll.data.rescued.every((r) => typeof r.name === "string" && typeof r.savedBy === "string"),
+  "the rescued are kept on the Grid's roll, named, with who freed them (grid.rescued_roll)",
+);
 
 F.send("east"); // back to muster
 await sleep(400);
@@ -665,10 +694,10 @@ check(
   da?.data.id === "dais" && da.data.mobs.some((m) => m.id === "ashmonger"),
   "the Ashmonger commands the dais (the endgame boss)",
 );
-fmark = F.raw().length;
+const amark = F.raw().length;
 F.send("talk");
 await sleep(400);
-check(/pledge|ashmonger|front/i.test(F.raw().slice(fmark)), "the Ashmonger answers when you face him");
+check(/pledge|ashmonger|front/i.test(F.raw().slice(amark)), "the Ashmonger answers when you face him");
 F.sock.close();
 
 // --- Phase 10: federation phase 2 -- cross-world chat + the global tide ---

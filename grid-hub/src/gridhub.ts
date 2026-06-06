@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./types";
-import type { GridTrace, GridCast, CharSheet, WorldInfo, Fallen } from "../../shared/grid";
+import type { GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued } from "../../shared/grid";
 
 // The Grid Hub: the federation's shared state, as a single global Durable Object
 // (getByName("grid")). It holds the dead network's COLLECTIVE memory -- traces,
@@ -106,6 +106,18 @@ export class GridHub extends DurableObject<Env> {
         )
       `);
 
+      // The rescued roll: the living pulled out of the cages, and who pulled
+      // them. The hopeful mirror of `fallen`; same structured, name-direct shape.
+      sql.exec(`
+        CREATE TABLE IF NOT EXISTS rescued (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          world TEXT NOT NULL,
+          name TEXT NOT NULL,
+          saved_by TEXT NOT NULL,
+          at INTEGER NOT NULL
+        )
+      `);
+
       // The world registry: who's on the Grid, and where to reach them.
       sql.exec("CREATE TABLE IF NOT EXISTS worlds (id TEXT PRIMARY KEY, url TEXT NOT NULL, last_seen INTEGER NOT NULL)");
       const worldCount = sql.exec<{ c: number }>("SELECT COUNT(*) AS c FROM worlds").one().c;
@@ -154,6 +166,20 @@ export class GridHub extends DurableObject<Env> {
   recentFallen(limit: number): Fallen[] {
     return this.ctx.storage.sql
       .exec<Fallen>("SELECT world, name, room, at FROM fallen ORDER BY id DESC LIMIT ?", Math.max(1, Math.min(limit, 50)))
+      .toArray();
+  }
+
+  // The rescued roll: record one of the saved (best-effort when cages are
+  // freed), and read the most recent rescued (newest first).
+  recordRescued(world: string, name: string, savedBy: string, at: number): void {
+    const sql = this.ctx.storage.sql;
+    sql.exec("INSERT INTO rescued (world, name, saved_by, at) VALUES (?, ?, ?, ?)", world, name, savedBy, at);
+    sql.exec("DELETE FROM rescued WHERE id NOT IN (SELECT id FROM rescued ORDER BY id DESC LIMIT 500)");
+  }
+
+  recentRescued(limit: number): Rescued[] {
+    return this.ctx.storage.sql
+      .exec<Rescued>("SELECT world, name, saved_by AS savedBy, at FROM rescued ORDER BY id DESC LIMIT ?", Math.max(1, Math.min(limit, 50)))
       .toArray();
   }
 

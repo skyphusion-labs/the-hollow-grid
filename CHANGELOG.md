@@ -6,6 +6,31 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.21.0
+
+The rescued roll: the hopeful mirror of the memorial roll. `witness` (v0.18.0)
+keeps the names of the dead the Cinder Front took; this keeps the names of the
+living you pull back out of its cages. The Front cages people into anonymous
+numbers to be forgotten; the Grid gives them back their names, federation-wide,
+and remembers who freed them.
+
+### Added
+- **A federated rescued roll.** Freeing the caged refugees now names the people
+  you pulled out (procedural names -- the point is they HAVE names) and records
+  each to the hub. New `GridHubApi` `recordRescued` / `recentRescued`, a
+  `Rescued` type, a `rescued` table on the hub. Freeing emits `grid.rescued`.
+- **`saved`** (aliases `rescued`, `roll`) reads the roll across the federation
+  (event `grid.rescued_roll`): who was pulled out, and who pulled them.
+- **The cages refill, and freeing is no longer farmable.** Previously `free` in
+  the cells gave +15 morality every time with NO guard -- a standing farm. Now a
+  freed cage stays empty until the Front rounds up more (`CAGE_REFILL_MS`, 4min),
+  tracked in a `cages` table; freeing is an ongoing act of resistance, not a
+  one-time clear, and the `free` affordance hides while the cages are empty (the
+  no-silent-no-op rule). Freeing also nudges the tide toward the free folk.
+- Events `grid.rescued` / `grid.rescued_roll`; contract types/methods documented
+  in docs/protocol.md. Smoke covers both cage states (robust to rerun); 114-116
+  checks.
+
 ## v0.20.0
 
 The reckoning: the mirror you summon. The dream (v0.11.0) holds your moral record
