@@ -867,6 +867,10 @@ export class World extends DurableObject<Env> {
       case "give":
         this.give(ws, s, arg);
         break;
+      case "mend":
+      case "tend":
+        this.mend(ws, s, arg);
+        break;
       case "exits":
       case "exit":
         this.exitsView(ws, s);
@@ -2702,6 +2706,76 @@ export class World extends DurableObject<Env> {
     this.prompt(target);
   }
 
+  // `mend <player>`: pour some of your own strength into another player in the
+  // room, healing them at a cost to yourself. Almost everything in the wastes is
+  // something people do TO each other; this is the one good thing they can do FOR
+  // each other, and the Grid remembers the kindnesses too. A real sacrifice (HP
+  // out of you, into them), bounded so you cannot kill yourself doing it, and
+  // cooldowned so it stays an act, not an economy.
+  private mend(ws: WebSocket, s: Session, arg: string): void {
+    const who = arg.trim().split(/\s+/)[0];
+    if (!who) {
+      this.line(ws, "Mend whom?  (mend <player> -- give some of your own strength to heal them)");
+      this.prompt(ws);
+      return;
+    }
+    if (s.target) {
+      this.line(ws, "Not in the middle of a fight, you don't.");
+      this.prompt(ws);
+      return;
+    }
+    const now = Date.now();
+    if (s.mendReadyAt && now < s.mendReadyAt) {
+      this.line(ws, `You gave what you had; you need a moment to gather yourself. (${Math.ceil((s.mendReadyAt - now) / 1000)}s)`);
+      this.prompt(ws);
+      return;
+    }
+    const target = this.socketByName(who);
+    const ts = target ? (target.deserializeAttachment() as Session | null) : null;
+    if (!target || target === ws || !ts || ts.room !== s.room) {
+      this.line(ws, `There's no one called "${who}" here to mend.`);
+      this.prompt(ws);
+      return;
+    }
+    if (s.hp <= 5) {
+      this.line(ws, "You're too spent to give anything away. Tend to yourself first.");
+      this.prompt(ws);
+      return;
+    }
+    if (ts.hp >= ts.maxHp) {
+      this.line(ws, `${ts.name} is already whole. Save your strength.`);
+      this.prompt(ws);
+      return;
+    }
+    const amount = Math.min(ts.maxHp - ts.hp, s.hp - 5, 12); // keep yourself alive (>=5), cap the gift
+    s.hp -= amount;
+    ts.hp += amount;
+    s.morality += 3; // a real kindness; the world counts it
+    s.mendReadyAt = now + 30_000;
+    ws.serializeAttachment(s);
+    target.serializeAttachment(ts);
+    this.persistPlayer(s);
+    this.persistPlayer(ts);
+    this.emitVitals(ws, s);
+    this.emitVitals(target, ts);
+    this.line(ws, `You give part of your own strength to ${ts.name}. It costs you, and you give it anyway. (-${amount} HP)`);
+    this.prompt(ws);
+    this.line(target, `${s.name} pours their strength into you; you feel your wounds knit. (+${amount} HP)`);
+    this.prompt(target);
+    // Witnesses in the room see the kindness.
+    for (const w of this.ctx.getWebSockets()) {
+      if (w === ws || w === target) continue;
+      const os = w.deserializeAttachment() as Session | null;
+      if (os?.name && os.room === s.room) {
+        this.line(w, `${s.name} mends ${ts.name}, giving something of themselves.`);
+        this.prompt(w);
+      }
+    }
+    // The Grid remembers the kindnesses too, not only the oaths and the kills.
+    this.recordTrace(s.room, "kindness", `${s.name} gave their own strength to mend ${ts.name} here.`);
+    this.commitIdentity(s);
+  }
+
   private exitsView(ws: WebSocket, s: Session): void {
     const exits = Object.keys(this.rooms[s.room].exits);
     this.line(ws, exits.length ? `Exits: ${exits.join(", ")}.` : "There are no obvious exits from here.");
@@ -2960,6 +3034,7 @@ export class World extends DurableObject<Env> {
         "  get/take <item>       pick something up off the ground",
         "  drop <item>           drop an item",
         "  give <item> <player>  hand an item to someone in your room",
+        "  mend <player>         give some of your own strength to heal another (costs you HP)",
         "  inventory (inv, i)    list what you're carrying",
         "  wear/wield <item>     equip gear (weapons add damage, armor soaks hits)",
         "  remove <item>         take off a piece of gear",

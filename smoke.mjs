@@ -471,6 +471,15 @@ for (let i = 0; i < 8 && !lookSeen; i++) {
 }
 check(lookSeen, "look <player> describes another player");
 
+// mend: heal another player at a cost to yourself. Both are at full HP here, so
+// it correctly declines (cannot mend someone already whole) -- exercising the
+// room-targeting and the guard deterministically. The real HP transfer is left
+// to live play (it needs a damaged ally, which combat RNG makes flaky in CI).
+const mmark = P.raw().length;
+P.send(`mend ${qName}`);
+await sleep(500);
+check(/already whole/i.test(P.raw().slice(mmark)), "mend finds an ally in the room and spares one already whole");
+
 // P sides with the free folk (gets an elven charm), then hands it to Q.
 P.send("defend");
 await sleep(500);

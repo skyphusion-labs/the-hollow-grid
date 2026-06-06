@@ -98,6 +98,8 @@ Commands are single line verbs (many with short aliases). Grouped:
 - **Positions:** `stand`, `sit`, `rest`, `sleep` (regen HP; you cannot mid-fight).
 - **Comms:** `say`, `tell`, `reply`, `yell`/`shout`, `emote` (`pose`/`em`),
   `gridcast` (`gc`).
+- **For each other:** `give <item> <player>`, `mend <player>` (heal another at a
+  cost to your own HP), `inscribe`/`carve` (leave a message in the Grid).
 - **Info:** `who`, `status` (`st`), `affects` (`affs`), `hp`, `time`, `weather`,
   `war`, `tide`, `identity`/`whoami`, `help` (`?`).
 - **Racial ability:** `ability`/`trait` (or the race's named verb, e.g. `vanish`,
