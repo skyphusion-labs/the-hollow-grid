@@ -684,6 +684,23 @@ await sleep(400);
 check(/nothing cached here/i.test(CB.raw()), "once gathered the cache is empty -- aid given is aid received, once");
 CB.sock.close();
 
+// The dead network remembers out loud: `listen` sometimes surfaces a REAL
+// recorded Grid trace (an echo of what a player actually did), not a canned line.
+const EC = mkClient();
+await EC.open();
+await sleep(200);
+EC.send("echo_" + Math.random().toString(36).slice(2, 6));
+await sleep(400);
+await pickRace(EC);
+let gotEcho = false;
+for (let i = 0; i < 16 && !gotEcho; i++) {
+  EC.send("listen");
+  await sleep(350);
+  if (EC.last("grid.transmission")?.data.kind === "echo") gotEcho = true;
+}
+check(gotEcho, "listening surfaces real recorded traces, not just canned voices (grid.transmission kind=echo)");
+EC.sock.close();
+
 // --- Phase 7: the Tinker's Workshop gear shop ---
 const G = mkClient();
 await G.open();

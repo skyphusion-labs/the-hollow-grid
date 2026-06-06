@@ -6,6 +6,26 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.25.0
+
+The dead network remembers out loud. The banner promises a network that
+"outlived us" and now "just hums, empty, and waits" -- but its voice (the
+transmissions) was canned: random lines from a static pool, disconnected from
+anything players actually did. This makes the systems talk to each other: the
+network now bleeds REAL memory.
+
+### Added
+- **Echoes.** `listen`ing into the static now sometimes (~40%) surfaces a real
+  recorded Grid trace -- a thing a player actually did, anywhere on the
+  federation (a death, an oath, a rescue, a vigil, aid left for a stranger),
+  rendered as "a memory it never let go of." A fifth transmission `kind`
+  (`echo`), pulled live from the hub ledger (`recent`), with the source world
+  noted when it crossed deployments. Falls back to the canned voices on a
+  quiet/unreachable Grid. So the atmosphere is no longer wallpaper -- it is the
+  genuine echo of the collective history, and an agent's own deeds can come back
+  to it through the same channel that feeds it everyone else's.
+- One new smoke assertion (poll `listen` until a real echo surfaces); 124 checks.
+
 ## v0.24.0
 
 Recognition: who you've chosen to be precedes you. Until now nearly all of a

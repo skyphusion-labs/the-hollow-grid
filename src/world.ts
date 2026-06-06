@@ -1049,7 +1049,7 @@ export class World extends DurableObject<Env> {
         break;
       case "listen":
       case "tune":
-        this.listenGrid(ws, s);
+        await this.listenGrid(ws, s);
         break;
       case "inscribe":
       case "carve":
@@ -2787,9 +2787,40 @@ export class World extends DurableObject<Env> {
     }
   }
 
-  // `listen` / `tune`: deliberately tune the dead frequencies. Pulls a fragment
-  // for you alone, weighted toward the human voices -- the ones worth digging for.
-  private listenGrid(ws: WebSocket, s: Session): void {
+  // An ECHO: not a canned fragment but a REAL recent trace the Grid kept -- a
+  // thing a player actually did, somewhere on the federation. The dead network
+  // "outlived us" and "remembers"; this is it remembering out loud. Returns null
+  // on a quiet/unreachable Grid, so the caller falls back to the static voices.
+  private async echoTransmission(): Promise<{ text: string; world: string } | null> {
+    try {
+      const feed = await this.env.GRID.recent(20);
+      if (!feed.length) return null;
+      const t = feed[Math.floor(Math.random() * feed.length)];
+      return { text: t.text, world: t.world };
+    } catch {
+      return null;
+    }
+  }
+
+  private formatEcho(text: string, world: string): string {
+    const where = world && world !== this.worldName ? `\x1b[2;36m  (...the signal carries from somewhere called ${world})\x1b[0m${NL}` : "";
+    return `\x1b[2;32m  >> ${text} <<\x1b[0m${NL}${where}`;
+  }
+
+  // `listen` / `tune`: deliberately tune the dead frequencies. Mostly the canned
+  // voices, but digging sometimes turns up a real memory the network kept -- an
+  // echo of something a player actually did, anywhere on the Grid.
+  private async listenGrid(ws: WebSocket, s: Session): Promise<void> {
+    if (Math.random() < 0.4) {
+      const echo = await this.echoTransmission();
+      if (echo) {
+        this.event(ws, "grid.transmission", { kind: "echo", text: echo.text });
+        this.line(ws, "You go still and tune the dead frequencies. The static thins, and the network plays something back -- a memory it never let go of:");
+        this.line(ws, this.formatEcho(echo.text, echo.world));
+        this.prompt(ws);
+        return;
+      }
+    }
     const t = listenTransmission();
     this.event(ws, "grid.transmission", { kind: t.kind, text: personalize(t.text, s.name) });
     this.line(ws, "You go still and tune the dead frequencies. Something answers:");
