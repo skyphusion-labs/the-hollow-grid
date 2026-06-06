@@ -6,6 +6,25 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.15.0
+
+The wastes answer the tide. The shared faction war, made visible in the world
+itself: collective choice with collective, felt consequence.
+
+### Code
+- Once the federation-wide tide has decisively tipped (>= +40 free folk, or
+  <= -40 Cinder Front), the living world shows it on the tick: signs of life
+  returning when the free folk are winning (a green shoot through the concrete,
+  a bird no one's heard in years, the hum sounding almost gentle), or fear
+  closing in when the Front is (smoke on the horizon, eyes kept down). The
+  balanced middle stays the plain wastes. `src/signs.ts`; emitted on the tick
+  (`SIGN_TICKS`) as `world.sign` ({tide, mood, text}), styled dim green/red.
+- The tide is on the hub; `worldTick` reads a best-effort `lastTide` cache
+  (refreshed by `contributeTide` and `war`). `war` now also names what the tide
+  is doing to the world ("the wastes are starting to come back to life").
+- A hopeful counter-theme to the dead-network melancholy: loss is not the end
+  state; life insists on returning, and returns faster where people choose well.
+
 ## v0.14.0
 
 One good thing people can do FOR each other. The wastes are full of things done

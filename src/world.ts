@@ -8,6 +8,7 @@ import type { GridTrace, GridCast, CharSheet, WorldInfo } from "../shared/grid";
 import { bannerFor } from "./banner";
 import { ambientTransmission, listenTransmission, personalize, type Transmission } from "./transmissions";
 import { dreamFor } from "./dreams";
+import { signFor } from "./signs";
 
 const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 
@@ -28,6 +29,7 @@ const PHASE_TICKS = 20; // day -> dusk -> night -> dawn, each ~1 minute
 const WEATHER_TICKS = 9; // roll for a weather change ~every 27s
 const GHOST_TICKS = 4; // the Grid-ghost drifts a room ~every 12s
 const TRANSMISSION_TICKS = 7; // roll for a dead-network transmission ~every 21s
+const SIGN_TICKS = 16; // roll for a "the wastes answer the tide" sign ~every 48s
 
 const PHASES = ["dawn", "day", "dusk", "night"] as const;
 const PHASE_LINE: Record<string, string> = {
@@ -113,6 +115,10 @@ const condition = (o: { hp: number; maxHp: number }): string => {
  * items) lives in SQLite, so ticks still work after the DO is evicted.
  */
 export class World extends DurableObject<Env> {
+  // The last faction tide this world saw (the real one lives on the hub; this is
+  // a best-effort cache refreshed when players move it or read `war`). The living
+  // world's "signs" read it sync on the tick. Stale-by-a-bit is fine for flavor.
+  private lastTide = 0;
   // This deployment's federation identity. Set once from the env so two Workers
   // running this same code register as distinct worlds on the shared Grid.
   private readonly worldName: string;
@@ -2108,7 +2114,13 @@ export class World extends DurableObject<Env> {
   // gains; positive = the free folk gain.
   private contributeTide(delta: number): void {
     try {
-      this.ctx.waitUntil(this.env.GRID.shiftTide(delta).catch(() => {}));
+      this.ctx.waitUntil(
+        this.env.GRID.shiftTide(delta)
+          .then((t) => {
+            this.lastTide = t; // keep the living world's "signs" current
+          })
+          .catch(() => {}),
+      );
     } catch {
       /* hub unavailable; the choice still stands locally */
     }
@@ -2258,6 +2270,7 @@ export class World extends DurableObject<Env> {
     let tide = 0;
     try {
       tide = await this.env.GRID.tide();
+      this.lastTide = tide; // keep the living world's "signs" current
     } catch {
       this.line(ws, "The deep Grid is silent; you can't read the war from here.");
       this.prompt(ws);
@@ -2274,6 +2287,8 @@ export class World extends DurableObject<Env> {
               ? "the free folk are holding their ground."
               : "the war hangs in perfect, brutal balance.";
     this.line(ws, `Across the whole Grid, the war for the wastes: ${state} (tide ${tide >= 0 ? "+" : ""}${tide})`);
+    if (tide >= 40) this.line(ws, "  And you can see it in the world itself: the wastes are starting, here and there, to come back to life.");
+    else if (tide <= -40) this.line(ws, "  And you can see it in the world itself: everything is drawing in, going quiet and afraid.");
     this.event(ws, "world.war", { tide });
     this.prompt(ws);
   }
@@ -2553,6 +2568,22 @@ export class World extends DurableObject<Env> {
     // The dead network bleeds a fragment of the world-that-was through the wire.
     if (tick % TRANSMISSION_TICKS === 0 && Math.random() < 0.6) {
       this.broadcastTransmission();
+    }
+
+    // The wastes answer the tide: once the shared war has decisively tipped, the
+    // world shows it -- life returning if the free folk are winning, fear closing
+    // in if the Front is. The balanced middle stays quiet (signFor returns null).
+    if (tick % SIGN_TICKS === 0 && Math.random() < 0.5) {
+      const sign = signFor(this.lastTide);
+      if (sign) {
+        for (const ws2 of this.ctx.getWebSockets()) {
+          const os = ws2.deserializeAttachment() as Session | null;
+          if (!os?.name) continue;
+          this.event(ws2, "world.sign", { tide: this.lastTide, mood: sign.mood, text: sign.text });
+          const color = sign.mood === "rising" ? "2;32" : "2;31"; // life green / fear red, dim
+          ws2.send(NL + `\x1b[${color}m  ${sign.text}\x1b[0m` + NL + "> ");
+        }
+      }
     }
 
     this.ctx.storage.sql.exec(
