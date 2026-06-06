@@ -185,6 +185,9 @@ CharSheet  = { level, xp, gold, faction, morality, title, race, ashsworn }
                                                    // define races); ashsworn is the permanent
                                                    // kapo brand, write-once true (see worlds.md).
 WorldInfo  = { id, url, last_seen }                // a registered world (a travel target)
+Fallen     = { world, name, room, at }             // one of the fallen on the memorial roll
+                                                   // (the name is carried directly, never parsed
+                                                   // from prose, so `witness` names the dead exactly)
 ```
 
 The methods a world may call on the hub:
@@ -198,6 +201,8 @@ The methods a world may call on the hub:
 | `castsSince(sinceId, limit)` | pull new cross-world chat since an id |
 | `loadCharacter(name)` / `commitCharacter(name, sheet)` | the canonical, federated character |
 | `register(world, url)` / `listWorlds()` | the world registry (travel destinations) |
+| `recordFallen(world, name, room, at)` / `recentFallen(limit)` | the memorial roll: record/read the fallen (for `witness`) |
+| `ledgerStats()` / `pruneLedgerKinds(kinds)` | maintenance: ledger composition by kind, and a bounded purge (keeper `gridstats`/`gridprune`) |
 
 **What is canonical where.** Keep the shared layer thin: the hub owns identity
 and standing (the `CharSheet`: level, xp, gold, faction, morality, title), the
@@ -232,3 +237,11 @@ To write a **client or bot**, you only need section 1 (connect, send commands)
 and section 2 (parse `@event` for state). `scripts/connect.mjs` is a ~90-line
 reference client; `bot.mjs` is an AI player driven entirely by the `@event`
 channel; `smoke.mjs` is an assertion harness over the same events.
+
+**`smoke.mjs` is the executable conformance suite.** It is written against the
+`@event` channel, not the reference implementation, so it runs against ANY port:
+point it at your server with `MUD_URL=ws://host:port/ws node smoke.mjs` (set
+`DUSTFALL_URL` too, or it will SKIP the second-world federation phase). A green
+run (113 checks at v0.20.0) means your server honors the contract. Build the port
+to pass it phase by phase; that is the definition of done. The suite is the
+fastest way to find where prose and the structured channel have drifted.
