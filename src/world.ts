@@ -1376,14 +1376,32 @@ export class World extends DurableObject<Env> {
       this.prompt(ws);
       return;
     }
+    // Freeing her is a real rescue -- a living person cut out of the Front's
+    // grip, after fighting through her warden. It counts like one: standing, a
+    // deed, a name on the federation's rescued roll, a hand on the tide. (She was
+    // anonymous before; she gets a name now, so the roll -- and your dreams --
+    // can hold her.)
+    const now = Date.now();
+    const freedName = this.pickNames(1)[0];
     this.invAdd(s.name, "antidote", 1);
+    s.morality += 12;
+    this.deed(s, "freed");
+    this.ctx.storage.sql.exec("INSERT OR IGNORE INTO saved_souls (savior, name, at) VALUES (?, ?, ?)", s.name, freedName, now);
+    ws.serializeAttachment(s);
+    this.persistPlayer(s);
+    this.emitAffects(ws, s);
     this.line(
       ws,
-      'You strike the chains free. The maiden presses a vial into your hands:' +
+      "You strike the chains free. The captive presses a vial into your hands:" +
         NL +
-        '  "Antivenom, for the poison that haunts these wastes. You have my thanks."',
+        `  "Antivenom, for the poison that haunts these wastes. My name is ${freedName}. I won't forget yours."`,
     );
-    this.broadcast(s.room, `${s.name} frees the captive maiden!`, ws);
+    this.broadcast(s.room, `${s.name} frees ${freedName} from the holding pit!`, ws);
+    this.recordTrace(s.room, "quest", `${this.tagged(s)} cut ${freedName} loose from the holding pit.`);
+    this.rememberRescued(freedName, s.name);
+    this.contributeTide(2);
+    this.event(ws, "grid.rescued", { freed: [freedName], savedBy: s.name });
+    this.commitIdentity(s);
     this.prompt(ws);
   }
 

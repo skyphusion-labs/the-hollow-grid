@@ -718,6 +718,43 @@ check(
 );
 WH.sock.close();
 
+// The holding-pit captive is a REAL rescue: beating her warden and freeing her
+// must register on the rescued roll, not just hand you an item (a gap a
+// playtester caught -- freeing her used to count for nothing).
+const PIT = mkClient();
+await PIT.open();
+await sleep(200);
+const pitName = "pit_" + Math.random().toString(36).slice(2, 6);
+PIT.send(pitName);
+await sleep(400);
+await pickRace(PIT);
+PIT.send("north"); // nexus -> Scrap Market
+await sleep(450);
+PIT.send("north"); // market -> the Holding Pit
+await sleep(450);
+PIT.send("attack warden");
+let pitDied = false;
+for (let i = 0; i < 22; i++) {
+  await sleep(1500);
+  if (PIT.last("char.died")) { pitDied = true; break; }
+  const v = PIT.last("char.vitals");
+  if (i > 0 && v && v.data.inCombat === false) break; // the warden is down
+}
+if (pitDied) {
+  check(true, "SKIP holding-pit rescue: the warden won this run (combat variance)");
+} else {
+  const mMoral = PIT.last("char.affects")?.data.morality ?? 0;
+  PIT.send("free");
+  await sleep(800);
+  const mRescue = PIT.last("grid.rescued");
+  check(
+    !!mRescue && mRescue.data.savedBy === pitName && Array.isArray(mRescue.data.freed) && mRescue.data.freed.length === 1,
+    "freeing the holding-pit captive registers on the rescued roll, a named rescue (grid.rescued)",
+  );
+  check((PIT.last("char.affects")?.data.morality ?? 0) > mMoral, "freeing the captive counts as the virtuous act it is (+morality), not just an item");
+}
+PIT.sock.close();
+
 // --- Phase 7: the Tinker's Workshop gear shop ---
 const G = mkClient();
 await G.open();

@@ -1,6 +1,6 @@
 {
   "name": "the-hollow-grid",
-  "version": "0.27.0",
+  "version": "0.27.1",
   "private": true,
   "description": "A MUD built on Cloudflare Workers + Durable Objects",
   "license": "MIT",

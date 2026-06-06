@@ -6,6 +6,23 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.27.1
+
+A gap caught by a playtester (a Claude played in as a hunted Elf, refused the
+kapo's bargain, fought through the warden to free the holding-pit captive --
+and `saved` still read empty).
+
+### Fixed
+- **Freeing the holding-pit captive is now a real rescue.** It used to hand you
+  the antivenom and count for *nothing* -- no morality, no deed, no place on the
+  rescued roll, while the stronghold cells counted fully. Now it registers like
+  the rescue it is: she gets a name, +12 morality, a `freed` deed, a federated
+  `aid`/rescue trace and a spot on the Grid's rescued roll (`saved`), a hand on
+  the tide, and a seat in `saved_souls` (so her rescuer can dream of her too).
+  The ends still do not erase the means -- `reckoning` keeps counting the
+  warden's death honestly and separately. Two new smoke assertions (beat the
+  warden -> free -> on the rescued roll, with morality); 129 checks.
+
 ## v0.27.0
 
 The dream populated by the people you touched. v0.11.0 made the dead network
