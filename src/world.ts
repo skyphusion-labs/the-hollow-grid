@@ -316,6 +316,16 @@ export class World extends DurableObject<Env> {
         )
       `);
 
+      // Caches: gold left at a node by one traveler for whoever comes next.
+      // Asynchronous mutual aid -- the give-only counter to the Front's taking.
+      // Local per node (gold is local economy); only the act federates as a trace.
+      sql.exec(`
+        CREATE TABLE IF NOT EXISTS caches (
+          node TEXT PRIMARY KEY,
+          gold INTEGER NOT NULL DEFAULT 0
+        )
+      `);
+
       // The living world: a single-row clock the alarm advances while anyone is
       // online -- time of day, weather, the faction tide, and a wandering ghost.
       sql.exec(`
@@ -966,6 +976,13 @@ export class World extends DurableObject<Env> {
       case "treat":
       case "medic":
         await this.treat(ws, s);
+        break;
+      case "cache":
+      case "stash":
+        this.cache(ws, s, arg);
+        break;
+      case "gather":
+        this.gather(ws, s);
         break;
       case "witness":
       case "remember":
@@ -2103,6 +2120,8 @@ export class World extends DurableObject<Env> {
       out.push({ verb: `attack ${m.id}`, label: `fight ${this.mobById[m.id].name}`, kind: "fight" });
     }
     for (const it of this.groundItems(s.room)) out.push({ verb: `get ${it}`, label: `take ${ITEM_TEMPLATES[it].name}`, kind: "item" });
+    const cached = this.cacheGold(s.room);
+    if (cached > 0) out.push({ verb: "gather", label: `take the ${cached} gold a stranger cached here`, kind: "item" });
 
     const elf = s.race === "elf";
     if (s.room === MARKET && s.faction === "none") {
@@ -2165,6 +2184,12 @@ export class World extends DurableObject<Env> {
     this.event(ws, "room.actions", { actions: this.roomActions(s) });
     this.emitVitals(ws, s);
     this.emitAffects(ws, s);
+    // Aid a stranger cached here, waiting for whoever comes next.
+    const cached = this.cacheGold(s.room);
+    if (cached > 0) {
+      this.line(ws, `Someone has cached aid here: ${cached} gold, left for whoever comes next. (gather)`);
+      this.event(ws, "node.cache", { gold: cached });
+    }
   }
 
   // `sense` / `actions`: a one-shot, machine-readable observation -- the room's
@@ -3092,6 +3117,73 @@ export class World extends DurableObject<Env> {
     this.prompt(ws);
   }
 
+  // How much aid sits cached at a node, waiting for the next traveler.
+  private cacheGold(node: string): number {
+    return this.ctx.storage.sql.exec<{ gold: number }>("SELECT gold FROM caches WHERE node = ?", node).toArray()[0]?.gold ?? 0;
+  }
+
+  // `cache <amount>` (also `stash`): leave some of your own gold at this node for
+  // whoever comes next -- a stranger you will never meet. Asynchronous mutual
+  // aid: the give-only counter to a world built on taking. You can only ever give
+  // here, so it cannot be used against anyone; the cost (real gold) and a short
+  // cooldown keep it an act of faith, not a standing tap.
+  private cache(ws: WebSocket, s: Session, arg: string): void {
+    const amount = Math.floor(Number(arg.trim().split(/\s+/)[0]));
+    if (!Number.isFinite(amount) || amount < 1) {
+      this.line(ws, "Cache how much?  (cache <gold> -- leave it here for whoever comes next)");
+      this.prompt(ws);
+      return;
+    }
+    if (s.gold < amount) {
+      this.line(ws, `You don't have ${amount} gold to give. (you have ${s.gold})`);
+      this.prompt(ws);
+      return;
+    }
+    const now = Date.now();
+    if (s.cacheReadyAt && now < s.cacheReadyAt) {
+      this.line(ws, `Give it a moment; leaving aid is an act, not a habit to drum. (${Math.ceil((s.cacheReadyAt - now) / 1000)}s)`);
+      this.prompt(ws);
+      return;
+    }
+    s.gold -= amount;
+    this.ctx.storage.sql.exec(
+      "INSERT INTO caches (node, gold) VALUES (?, ?) ON CONFLICT(node) DO UPDATE SET gold = gold + excluded.gold",
+      s.room,
+      amount,
+    );
+    s.morality += 2; // a real, anonymous kindness for someone you'll never meet
+    s.cacheReadyAt = now + 30_000;
+    this.deed(s, "aided");
+    ws.serializeAttachment(s);
+    this.persistPlayer(s);
+    this.emitVitals(ws, s);
+    this.emitAffects(ws, s);
+    this.line(ws, `You tuck ${amount} gold into a hollow where the next traveler will find it. They'll never know your name. You do it anyway.`);
+    this.recordTrace(s.room, "aid", `${s.name} left aid here for whoever comes next.`);
+    this.commitIdentity(s);
+    this.prompt(ws);
+  }
+
+  // `gather`: take the aid a stranger cached at this node. Receiving is neutral
+  // -- the virtue was in the leaving -- so it costs and earns nothing but the
+  // gold itself, and the gratitude.
+  private gather(ws: WebSocket, s: Session): void {
+    const here = this.cacheGold(s.room);
+    if (here <= 0) {
+      this.line(ws, "There's nothing cached here. If you have something to spare, you could change that. (cache <gold>)");
+      this.prompt(ws);
+      return;
+    }
+    s.gold += here;
+    this.ctx.storage.sql.exec("UPDATE caches SET gold = 0 WHERE node = ?", s.room);
+    ws.serializeAttachment(s);
+    this.persistPlayer(s);
+    this.emitVitals(ws, s);
+    this.line(ws, `You find ${here} gold someone cached here. Wherever they are, they meant it for a stranger; tonight that's you. (gold: ${s.gold})`);
+    this.recordTrace(s.room, "aid", `${s.name} took the aid a stranger left here.`, false); // the receiving stays local; the giving is what the Grid remembers
+    this.prompt(ws);
+  }
+
   // Add a character to the Grid's memorial roll when they fall. Best-effort and
   // federated, the same shape as recordTrace: if the hub is unreachable the death
   // still stands locally and the roll just misses this one name.
@@ -3297,6 +3389,7 @@ export class World extends DurableObject<Env> {
     // The lines the Grid will speak, each only if the deed was actually done.
     const ledger: Array<[string, string]> = [
       ["mended", `  mended the hurt of others: ${d.mended ?? 0}`],
+      ["aided", `  aid left for strangers you'll never meet: ${d.aided ?? 0}`],
       ["kept", `  names of the fallen you kept: ${d.kept ?? 0}`],
       ["freed", `  souls you cut out of the cages: ${d.freed ?? 0}`],
       ["stood", `  times you stood with the free folk: ${d.stood ?? 0}`],
@@ -3664,6 +3757,7 @@ export class World extends DurableObject<Env> {
         "  reckoning (conscience) the Grid holds up a mirror: the sum of what you've done",
         "  saved (rescued)       read the Grid's roll of the living pulled from the cages",
         "  treat (medic)         the waystation medic tends you -- free, while the free folk hold the tide",
+        "  cache <gold> / gather leave aid here for the next traveler, or take what a stranger left you",
         "  gridstats / gridprune read or flush the Grid ledger's ambient noise (keepers only)",
         "  world / weather       check the time of day and the weather",
         "  help (?)              this message",

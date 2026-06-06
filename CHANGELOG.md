@@ -6,6 +6,28 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.23.0
+
+The cache: asynchronous mutual aid. `mend` is care between two players who are
+both present; `inscribe` leaves words for whoever comes next. This leaves
+something material -- the give-only counter to a world built on taking, and the
+answer to the hard problem of a low-traffic world: care that does not need two
+people online at the same time. In scarcity, leaving water at the crossing for a
+stranger you will never meet is the deepest act of faith in others there is.
+
+### Added
+- **`cache <gold>`** (alias `stash`): leave some of your own gold at the current
+  node for the next traveler. It costs you the gold (a real act of faith, not a
+  tap), gives +2 morality and counts an `aided` deed, federates as an `aid`
+  trace, and has a 30s cooldown. You can ONLY give here, so it can never be used
+  against anyone.
+- **`gather`**: take the aid a stranger cached at this node. Receiving is neutral
+  (the virtue was in the leaving), so it earns nothing but the gold and the
+  gratitude. A room view where aid is cached announces it (event `node.cache`)
+  and offers a `gather` affordance (`room.actions`).
+- `reckoning` now counts aid left for strangers. Six new smoke assertions
+  covering the full give-across-time loop (121 checks).
+
 ## v0.22.0
 
 The collective tide, made FELT. The faction tide is "the collective ethic made

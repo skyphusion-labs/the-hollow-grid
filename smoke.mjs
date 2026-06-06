@@ -636,6 +636,40 @@ await sleep(400);
 check(/no medic here/i.test(MED.raw().slice(nhmark)), "the waystation medic treats you only at the waystation, nowhere else");
 MED.sock.close();
 
+// --- The cache: asynchronous mutual aid --------------------------------------
+// One traveler leaves gold for whoever comes next; another, arriving later,
+// finds and gathers it. Give-only generosity across time, not concurrency.
+const CA = mkClient();
+await CA.open();
+await sleep(200);
+CA.send("giver_" + Math.random().toString(36).slice(2, 6));
+await sleep(400);
+await pickRace(CA);
+const caGold = CA.last("char.vitals")?.data.gold ?? 0;
+const caMoral = CA.last("char.affects")?.data.morality ?? 0;
+CA.send("cache 8"); // leave 8 gold at the nexus for a stranger
+await sleep(500);
+check(CA.last("char.vitals")?.data.gold === caGold - 8, "caching aid costs you the gold you give away (cache <n>)");
+check((CA.last("char.affects")?.data.morality ?? 0) === caMoral + 2, "leaving aid for a stranger you'll never meet is a kindness the world counts");
+CA.sock.close();
+
+const CB = mkClient();
+await CB.open();
+await sleep(200);
+CB.send("taker_" + Math.random().toString(36).slice(2, 6));
+await sleep(400);
+await pickRace(CB); // logs in at the nexus, where the aid was cached
+const nc = CB.last("node.cache");
+check(!!nc && nc.data.gold >= 8, "arriving where aid was cached, the node announces it (node.cache)");
+const cbGold = CB.last("char.vitals")?.data.gold ?? 0;
+CB.send("gather");
+await sleep(500);
+check((CB.last("char.vitals")?.data.gold ?? 0) >= cbGold + 8, "a stranger gathers the aid left for them (gold received)");
+CB.send("gather");
+await sleep(400);
+check(/nothing cached here/i.test(CB.raw()), "once gathered the cache is empty -- aid given is aid received, once");
+CB.sock.close();
+
 // --- Phase 7: the Tinker's Workshop gear shop ---
 const G = mkClient();
 await G.open();

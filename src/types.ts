@@ -77,6 +77,8 @@ export interface Session {
   witnessReadyAt?: number;
   /** when the waystation medic can `treat` you again, epoch ms (in-memory cooldown) */
   treatReadyAt?: number;
+  /** when you can `cache` aid for a stranger again, epoch ms (in-memory cooldown) */
+  cacheReadyAt?: number;
   /** a custom title shown after the player's name (persisted) */
   title?: string;
   /** you once sank deep into the cinders (write-once true; what redemption is FROM) */
