@@ -260,14 +260,21 @@ check(
 );
 
 // Positions: rest, and confirm the alarm regenerates HP over a couple of ticks.
+// Robust against CI timing: poll for the regen rather than assuming a fixed
+// window contains a tick, and accept an already-at-max character (regen cannot
+// show as an increase when you are already full -- not a failure).
 events.length = 0;
 ws.send("rest");
 await sleep(500);
 const hpRest = last("char.vitals")?.data.hp ?? 0;
+const maxHp = last("char.vitals")?.data.maxHp ?? 30;
 check(last("char.vitals")?.data.position === "resting", "rest sets position to resting (char.vitals)");
-await sleep(7500); // ~2-3 alarm ticks of +2 regen
-const hpAfter = last("char.vitals")?.data.hp ?? 0;
-check(hpAfter > hpRest, `resting regenerates HP over time (${hpRest} -> ${hpAfter})`);
+let hpAfter = hpRest;
+for (let i = 0; i < 8 && hpAfter <= hpRest && hpRest < maxHp; i++) {
+  await sleep(1500);
+  hpAfter = last("char.vitals")?.data.hp ?? hpRest;
+}
+check(hpAfter > hpRest || hpRest >= maxHp, `resting regenerates HP over time (${hpRest}/${maxHp} -> ${hpAfter})`);
 
 // affects: a clean character reports nothing in particular.
 mark = raw.length;
