@@ -29,6 +29,12 @@ running system before fixing.
   `war`/`world.war`. Deleted, not cached -- caching would reintroduce the drift.
 - **`commune` said "(+0 HP)" at full health.** Now reads cleanly when there is
   nothing to mend.
+- **The reference agent (`bot.mjs`) now consumes the affordance layer.** The
+  headline `room.actions` feature had no consumer: the bot free-formed verbs from
+  a text prompt. It now stores `room.actions` and lays the enumerated, valence
+  tagged verbs into the brain's context with a directive to pick from them, so
+  the agent reads its action space instead of hallucinating it. (The running
+  `hollowbot` on acab needs a `git pull` + restart to take effect.)
 - **Docs:** added `grid.federation` to the protocol event table; corrected
   `char.affects` (race, ashsworn) and `world.state` (no tide) in CLAUDE.md.
 
