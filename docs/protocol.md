@@ -116,6 +116,7 @@ drift (any new player-affecting state must be emitted here).
 | `grid.transmission` | the dead network bleeds a fragment (tick) or `listen` | `kind, text` (`kind`: `signal`/`ad`/`human`/`self`/`echo`; an `echo` is a real recorded Grid trace, not a canned line) |
 | `grid.inscribed` | you `inscribe`/`carve` a message into a node | `node, text` |
 | `grid.worlds` | `worlds` lists the federation | `worlds[] {id, live, here}` |
+| `grid.who` | `who` lists players online across the Grid | `players[] {world, name, regard, here}` |
 | `grid.travel` | `travel` hands you off | `to, url` |
 | `world.state` | login, `world`, and any living-world change | `tick, phase, weather` |
 | `world.war` | `war` reads the global tide | `tide` |
@@ -195,6 +196,8 @@ Fallen     = { world, name, room, at }             // one of the fallen on the m
                                                    // from prose, so `witness` names the dead exactly)
 Rescued    = { world, name, savedBy, at }          // one of the rescued: a soul pulled from the
                                                    // cages, and who pulled them (the mirror of Fallen)
+Presence   = { world, name, regard, at }           // one player online somewhere on the Grid, with a
+                                                   // short standing token; powers a federation-wide `who`
 ```
 
 The methods a world may call on the hub:
@@ -210,6 +213,7 @@ The methods a world may call on the hub:
 | `register(world, url)` / `listWorlds()` | the world registry (travel destinations) |
 | `recordFallen(world, name, room, at)` / `recentFallen(limit)` | the memorial roll: record/read the fallen (for `witness`) |
 | `recordRescued(world, name, savedBy, at)` / `recentRescued(limit)` | the rescued roll: record/read the saved (for `saved`) |
+| `reportPresence(world, entries, at)` / `presence(maxAgeMs)` | federated presence: heartbeat a world's roster / read the live cross-world roster (for `who`) |
 | `ledgerStats()` / `pruneLedgerKinds(kinds)` | maintenance: ledger composition by kind, and a bounded purge (keeper `gridstats`/`gridprune`) |
 
 **What is canonical where.** Keep the shared layer thin: the hub owns identity

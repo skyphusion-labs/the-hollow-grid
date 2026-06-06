@@ -53,6 +53,12 @@ export type Fallen = { world: string; name: string; room: string; at: number };
 // keeps the names of the ones who were pulled back out, and who pulled them.
 export type Rescued = { world: string; name: string; savedBy: string; at: number };
 
+// One player currently out on the Grid: their world, name, a short standing
+// token (see `regard`), and when their world last reported them. Powers a
+// federation-wide `who` -- the wastes feel less empty when you can see the
+// others, even the ones on another deployment.
+export type Presence = { world: string; name: string; regard: string; title: string; at: number };
+
 // The methods a world may call on the hub. The hub's WorkerEntrypoint implements
 // this; a world's `GRID` service binding is typed directly as GridHubApi, so a
 // call is just `await env.GRID.record(...)` -- the same shape as the old in-Worker
@@ -95,4 +101,10 @@ export interface GridHubApi {
   // them. The hopeful mirror of the memorial roll; read it with `saved`.
   recordRescued(world: string, name: string, savedBy: string, at: number): Promise<void>;
   recentRescued(limit: number): Promise<Rescued[]>;
+
+  // Federation-wide presence: a world reports its current roster (replacing its
+  // previous one) on a heartbeat; anyone reads the live roster across all worlds.
+  // Stale entries (a world that went quiet) age out via the maxAgeMs filter.
+  reportPresence(world: string, entries: Array<{ name: string; regard: string; title: string }>, at: number): Promise<void>;
+  presence(maxAgeMs: number): Promise<Presence[]>;
 }

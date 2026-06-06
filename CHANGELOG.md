@@ -6,6 +6,29 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.26.0
+
+Federated presence: `who` now shows the whole Grid. The wastes feel less empty
+when you can see the others -- including the ones playing on another deployment
+entirely.
+
+### Added
+- **`who` is federation-wide.** It was local-only (this world's roster); now it
+  lists everyone online across every world on the federation, grouped by world
+  (yours marked `(here)`), each with their custom title and a standing token
+  (the `regard` from v0.24.0 -- `branded`/`returned`/`honored`/...). Emits
+  `grid.who {players[] {world, name, regard, title, here}}` so an agent can read
+  the live social field of the whole Grid.
+- **A presence heartbeat.** Each world reports its roster to the hub on connect
+  and every ~15s (`PRESENCE_TICKS`); the hub serves the live cross-world roster
+  and ages out a world that goes quiet (`PRESENCE_TTL_MS`, 45s) so a crashed
+  deployment's players quietly disappear. New `GridHubApi` `reportPresence` /
+  `presence`, a `Presence` type, a `presence` table on the hub. The local world
+  is authoritative for its own players (live sessions override the last
+  heartbeat), so a just-connected player or a just-changed title shows at once.
+- Two new smoke assertions (self in `who`; a Dustfall player visible from the
+  primary across the federation); 126 checks.
+
 ## v0.25.0
 
 The dead network remembers out loud. The banner promises a network that

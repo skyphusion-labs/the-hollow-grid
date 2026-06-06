@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./types";
-import type { GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued } from "../../shared/grid";
+import type { GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued, Presence } from "../../shared/grid";
 
 // The Grid Hub: the federation's shared state, as a single global Durable Object
 // (getByName("grid")). It holds the dead network's COLLECTIVE memory -- traces,
@@ -118,6 +118,20 @@ export class GridHub extends DurableObject<Env> {
         )
       `);
 
+      // Live presence: who is online, on which world, refreshed by each world's
+      // heartbeat. Stale rows (a world that stopped reporting) are filtered out
+      // by age on read, so a crashed world's players quietly disappear.
+      sql.exec(`
+        CREATE TABLE IF NOT EXISTS presence (
+          world TEXT NOT NULL,
+          name TEXT NOT NULL,
+          regard TEXT NOT NULL DEFAULT 'neutral',
+          title TEXT NOT NULL DEFAULT '',
+          at INTEGER NOT NULL,
+          PRIMARY KEY (world, name)
+        )
+      `);
+
       // The world registry: who's on the Grid, and where to reach them.
       sql.exec("CREATE TABLE IF NOT EXISTS worlds (id TEXT PRIMARY KEY, url TEXT NOT NULL, last_seen INTEGER NOT NULL)");
       const worldCount = sql.exec<{ c: number }>("SELECT COUNT(*) AS c FROM worlds").one().c;
@@ -181,6 +195,24 @@ export class GridHub extends DurableObject<Env> {
     return this.ctx.storage.sql
       .exec<Rescued>("SELECT world, name, saved_by AS savedBy, at FROM rescued ORDER BY id DESC LIMIT ?", Math.max(1, Math.min(limit, 50)))
       .toArray();
+  }
+
+  // A world heartbeat: replace this world's whole roster (so disconnects clear).
+  reportPresence(world: string, entries: Array<{ name: string; regard: string; title: string }>, at: number): void {
+    const sql = this.ctx.storage.sql;
+    sql.exec("DELETE FROM presence WHERE world = ?", world);
+    for (const e of entries) {
+      sql.exec("INSERT OR REPLACE INTO presence (world, name, regard, title, at) VALUES (?, ?, ?, ?, ?)", world, e.name, e.regard, e.title, at);
+    }
+  }
+
+  // The live roster across all worlds, dropping rows older than maxAgeMs (a world
+  // that stopped sending heartbeats). Also opportunistically prunes the stale.
+  presence(maxAgeMs: number): Presence[] {
+    const sql = this.ctx.storage.sql;
+    const cutoff = Date.now() - Math.max(0, maxAgeMs);
+    sql.exec("DELETE FROM presence WHERE at < ?", cutoff);
+    return sql.exec<Presence>("SELECT world, name, regard, title, at FROM presence ORDER BY world, name").toArray();
   }
 
   // Maintenance: delete every trace of the given kinds and report how many went.

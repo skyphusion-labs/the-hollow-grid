@@ -1,6 +1,6 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import type { Env } from "./types";
-import type { GridHubApi, GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued } from "../../shared/grid";
+import type { GridHubApi, GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued, Presence } from "../../shared/grid";
 
 // The Durable Object class must be exported from the Worker entry module.
 export { GridHub } from "./gridhub";
@@ -75,6 +75,13 @@ export class GridHubService extends WorkerEntrypoint<Env> implements GridHubApi 
   }
   recentRescued(limit: number): Promise<Rescued[]> {
     return this.hub().recentRescued(limit);
+  }
+
+  async reportPresence(world: string, entries: Array<{ name: string; regard: string; title: string }>, at: number): Promise<void> {
+    await this.hub().reportPresence(world, entries, at);
+  }
+  presence(maxAgeMs: number): Promise<Presence[]> {
+    return this.hub().presence(maxAgeMs);
   }
 }
 

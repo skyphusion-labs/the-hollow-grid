@@ -701,6 +701,23 @@ for (let i = 0; i < 16 && !gotEcho; i++) {
 check(gotEcho, "listening surfaces real recorded traces, not just canned voices (grid.transmission kind=echo)");
 EC.sock.close();
 
+// who: the federation-wide roster of who's online, each with their standing.
+const WH = mkClient();
+await WH.open();
+await sleep(200);
+const whName = "whochk_" + Math.random().toString(36).slice(2, 6);
+WH.send(whName);
+await sleep(400);
+await pickRace(WH);
+WH.send("who");
+await sleep(600);
+const whoEv = WH.last("grid.who");
+check(
+  !!whoEv && Array.isArray(whoEv.data.players) && whoEv.data.players.some((p) => p.name === whName && p.here === true),
+  "who lists you among the survivors online on this world (grid.who)",
+);
+WH.sock.close();
+
 // --- Phase 7: the Tinker's Workshop gear shop ---
 const G = mkClient();
 await G.open();
@@ -1090,6 +1107,17 @@ if (!dustfallUp) {
     typeof tideDust === "number" && tideDust === tidePrimary,
     `the global tide is shared across deployments (Dustfall reads ${tideDust}, primary reads ${tidePrimary})`,
   );
+
+  // Federated presence: from the primary world, `who` sees the player on Dustfall
+  // too (their world heartbeats its roster to the shared hub). Poll: the cross-
+  // world heartbeat can take a moment to land.
+  let crossWho = false;
+  for (let i = 0; i < 10 && !crossWho; i++) {
+    P.send("who");
+    await sleep(500);
+    crossWho = (P.last("grid.who")?.data.players ?? []).some((pl) => /Dustfall/i.test(pl.world) && pl.here === false);
+  }
+  check(crossWho, "who sees players across the whole federation, not just this world (a Dustfall player is visible from the primary)");
 
   // Now that Dustfall has checked in, the primary world's registry must list it
   // LIVE, and travel must hand off Dustfall's REAL url (ws://.../8788), not the

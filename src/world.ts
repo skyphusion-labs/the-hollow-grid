@@ -4,7 +4,7 @@ import { mapFor, introFor, START_ROOM, HOLDING_PIT, WARDEN_ID, TAVERN, MARKET, n
 import { mobsFor, type MobTemplate } from "./mobs";
 import { ITEM_TEMPLATES, itemMatches, EQUIP_SLOTS, waresFor, starterFor, type Ware } from "./items";
 import { RACES, RACE_ORDER, raceFor, matchRace, stanceFor } from "./races";
-import type { GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued } from "../shared/grid";
+import type { GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued, Presence } from "../shared/grid";
 import { bannerFor } from "./banner";
 import { ambientTransmission, listenTransmission, personalize, type Transmission } from "./transmissions";
 import { dreamFor } from "./dreams";
@@ -47,6 +47,8 @@ const WEATHER_TICKS = 9; // roll for a weather change ~every 27s
 const GHOST_TICKS = 4; // the Grid-ghost drifts a room ~every 12s
 const TRANSMISSION_TICKS = 7; // roll for a dead-network transmission ~every 21s
 const SIGN_TICKS = 16; // roll for a "the wastes answer the tide" sign ~every 48s
+const PRESENCE_TICKS = 5; // heartbeat this world's roster to the hub ~every 15s
+const PRESENCE_TTL_MS = 45_000; // a world unheard-from this long drops off `who`
 
 const PHASES = ["dawn", "day", "dusk", "night"] as const;
 const PHASE_LINE: Record<string, string> = {
@@ -830,6 +832,7 @@ export class World extends DurableObject<Env> {
     // Start the world heartbeat for this session (it keeps the alarm beating
     // so the living world turns; it stops when the last player leaves).
     void this.scheduleNextTick();
+    this.reportPresence(); // appear in a federation-wide `who` right away
   }
 
   // ---- command handling ----------------------------------------------------
@@ -948,8 +951,7 @@ export class World extends DurableObject<Env> {
         this.prompt(ws);
         break;
       case "who":
-        ws.send(this.who());
-        this.prompt(ws);
+        await this.who(ws, s);
         break;
       case "tell":
         this.tell(ws, s, arg);
@@ -2876,6 +2878,12 @@ export class World extends DurableObject<Env> {
       ghost_room = this.driftGhost(ghost_room);
     }
 
+    // Heartbeat this world's roster to the hub so a federation-wide `who` stays
+    // current (and a quiet world's players age off it).
+    if (tick % PRESENCE_TICKS === 0) {
+      this.reportPresence();
+    }
+
     // The dead network bleeds a fragment of the world-that-was through the wire.
     if (tick % TRANSMISSION_TICKS === 0 && Math.random() < 0.6) {
       this.broadcastTransmission();
@@ -2929,15 +2937,58 @@ export class World extends DurableObject<Env> {
     return NL + "You are carrying:" + NL + list.join(NL) + NL;
   }
 
-  private who(): string {
-    const all = this.sessions();
-    return (
-      NL +
-      `Survivors online (${all.length}):` +
-      NL +
-      (all.length ? all.map((o) => `  - ${this.tagged(o)}`).join(NL) : "  (nobody but you)") +
-      NL
-    );
+  // Heartbeat this world's current roster to the hub so it shows up in a
+  // federation-wide `who`. Best-effort: if the hub is down, local `who` still works.
+  private reportPresence(): void {
+    try {
+      const entries = this.sessions().map((o) => ({ name: o.name, regard: this.regard(o), title: o.title ?? "" }));
+      this.ctx.waitUntil(this.env.GRID.reportPresence(this.worldName, entries, Date.now()).catch(() => {}));
+    } catch {
+      /* hub unavailable; local presence is unaffected */
+    }
+  }
+
+  // `who`: the survivors out on the Grid right now -- not just this world but
+  // every deployment on the federation, grouped by world, each with how they're
+  // regarded. The wastes feel less empty when you can see the others.
+  private async who(ws: WebSocket, s: Session): Promise<void> {
+    let roster: Presence[] | null = null;
+    try {
+      roster = await this.env.GRID.presence(PRESENCE_TTL_MS);
+    } catch {
+      roster = null;
+    }
+
+    // This world is authoritative for its OWN players: drop the hub's (possibly
+    // stale) rows for here and replace them with the live local sessions, so a
+    // just-connected player or a just-changed title/standing shows immediately.
+    const local: Presence[] = this.sessions().map((o) => ({
+      world: this.worldName,
+      name: o.name,
+      regard: this.regard(o),
+      title: o.title ?? "",
+      at: Date.now(),
+    }));
+    roster = (roster ?? []).filter((r) => r.world !== this.worldName).concat(local);
+
+    const byWorld = new Map<string, Presence[]>();
+    for (const r of roster) (byWorld.get(r.world) ?? byWorld.set(r.world, []).get(r.world)!).push(r);
+    const worlds = [...byWorld.keys()].sort((a, b) => (a === this.worldName ? -1 : b === this.worldName ? 1 : a.localeCompare(b)));
+
+    this.line(ws, `Out on the Grid right now (${roster.length} across ${byWorld.size} world${byWorld.size === 1 ? "" : "s"}):`);
+    for (const w of worlds) {
+      const tag = w === this.worldName ? "  (here)" : "";
+      this.line(ws, `${w}${tag}:`);
+      for (const r of byWorld.get(w)!) {
+        const title = r.title ? `, ${r.title}` : "";
+        const mark = r.regard && r.regard !== "neutral" ? `  [${r.regard}]` : "";
+        this.line(ws, `  - ${r.name}${title}${mark}`);
+      }
+    }
+    this.event(ws, "grid.who", {
+      players: roster.map((r) => ({ world: r.world, name: r.name, regard: r.regard, title: r.title, here: r.world === this.worldName })),
+    });
+    this.prompt(ws);
   }
 
   // --- More standard MUD commands: comms, give, exits, consider --------------
@@ -3820,7 +3871,7 @@ export class World extends DurableObject<Env> {
         "  tell <player> <msg>   private message (reply with 'reply <msg>')",
         "  yell <message>        shout to everyone online",
         "  emote <action>        act it out ('emote spits in the dust')",
-        "  who                   list survivors online",
+        "  who                   list survivors online across the whole Grid (all worlds)",
         "  title <text>          set an epithet shown after your name (blank clears it)",
         "  ping [all]            query this node's Grid memory ('ping all' = the whole network)",
         "  listen (tune)         tune the dead frequencies; hear what the network still plays",
