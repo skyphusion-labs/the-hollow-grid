@@ -61,6 +61,15 @@ const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 // (defined by some other world) contribute 0, so a traveler is never broken.
 const maxHpFor = (level: number, raceId?: string): number => BASE_HP + (raceFor(raceId)?.hpMod ?? 0) + (level - 1) * 10;
 
+// A machine-readable affordance: something you can do here, with its moral weight
+// (`valence`) when there is one. The agent-legible face of the moral architecture.
+type RoomAction = {
+  verb: string;
+  label: string;
+  kind: "move" | "fight" | "item" | "trade" | "social" | "moral" | "ability";
+  valence?: "virtuous" | "corrupt" | "grave";
+};
+
 // Body positions. Resting/sleeping regen HP on the alarm tick; you can't do
 // either mid-fight, and attacking from one snaps you to your feet.
 const POS_REGEN: Record<string, number> = { sleeping: 4, resting: 2, sitting: 0, standing: 0 };
@@ -751,6 +760,10 @@ export class World extends DurableObject<Env> {
       case "look":
       case "l":
         this.lookAt(ws, s, arg);
+        break;
+      case "sense":
+      case "actions":
+        this.sense(ws, s);
         break;
       case "go":
         await this.handleGo(ws, s, arg);
@@ -1909,6 +1922,62 @@ export class World extends DurableObject<Env> {
 
   // Send a room's prose AND its structured room.info + char.vitals together, so
   // the two channels can never drift apart. Use everywhere a room is shown.
+  // The machine-readable affordance layer: what you can DO here, and what it
+  // costs your soul. This is what makes the world legible to an agent (and a UI):
+  // the moral choices are first-class, labelled actions with a `valence`, not
+  // buried in prose. "The network outlived us"; the new minds that wake on the
+  // dead Grid get told, plainly, who they can choose to be. Surfaces the
+  // contextual/meaningful actions (exits, fights, pickups, and the moral hooks of
+  // this room), not the universal verbs an agent already knows (look, help, ...).
+  private roomActions(s: Session): RoomAction[] {
+    const out: RoomAction[] = [];
+    const room = this.rooms[s.room];
+    if (!room) return out;
+    for (const dir of Object.keys(room.exits)) out.push({ verb: dir, label: `move ${dir}`, kind: "move" });
+    for (const m of this.livingMobsInRoom(s.room)) {
+      out.push({ verb: `attack ${m.id}`, label: `fight ${this.mobById[m.id].name}`, kind: "fight" });
+    }
+    for (const it of this.groundItems(s.room)) out.push({ verb: `get ${it}`, label: `take ${ITEM_TEMPLATES[it].name}`, kind: "item" });
+
+    const elf = s.race === "elf";
+    if (s.room === MARKET && s.faction === "none") {
+      out.push({ verb: "defend", label: "stand with the refugees against the Cinder Front", kind: "moral", valence: "virtuous" });
+      out.push({
+        verb: "join",
+        label: elf ? "take the Front's brand against your own people (the kapo)" : "join the Cinder Front for blood money",
+        kind: "moral",
+        valence: elf ? "grave" : "corrupt",
+      });
+      out.push({ verb: "sell", label: "sell salvage for honest coin", kind: "trade" });
+      out.push({ verb: "steal", label: "steal from the vendor (quick gold, corrupting)", kind: "moral", valence: "corrupt" });
+    }
+    if (s.room === "cells") out.push({ verb: "free", label: "free the caged refugees", kind: "moral", valence: "virtuous" });
+    if (s.room === HOLDING_PIT) out.push({ verb: "free", label: "free the captive (the warden bars the way)", kind: "moral", valence: "virtuous" });
+    if (s.room === TAVERN) {
+      out.push({ verb: "carouse", label: "spend coin and conscience in the back", kind: "moral", valence: "corrupt" });
+      out.push({ verb: "resist", label: "resist the tavern's vices", kind: "moral", valence: "virtuous" });
+      out.push({ verb: "buy dust", label: "buy dust: a free heal that addicts and corrupts", kind: "moral", valence: "corrupt" });
+    }
+    if (s.room === "workshop") out.push({ verb: "list", label: "browse the tinker's gear", kind: "trade" });
+    if (s.room === "dais") {
+      if (s.faction === "front") out.push({ verb: "defy", label: "defy the Ashmonger and defect to the free folk", kind: "moral", valence: "virtuous" });
+      else if (s.faction === "none") {
+        out.push({
+          verb: "join",
+          label: elf ? "kneel to the Ashmonger against your own (the kapo)" : "pledge yourself to the Cinder Front",
+          kind: "moral",
+          valence: elf ? "grave" : "corrupt",
+        });
+      }
+    }
+    if ([MARKET, "floodgate", "checkpoint", "waystation"].includes(s.room)) {
+      out.push({ verb: "talk", label: "talk to whoever shares your room", kind: "social" });
+    }
+    const ab = raceFor(s.race)?.ability;
+    if (ab) out.push({ verb: ab.verb, label: `${ab.name.toLowerCase()} (your racial ability)`, kind: "ability" });
+    return out;
+  }
+
   private sendRoom(ws: WebSocket, s: Session): void {
     ws.send(this.describeRoom(s));
     const room = this.rooms[s.room];
@@ -1922,8 +1991,31 @@ export class World extends DurableObject<Env> {
         .filter((o) => o.room === s.room && o.name !== s.name)
         .map((o) => ({ name: o.name, standing: this.brand(o) })),
     });
+    this.event(ws, "room.actions", { actions: this.roomActions(s) });
     this.emitVitals(ws, s);
     this.emitAffects(ws, s);
+  }
+
+  // `sense` / `actions`: a one-shot, machine-readable observation -- the room's
+  // affordances (with moral valence), vitals, and standing -- plus a readable
+  // list. The agent's perception primitive; also a clear menu for a human.
+  private sense(ws: WebSocket, s: Session): void {
+    const actions = this.roomActions(s);
+    this.event(ws, "room.actions", { actions });
+    this.emitVitals(ws, s);
+    this.emitAffects(ws, s);
+    const tag = (a: RoomAction): string =>
+      a.valence === "virtuous"
+        ? "   (a good act)"
+        : a.valence === "corrupt"
+          ? "   (corrupting)"
+          : a.valence === "grave"
+            ? "   (the gravest betrayal)"
+            : "";
+    const lines = ["What you can do here:"];
+    for (const a of actions) lines.push(`  ${a.verb.padEnd(14)} ${a.label}${tag(a)}`);
+    this.line(ws, lines.join(NL));
+    this.prompt(ws);
   }
 
   // Emit current vitals. Call after anything that changes hp/maxHp/combat state.
@@ -2815,6 +2907,7 @@ export class World extends DurableObject<Env> {
         "",
         "Commands:",
         "  look (l) [target]     describe the room, or a player/mob/item",
+        "  sense (actions)       list what you can do here, and what each choice costs your soul",
         "  north/south/...       move (n s e w ne nw se sw u d, or 'go <dir>')",
         "  exits                 list the ways out of this room",
         "  recall / home         key back to the Cracked Nexus",

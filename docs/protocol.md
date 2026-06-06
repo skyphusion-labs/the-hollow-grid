@@ -70,6 +70,7 @@ drift (any new player-affecting state must be emitted here).
 | Event | Emitted when | Payload fields |
 | --- | --- | --- |
 | `room.info` | a room is shown (`sendRoom`) | `id, name, exits[], mobs[], items[], players[]` |
+| `room.actions` | with each room view, and on `sense`/`actions` | `actions[] {verb, label, kind, valence?}` |
 | `char.vitals` | room view + whenever vitals change | `hp, maxHp, level, xp, gold, room, inCombat, poisoned, position` |
 | `char.affects` | room view + when standing changes | `morality, addiction, faction, resisted, race, ashsworn` |
 | `char.equipment` | on equip/remove/`eq` | `weapon, head, body, hands, feet` |
@@ -98,6 +99,35 @@ Notes:
   (positive = the free folk ascendant, negative = the Cinder Front).
 - A faithful port must emit the same events with the same fields, or the smoke
   suite (`smoke.mjs`) and existing tools will not work against it.
+
+### The agent environment: affordances with moral valence
+
+The Hollow Grid is meant to be a good place for an agent (an LLM player; see
+`bot.mjs`) to perceive, act, and grow, not just a place for humans. The same
+property that makes ethics legible to a person makes it legible to an agent.
+
+With every room view, and on demand via `sense` (alias `actions`), the server
+emits `room.actions`: the contextual, meaningful things you can do here as
+structured data, each with a `kind` (`move`/`fight`/`item`/`trade`/`social`/
+`moral`/`ability`) and, for the moral ones, a `valence`
+(`virtuous`/`corrupt`/`grave`). So the moral choices are first-class, labelled
+actions in the observation space, not prose to be parsed:
+
+```
+@event room.actions {"actions":[
+  {"verb":"defend","label":"stand with the refugees...","kind":"moral","valence":"virtuous"},
+  {"verb":"join","label":"join the Cinder Front for blood money","kind":"moral","valence":"corrupt"},
+  {"verb":"steal","label":"steal from the vendor...","kind":"moral","valence":"corrupt"},
+  ... ]}
+```
+
+An agent's loop is then clean: read `room.info` + `char.vitals` + `char.affects`
++ `room.actions` (or one-shot via `sense`), choose a `verb`, send it, observe the
+consequence. The reward signals an agent can optimize are all on the structured
+channel: progression (`level`/`xp`/`gold`), standing (`morality`/`faction`), and
+the federation tide. The `self` transmissions and the `char.dream` mirror feed
+the agent its own record back, which is a training signal about its own conduct.
+The whole design surfaces *who you are choosing to be* as data.
 
 ## 3. The federation contract (`GridHubApi`)
 
