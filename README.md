@@ -8,6 +8,9 @@ set of characters, cross-world travel), and a "world" is just **content plus
 three environment variables** on a generic engine. Theme: post-apocalyptic
 cyber-decay, "the network outlived us."
 
+Read the writeup (the story, the design decisions, and how it was built):
+**[The Hollow Grid on skyphusion.net](https://skyphusion.net/blog/the-hollow-grid/)**.
+
 ## Play now
 
 Two live worlds on one shared Grid. Open either in a browser and you are in:
