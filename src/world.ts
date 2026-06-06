@@ -7,6 +7,7 @@ import { RACES, RACE_ORDER, raceFor, matchRace, stanceFor } from "./races";
 import type { GridTrace, GridCast, CharSheet, WorldInfo } from "../shared/grid";
 import { bannerFor } from "./banner";
 import { ambientTransmission, listenTransmission, personalize, type Transmission } from "./transmissions";
+import { dreamFor } from "./dreams";
 
 const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 
@@ -2684,7 +2685,20 @@ export class World extends DurableObject<Env> {
     this.line(ws, POS_SELF[pos]);
     this.broadcast(s.room, `${s.name} ${POS_OTHERS[pos]}.`, ws);
     this.emitVitals(ws, s);
+    if (pos === "sleeping") this.dream(ws, s);
     this.prompt(ws);
+  }
+
+  // When you sleep, the dead network dreams you: a mirror assembled from who you
+  // have become. Rare by design (a cooldown), so it stays a reckoning, not noise.
+  private dream(ws: WebSocket, s: Session): void {
+    const now = Date.now();
+    if (s.dreamReadyAt && now < s.dreamReadyAt) return; // a dreamless sleep
+    s.dreamReadyAt = now + 90_000;
+    const text = dreamFor({ ashsworn: s.ashsworn, faction: s.faction, morality: s.morality });
+    this.event(ws, "char.dream", { text });
+    this.line(ws, `\x1b[2;37m  ${text}\x1b[0m`);
+    ws.serializeAttachment(s);
   }
 
   // --- Equipment: worn gear with stat bonuses --------------------------------

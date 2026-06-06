@@ -74,6 +74,7 @@ drift (any new player-affecting state must be emitted here).
 | `char.affects` | room view + when standing changes | `morality, addiction, faction, resisted, race, ashsworn` |
 | `char.equipment` | on equip/remove/`eq` | `weapon, head, body, hands, feet` |
 | `char.died` | on death | `respawnRoom, hp, maxHp` |
+| `char.dream` | sleeping delivers a dream (a mirror of your record) | `text` |
 | `char.identity` | `whoami` | the federated `CharSheet` (see section 3) |
 | `combat.start` | a fight begins | `mob, name` |
 | `combat.round` | each combat tick | `mob, mobHp, mobMaxHp, playerDmg, mobDmg, hp` |

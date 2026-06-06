@@ -6,6 +6,21 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.11.0
+
+The network dreams you. A reckoning every time you rest.
+
+### Code
+- When you `sleep`, the dead Grid -- the one thing that remembers everything you
+  have done -- holds up a mirror: a dream assembled from who you have become
+  (`src/dreams.ts`, hooked in `setPosition`). The kapo dreams of the cages from
+  the inside; the collaborator of the refugee who bolted; the saint of the people
+  he carried; the thief of everything he took; the unaligned of a city full of
+  faces he never met. Six registers, keyed off `ashsworn` / `faction` / morality
+  bands. Styled in dim ANSI, emitted as `char.dream` ({text}). Rare by design (a
+  90s cooldown, so it stays a reckoning, not noise). Smoke at 88 checks. This is
+  the "designed to make you think" turned on the player themselves.
+
 ## v0.10.0
 
 The dead network speaks. "The network outlived us. Now it just hums, empty, and

@@ -132,6 +132,14 @@ check(
   `listen tunes the dead Grid (grid.transmission: ${JSON.stringify(tx?.data.kind)})`,
 );
 
+// The network dreams you: sleeping holds up a mirror on the structured channel.
+ws.send("sleep");
+await sleep(500);
+const dr = last("char.dream");
+check(!!dr && typeof dr.data.text === "string" && dr.data.text.length > 0, "sleeping delivers a dream (char.dream)");
+ws.send("stand"); // back on your feet for the rest of the run
+await sleep(300);
+
 // Self-documenting onboarding: a new player must be pointed at help, not left
 // to guess (the anti-hidden-gate lesson).
 check(/\bhelp\b/i.test(raw), "new-player welcome points to the help command");

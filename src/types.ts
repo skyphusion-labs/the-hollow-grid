@@ -69,6 +69,8 @@ export interface Session {
   position?: string;
   /** when the racial ability is next usable, epoch ms (in-memory; resets on relogin) */
   traitReadyAt?: number;
+  /** when sleep can deliver another dream, epoch ms (in-memory; keeps dreams rare) */
+  dreamReadyAt?: number;
   /** a custom title shown after the player's name (persisted) */
   title?: string;
 }
