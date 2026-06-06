@@ -286,6 +286,19 @@ export class World extends DurableObject<Env> {
   // ---- connection lifecycle ------------------------------------------------
 
   async fetch(request: Request): Promise<Response> {
+    // Internal liveness probe, reached only via the service stub from the
+    // Worker's /health/deep handler (never exposed on the public surface).
+    // Confirms the DO is awake and its SQLite answers a trivial query.
+    if (new URL(request.url).pathname === "/health") {
+      try {
+        this.ctx.storage.sql.exec("SELECT 1");
+        return new Response("ok", { status: 200 });
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        return new Response(m, { status: 503 });
+      }
+    }
+
     if (request.headers.get("Upgrade") !== "websocket") {
       return new Response("This endpoint speaks WebSocket. Try `wscat -c <url>/ws`.", {
         status: 426,

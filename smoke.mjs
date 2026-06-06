@@ -102,6 +102,21 @@ await new Promise((res, rej) => {
   ws.addEventListener("error", () => rej(new Error(`could not connect to ${URL} (is \`npm run dev\` running?)`)));
 });
 
+// Health endpoints are plain HTTP on the same host (not the WebSocket). Derive
+// the http base from the ws URL (ws://host/ws -> http://host).
+const HTTP_BASE = URL.replace(/^ws/, "http").replace(/\/ws$/, "");
+{
+  const liveRes = await fetch(`${HTTP_BASE}/health`);
+  const liveBody = await liveRes.json().catch(() => ({}));
+  check(liveRes.status === 200 && liveBody.ok === true, "/health is a 200 liveness probe with ok:true");
+
+  const deepRes = await fetch(`${HTTP_BASE}/health/deep`);
+  const deepBody = await deepRes.json().catch(() => ({}));
+  check(deepRes.status === 200 && deepBody.ok === true, "/health/deep returns 200 ok with all critical checks green");
+  check(deepBody.checks?.world?.ok === true, "/health/deep exercises the World DO (SQLite) and reports it healthy");
+  check(deepBody.checks?.grid_hub?.ok === true, "/health/deep exercises the Grid Hub binding and reports it reachable");
+}
+
 // Use a fresh, unique name each run so the test never inherits a persisted
 // character's position -- a test must control its own fixtures.
 const name = "smoke_" + Math.random().toString(36).slice(2, 8);

@@ -49,6 +49,31 @@ Race is a federated, canonical attribute, chosen once, that follows you across
 worlds; the hub carries it as an opaque string so any world may define its own
 races. (See docs/worlds.md.)
 
+### Health endpoints (plain HTTP)
+
+Alongside the WebSocket, a world serves two unauthenticated HTTP probes for
+uptime monitoring (Kuma, etc.):
+
+- **`GET /health`** -- liveness. No binding access, sub-millisecond, always
+  `200` with `{"ok":true,"ts":...,"world":...}`. Poll frequently (60s).
+- **`GET /health/deep`** -- exercises the dependencies once each and returns
+  per-check `ok`/`latency_ms`: the **World Durable Object** (and a trivial
+  SQLite `SELECT 1`) and the **Grid Hub** binding (a `tide()` read). Only the
+  World DO is `critical`; the hub is reported but non-critical, because
+  federation never blocks play (a world runs standalone on hub failure, see
+  docs/federation.md). The endpoint returns `503` only when a critical check
+  fails. Poll less often (5min); a deep check is 50-200ms.
+
+```
+GET /health/deep ->
+{ "ok": true, "ts": ..., "world": "The Hollow Grid", "checks": {
+    "world":    { "ok": true, "latency_ms": 3,  "critical": true },
+    "grid_hub": { "ok": true, "latency_ms": 12, "critical": false } } }
+```
+
+A port should expose the same two paths so the same monitor config works
+against any world.
+
 ## 2. The structured `@event` channel
 
 Every canonical, player-affecting piece of state is emitted as its own line:

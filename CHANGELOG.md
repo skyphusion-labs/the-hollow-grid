@@ -6,6 +6,25 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.16.0
+
+Operational visibility: the world now exposes health probes for uptime
+monitoring, matching the `/health` + `/health/deep` pattern used across the
+SkyPhusion fleet.
+
+### Added
+- **`GET /health`** -- a liveness probe. No binding access, sub-millisecond,
+  always `200` with `{ ok, ts, world }`. Safe for high-frequency polling (Kuma
+  at 60s).
+- **`GET /health/deep`** -- a deep check that exercises each dependency once and
+  reports per-check `ok`/`latency_ms`: the **World Durable Object** (via a
+  trivial SQLite `SELECT 1` on an internal DO route) and the **Grid Hub**
+  service binding (via a `tide()` read). Only the World DO is `critical`; the
+  hub is reported but non-critical, because federation never blocks play, so a
+  hub outage degrades cross-world features without flipping the world red. The
+  endpoint returns `503` only on a critical failure. Documented in
+  docs/protocol.md; covered by four new smoke assertions.
+
 ## v0.15.1
 
 Drift-and-noise fixes from an adversarial review (another Opus played the world
