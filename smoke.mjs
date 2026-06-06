@@ -123,6 +123,15 @@ ws.send("ability"); // immediate reuse
 await sleep(400);
 check(/recharging/i.test(raw.slice(cdMark)), "a racial ability respects its cooldown");
 
+// The dead network speaks: `listen` pulls a transmission on the structured channel.
+ws.send("listen");
+await sleep(500);
+const tx = last("grid.transmission");
+check(
+  !!tx && typeof tx.data.text === "string" && tx.data.text.length > 0,
+  `listen tunes the dead Grid (grid.transmission: ${JSON.stringify(tx?.data.kind)})`,
+);
+
 // Self-documenting onboarding: a new player must be pointed at help, not left
 // to guess (the anti-hidden-gate lesson).
 check(/\bhelp\b/i.test(raw), "new-player welcome points to the help command");

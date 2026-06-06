@@ -6,6 +6,22 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.10.0
+
+The dead network speaks. "The network outlived us. Now it just hums, empty, and
+waits." Made literal.
+
+### Code
+- Fragments of the world-that-was bleed through the wire on the living-world tick
+  (and on demand via `listen` / `tune`), across four registers (`src/transmissions.ts`):
+  **signal** (systems still running their loops for no one), **ad** (the old
+  world still selling, to ghosts), **human** (the last voices, the makers the
+  network outlived), and **self** (the Grid noticing you by name). The ambient
+  mix leans banal so the human/self ones land harder; `listen` digs toward the
+  voices. Each is styled by register in dim ANSI and emitted on the structured
+  channel as `grid.transmission` ({kind, text}); `self` fragments are
+  personalized per listener. Smoke at 87 checks.
+
 ## v0.9.0
 
 A signature active ability for each race, so a race is something you DO, not just
