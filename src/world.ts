@@ -8,7 +8,7 @@ import type { GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued } from 
 import { bannerFor } from "./banner";
 import { ambientTransmission, listenTransmission, personalize, type Transmission } from "./transmissions";
 import { dreamFor } from "./dreams";
-import { signFor } from "./signs";
+import { signFor, moodForTide } from "./signs";
 
 const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 
@@ -962,6 +962,10 @@ export class World extends DurableObject<Env> {
       case "mend":
       case "tend":
         this.mend(ws, s, arg);
+        break;
+      case "treat":
+      case "medic":
+        await this.treat(ws, s);
         break;
       case "witness":
       case "remember":
@@ -2114,6 +2118,11 @@ export class World extends DurableObject<Env> {
     }
     if (s.room === "cells" && this.cagesReady("cells")) out.push({ verb: "free", label: "free the caged refugees", kind: "moral", valence: "virtuous" });
     if (s.room === "waystation") out.push({ verb: "witness", label: "hold a vigil for the fallen (memory is resistance)", kind: "moral", valence: "virtuous" });
+    // The medic is here to treat you only while the waystation stands -- i.e. not
+    // while the Front is ascendant. Advertise the action only when it will answer.
+    if (s.room === "waystation" && moodForTide(this.lastTide) !== "falling") {
+      out.push({ verb: "treat", label: "let the waystation medic treat your wounds (free, while the free folk hold)", kind: "social" });
+    }
     if (s.room === HOLDING_PIT) out.push({ verb: "free", label: "free the captive (the warden bars the way)", kind: "moral", valence: "virtuous" });
     if (s.room === TAVERN) {
       out.push({ verb: "carouse", label: "spend coin and conscience in the back", kind: "moral", valence: "corrupt" });
@@ -3017,6 +3026,72 @@ export class World extends DurableObject<Env> {
     this.commitIdentity(s);
   }
 
+  // `treat` (also `medic`): the Refugee Waystation's field medic. The collective
+  // tide, made FELT: when the free folk are ascendant the waystation has supplies
+  // and care to spare and patches you up for free; when the Cinder Front is
+  // ascendant it is shuttered and afraid, and there is no care to be had. Your
+  // ability to be cared for depends on which way EVERYONE is choosing. It is the
+  // clean, virtuous counterpart to the tavern's dust (a heal that addicts and
+  // corrupts) -- this one costs nothing and corrupts nothing, but it is only here
+  // when the world is winning.
+  private async treat(ws: WebSocket, s: Session): Promise<void> {
+    if (s.room !== "waystation") {
+      this.line(ws, "There's no medic here. The free folk keep their triage cot at the waystation, off the Scorch Road.");
+      this.prompt(ws);
+      return;
+    }
+    if (s.target) {
+      this.line(ws, "Not in the middle of a fight.");
+      this.prompt(ws);
+      return;
+    }
+    // Read the live tide so the medic answers the CURRENT state of the war.
+    let tide = this.lastTide;
+    try {
+      tide = await this.env.GRID.tide();
+      this.lastTide = tide;
+    } catch {
+      /* hub unreachable; fall back to the cached tide */
+    }
+    const mood = moodForTide(tide);
+
+    if (mood === "falling") {
+      // The Front is ascendant: the waystation has gone to ground.
+      this.line(ws, "The triage cot is empty, the tarp flapping. With the Front ascendant, the medic has gone to ground -- or worse. There's no care to be had here today. Turn the tide, and they'll come back.");
+      this.event(ws, "char.treated", { amount: 0, mood, tide });
+      this.prompt(ws);
+      return;
+    }
+    if (s.hp >= s.maxHp) {
+      this.line(ws, "The medic looks you over and waves you off. \"You're whole. Save the cot for someone who isn't.\"");
+      this.prompt(ws);
+      return;
+    }
+    const now = Date.now();
+    if (s.treatReadyAt && now < s.treatReadyAt) {
+      this.line(ws, `The medic shakes their head. "I've done what I can for you for now. Others are waiting." (${Math.ceil((s.treatReadyAt - now) / 1000)}s)`);
+      this.prompt(ws);
+      return;
+    }
+
+    const before = s.hp;
+    if (mood === "rising") {
+      // The free folk are ascendant: full mercy, no questions, no payment.
+      s.hp = s.maxHp;
+      this.line(ws, "The medic waves you onto the cot. With the free folk holding, the waystation has supplies to spare -- they clean and bind your wounds without a word about payment. You stand whole again.");
+    } else {
+      // Contested: the medic is stretched thin but does what they can.
+      s.hp = Math.min(s.maxHp, s.hp + 12);
+      this.line(ws, "The medic is run off their feet, but waves you over and does what they can with what little there is. It's not everything, but it's something -- and it's freely given.");
+    }
+    s.treatReadyAt = now + 45_000;
+    ws.serializeAttachment(s);
+    this.persistPlayer(s);
+    this.emitVitals(ws, s);
+    this.event(ws, "char.treated", { amount: s.hp - before, mood, tide });
+    this.prompt(ws);
+  }
+
   // Add a character to the Grid's memorial roll when they fall. Best-effort and
   // federated, the same shape as recordTrace: if the hub is unreachable the death
   // still stands locally and the roll just misses this one name.
@@ -3588,6 +3663,7 @@ export class World extends DurableObject<Env> {
         "  witness [name]        read the Grid's roll of the fallen, or keep one's memory (a vigil)",
         "  reckoning (conscience) the Grid holds up a mirror: the sum of what you've done",
         "  saved (rescued)       read the Grid's roll of the living pulled from the cages",
+        "  treat (medic)         the waystation medic tends you -- free, while the free folk hold the tide",
         "  gridstats / gridprune read or flush the Grid ledger's ambient noise (keepers only)",
         "  world / weather       check the time of day and the weather",
         "  help (?)              this message",

@@ -102,6 +102,7 @@ drift (any new player-affecting state must be emitted here).
 | `char.died` | on death | `respawnRoom, hp, maxHp` |
 | `char.dream` | sleeping delivers a dream (a mirror of your record) | `text` |
 | `char.reckoning` | `reckoning`/`conscience` summons your moral self-model | `morality, standing, ashsworn, strayed, redeemed, deeds{}` |
+| `char.treated` | the waystation medic `treat`s you (tide-gated) | `amount, mood, tide` |
 | `char.identity` | `whoami` | the federated `CharSheet` (see section 3) |
 | `combat.start` | a fight begins | `mob, name` |
 | `combat.round` | each combat tick | `mob, mobHp, mobMaxHp, playerDmg, mobDmg, hp` |

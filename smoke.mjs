@@ -602,7 +602,39 @@ const wsmark = W.raw().length;
 W.send("talk");
 await sleep(400);
 check(/pick a side|free folk/i.test(W.raw().slice(wsmark)), "the waystation reacts to your standing (unaligned: pick a side)");
+
+// The collective tide, made FELT: the waystation medic treats you for free while
+// the free folk hold, and is shuttered when the Front is ascendant. Robust to
+// whatever the shared tide happens to be when this runs (mirror of the cage test).
+const wtide = await readWarTide(W);
+const tmark = W.raw().length;
+W.send("treat");
+await sleep(600);
+if (typeof wtide === "number" && wtide <= -40) {
+  check(
+    /no care to be had|gone to ground/i.test(W.raw().slice(tmark)) && W.last("char.treated")?.data.mood === "falling",
+    "with the Front ascendant the waystation medic is shuttered -- care is gated by the collective tide",
+  );
+} else {
+  check(
+    /whole|patches you up|run off their feet|does what they can/i.test(W.raw().slice(tmark)),
+    "with the free folk holding the waystation medic tends you -- care is gated by the collective tide",
+  );
+}
 W.sock.close();
+
+// The medic only treats you at the waystation -- nowhere else.
+const MED = mkClient();
+await MED.open();
+await sleep(200);
+MED.send("medchk_" + Math.random().toString(36).slice(2, 6));
+await sleep(400);
+await pickRace(MED);
+const nhmark = MED.raw().length;
+MED.send("treat"); // the start room has no medic
+await sleep(400);
+check(/no medic here/i.test(MED.raw().slice(nhmark)), "the waystation medic treats you only at the waystation, nowhere else");
+MED.sock.close();
 
 // --- Phase 7: the Tinker's Workshop gear shop ---
 const G = mkClient();

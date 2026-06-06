@@ -6,6 +6,31 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.22.0
+
+The collective tide, made FELT. The faction tide is "the collective ethic made
+visible" -- but until now it was almost entirely cosmetic (it changed ambient
+prose). This gives it material stakes: whether you can be cared for depends on
+which way EVERYONE is choosing.
+
+### Added
+- **The Refugee Waystation's field medic (`treat`, alias `medic`).** Gated by
+  the live tide (read fresh from the hub each time):
+  - **free folk ascendant** (tide >= +40): the waystation has supplies to spare
+    -- a full heal, free, no questions.
+  - **contested** (the balanced middle): the medic is stretched thin but does
+    what they can -- a partial heal (+12, capped).
+  - **Front ascendant** (tide <= -40): the waystation is shuttered and afraid --
+    no care to be had. "Turn the tide, and they'll come back."
+  It is the clean, virtuous counterpart to the tavern's dust (a heal that
+  addicts and corrupts): this one costs nothing and corrupts nothing, but it is
+  only here when the world is winning. 45s cooldown; emits `char.treated
+  {amount, mood, tide}`. The `treat` affordance is advertised in `room.actions`
+  only while the medic is present (not while the Front holds) -- the
+  no-silent-no-op rule.
+- All three tide states verified (shuttered + not-here in smoke, the heal
+  end-to-end manually); 115 checks.
+
 ## v0.21.0
 
 The rescued roll: the hopeful mirror of the memorial roll. `witness` (v0.18.0)
