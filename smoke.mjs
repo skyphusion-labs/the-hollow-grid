@@ -461,11 +461,15 @@ P.send("emote kicks at the dust");
 await sleep(400);
 check(new RegExp(`${pName} kicks at the dust`).test(Q.raw()), "emote is seen by others in the room");
 
-// look at another player in the room
+// look at another player in the room (poll: the reply can lag under CI load)
 const pmark = P.raw().length;
 P.send(`look ${qName}`);
-await sleep(400);
-check(/stands before you/i.test(P.raw().slice(pmark)), "look <player> describes another player");
+let lookSeen = false;
+for (let i = 0; i < 8 && !lookSeen; i++) {
+  await sleep(400);
+  lookSeen = /stands before you/i.test(P.raw().slice(pmark));
+}
+check(lookSeen, "look <player> describes another player");
 
 // P sides with the free folk (gets an elven charm), then hands it to Q.
 P.send("defend");
