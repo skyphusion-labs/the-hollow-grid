@@ -337,6 +337,16 @@ await sleep(500);
 await pickRace(KAPO, "elf"); // an elf -- the people the Front hunts
 KAPO.send("north"); // nexus -> Scrap Market, where the recruiter rallies
 await sleep(500);
+// The agent affordance layer: moral choices are structured actions with a
+// valence, and an elf's `join` is flagged as the gravest betrayal.
+KAPO.send("sense");
+await sleep(400);
+const acts = KAPO.last("room.actions")?.data.actions ?? [];
+check(acts.some((a) => a.kind === "moral"), "room.actions surfaces moral choices as structured actions");
+check(
+  acts.some((a) => a.verb === "join" && a.valence === "grave"),
+  "the affordance layer flags an elf's join as the gravest betrayal (room.actions valence)",
+);
 const kmark = KAPO.raw().length;
 KAPO.send("join"); // an elf siding with the Cinder Front
 await sleep(700);

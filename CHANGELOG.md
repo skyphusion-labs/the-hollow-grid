@@ -6,6 +6,23 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.12.0
+
+The agent environment: moral choice as a first-class, machine-readable
+affordance. A world built so an LLM agent can perceive, act, and grow in it, and
+so the ethics are legible rather than buried in prose.
+
+### Code
+- With every room view, and on demand via `sense` (alias `actions`), the server
+  emits `room.actions`: the contextual things you can do here as structured data,
+  each with a `kind` (move/fight/item/trade/social/moral/ability) and, for the
+  moral ones, a `valence` (virtuous/corrupt/grave). The Cinder Front choices, the
+  cages, the tavern's vices, the dais defection, and an elf's `join` (flagged
+  grave: the kapo) are all labelled actions in the observation space.
+- `sense` prints a readable menu for a human and emits the full one-shot
+  observation (room.actions + vitals + affects) for an agent loop. Documented as
+  the agent environment in docs/protocol.md. Smoke at 90 checks.
+
 ## v0.11.0
 
 The network dreams you. A reckoning every time you rest.
