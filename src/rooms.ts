@@ -155,8 +155,20 @@ export const ROOMS: Record<string, Room> = {
     name: "The Scorch Road",
     desc:
       "A ruined stretch of pre-collapse highway, asphalt buckled and tar-black, " +
-      "burned-out hulks lining the shoulder. The kind of place people get robbed.",
-    exits: { west: "dunes", east: "waystation" },
+      "burned-out hulks lining the shoulder. The kind of place people get robbed. " +
+      "A faded sign points south to an old transit hub; that's where the distress call is coming from.",
+    exits: { west: "dunes", east: "waystation", south: "transit_hub" },
+  },
+  transit_hub: {
+    id: "transit_hub",
+    name: "The Old Transit Hub",
+    desc:
+      "A derelict transit station, platforms cracked, the departure board frozen on a destination " +
+      "that does not exist anymore. A handful of survivors are huddled around a water tap that still, " +
+      "somehow, runs -- the reason they are alive, and the reason they cannot leave. They look up when " +
+      "you enter, hope and terror at war in their faces; one of them is still working a hand-radio, " +
+      "sending the looping call you followed here. They are not soldiers. They are just people. (try 'shelter')",
+    exits: { north: "scorch_road" },
   },
   checkpoint: {
     id: "checkpoint",
@@ -366,8 +378,20 @@ export const ROOMS_DUSTFALL: Record<string, Room> = {
     name: "The Bone Road",
     desc:
       "A caravan track strung between burned-out hulks and the picked-clean bones of those who " +
-      "traveled it alone. A good place to be robbed, and everyone knows it.",
-    exits: { west: "dunes", east: "waystation" },
+      "traveled it alone. A good place to be robbed, and everyone knows it. A leaning signpost " +
+      "still points south, to a dry-dock transit station where a distress call keeps looping.",
+    exits: { west: "dunes", east: "waystation", south: "transit_hub" },
+  },
+  transit_hub: {
+    id: "transit_hub",
+    name: "The Dry-Dock Station",
+    desc:
+      "A beached transit station half-swallowed by the salt, its great rusted gantries reaching at " +
+      "nothing. A cluster of survivors shelters in the lee of a cistern that still holds water -- the " +
+      "only reason they are alive, and the chain that keeps them here. They watch you come, caught " +
+      "between hope and the certainty that hope costs. One works a hand-radio, looping the call you " +
+      "followed in. They are not raiders or Front. They are just people, run out of road. (try 'shelter')",
+    exits: { north: "scorch_road" },
   },
   checkpoint: {
     id: "checkpoint",

@@ -755,6 +755,37 @@ if (pitDied) {
 }
 PIT.sock.close();
 
+// The transit-hub distress call ("we're at the old transit hub, please, anyone")
+// now leads to a REAL place with stranded survivors you can answer the call for.
+const TH = mkClient();
+await TH.open();
+await sleep(200);
+const thName = "transit_" + Math.random().toString(36).slice(2, 6);
+TH.send(thName);
+await sleep(400);
+await pickRace(TH);
+for (const dir of ["east", "up", "north", "east", "south"]) {
+  TH.send(dir);
+  await sleep(450);
+}
+check(TH.last("room.info")?.data.id === "transit_hub", "the distress call leads somewhere real: the old transit hub, south off the Scorch Road");
+const thMark = TH.raw().length;
+TH.send("shelter");
+await sleep(600);
+const thRescue = TH.last("grid.rescued");
+if (thRescue && thRescue.data.savedBy === thName) {
+  check(
+    Array.isArray(thRescue.data.freed) && thRescue.data.freed.length >= 1,
+    "answering the call shelters the stranded survivors -- a real, named rescue on the Grid (grid.rescued)",
+  );
+  TH.send("shelter"); // the refill gate: the call can't be farmed
+  await sleep(400);
+  check(/platform is empty/i.test(TH.raw()), "the transit hub refills over time -- you can't farm the distress call");
+} else {
+  check(/platform is empty/i.test(TH.raw().slice(thMark)), "the transit hub on cooldown is refused (no farm) -- robust across runs");
+}
+TH.sock.close();
+
 // --- Phase 7: the Tinker's Workshop gear shop ---
 const G = mkClient();
 await G.open();

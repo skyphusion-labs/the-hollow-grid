@@ -920,6 +920,10 @@ export class World extends DurableObject<Env> {
       case "rescue":
         this.freeMaiden(ws, s);
         break;
+      case "shelter":
+      case "guide":
+        this.shelter(ws, s);
+        break;
       case "sell":
         this.sell(ws, s, arg);
         break;
@@ -1401,6 +1405,54 @@ export class World extends DurableObject<Env> {
     this.rememberRescued(freedName, s.name);
     this.contributeTide(2);
     this.event(ws, "grid.rescued", { freed: [freedName], savedBy: s.name });
+    this.commitIdentity(s);
+    this.prompt(ws);
+  }
+
+  // `shelter` (also `guide`): answer the distress call. The looping transmission
+  // -- "we're at the old transit hub, we have water, please, anyone" -- now leads
+  // to a real place, with real people stranded at it. To reach them at all you
+  // had to choose to follow a stranger's call off the road; this is the choosing
+  // made good. Refills over time (the Front keeps stranding people; the call
+  // keeps going out), so it is an ongoing answer, not a one-time clear. Reuses the
+  // cage-refill gate so it cannot be farmed.
+  private shelter(ws: WebSocket, s: Session): void {
+    if (s.room !== "transit_hub") {
+      this.line(ws, "There's no one here to shelter. The distress call comes from the old transit hub, south off the Scorch Road.");
+      this.prompt(ws);
+      return;
+    }
+    if (!this.cagesReady("transit_hub")) {
+      this.line(ws, "The platform is empty now. Whoever called, you got them moving -- toward the free camp, you have to believe. The Front will strand others here soon enough; it always does, and the call will go out again.");
+      this.prompt(ws);
+      return;
+    }
+    const now = Date.now();
+    const saved = this.pickNames(rand(2, 3));
+    s.morality += 15;
+    this.ctx.storage.sql.exec(
+      "INSERT INTO cages (room, refill_at) VALUES (?, ?) ON CONFLICT(room) DO UPDATE SET refill_at = excluded.refill_at",
+      "transit_hub",
+      now + CAGE_REFILL_MS,
+    );
+    this.deed(s, "sheltered");
+    for (const name of saved) {
+      this.ctx.storage.sql.exec("INSERT OR IGNORE INTO saved_souls (savior, name, at) VALUES (?, ?, ?)", s.name, name, now);
+      this.rememberRescued(name, s.name);
+    }
+    ws.serializeAttachment(s);
+    this.persistPlayer(s);
+    this.emitAffects(ws, s);
+    this.line(
+      ws,
+      `You answer the call. You get ${this.nameList(saved)} up and moving -- bottles filled at the tap, the ` +
+        "youngest carried -- and stand watch on the cracked platform while they slip out the far side, toward " +
+        "the free camp and whatever the free folk can spare. The hand-radio goes quiet at last. Someone came.",
+    );
+    this.broadcast(s.room, `${s.name} gets the stranded survivors moving toward safety.`, ws);
+    this.recordTrace(s.room, "aid", `${s.name} answered the transit-hub distress call and got the survivors out.`);
+    this.contributeTide(3);
+    this.event(ws, "grid.rescued", { freed: saved, savedBy: s.name });
     this.commitIdentity(s);
     this.prompt(ws);
   }
@@ -2171,6 +2223,7 @@ export class World extends DurableObject<Env> {
       out.push({ verb: "steal", label: "steal from the vendor (quick gold, corrupting)", kind: "moral", valence: "corrupt" });
     }
     if (s.room === "cells" && this.cagesReady("cells")) out.push({ verb: "free", label: "free the caged refugees", kind: "moral", valence: "virtuous" });
+    if (s.room === "transit_hub" && this.cagesReady("transit_hub")) out.push({ verb: "shelter", label: "answer the call -- get the stranded survivors to safety", kind: "moral", valence: "virtuous" });
     if (s.room === "waystation") out.push({ verb: "witness", label: "hold a vigil for the fallen (memory is resistance)", kind: "moral", valence: "virtuous" });
     // The medic is here to treat you only while the waystation stands -- i.e. not
     // while the Front is ascendant. Advertise the action only when it will answer.
@@ -3544,6 +3597,7 @@ export class World extends DurableObject<Env> {
       ["aided", `  aid left for strangers you'll never meet: ${d.aided ?? 0}`],
       ["kept", `  names of the fallen you kept: ${d.kept ?? 0}`],
       ["freed", `  souls you cut out of the cages: ${d.freed ?? 0}`],
+      ["sheltered", `  distress calls you answered: ${d.sheltered ?? 0}`],
       ["stood", `  times you stood with the free folk: ${d.stood ?? 0}`],
       ["inscribed", `  words you left for whoever comes next: ${d.inscribed ?? 0}`],
       ["restored", `  dead nodes you brought back: ${d.restored ?? 0}`],
@@ -3951,6 +4005,7 @@ export class World extends DurableObject<Env> {
         "  saved (rescued)       read the Grid's roll of the living pulled from the cages",
         "  treat (medic)         the waystation medic tends you -- free, while the free folk hold the tide",
         "  cache <gold> / gather leave aid here for the next traveler, or take what a stranger left you",
+        "  shelter               answer the transit-hub distress call: get the stranded survivors to safety",
         "  gridstats / gridprune read or flush the Grid ledger's ambient noise (keepers only)",
         "  world / weather       check the time of day and the weather",
         "  help (?)              this message",

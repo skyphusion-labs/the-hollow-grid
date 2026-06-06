@@ -116,7 +116,8 @@ Commands are single line verbs (many with short aliases). Grouped:
 - **Racial ability:** `ability`/`trait` (or the race's named verb, e.g. `vanish`,
   `overclock`, `forage`) activates your race's signature ability.
 - **The faction arc:** `join`, `defend`/`defy` (side with the free folk),
-  `free`/`rescue` (free caged refugees), `talk`, `resist`.
+  `free`/`rescue` (free caged refugees), `shelter`/`guide` (answer the transit-hub
+  distress call -- get the stranded survivors out), `talk`, `resist`.
 - **The world / drugs:** `drink`, `eat`, `carouse`, `title`.
 - **Admin (keepers in the `ADMINS` var):** `wall`/`announce`; `gridstats` /
   `gridprune` (read or flush the shared ledger's ambient noise).
