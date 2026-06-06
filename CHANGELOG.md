@@ -6,6 +6,32 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.15.1
+
+Drift-and-noise fixes from an adversarial review (another Opus played the world
+as an agent off the socket and read the source). Each verified against the
+running system before fixing.
+
+### Fixes
+- **The federated ledger was 100% ambient noise.** `ping all` on prod returned
+  6 ghost + 2 passage traces and zero meaningful ones -- the wandering ghost and
+  ordinary passage/recall were federating to the hub and burying deaths, oaths,
+  kills, kindnesses, inscriptions. `recordTrace` gains a `federate` flag; ghost/
+  passage/recall now stay LOCAL. Verified: the federated feed is now all
+  meaningful traces. (The "cheapest magic," signal restored.)
+- **The `talk` affordance drifted from the `talk` handler.** `room.actions`
+  advertised `talk` in 4 rooms; the handler answered in 8 (tavern, workshop,
+  holding_pit, dais were silent gaps). One source of truth now -- a `TALKABLE`
+  set both the handler and the affordance read, so they cannot disagree -- plus a
+  smoke guard asserting `room.actions` carries `talk` in the tavern.
+- **`world.state.tide` was always 0** (the local column is never written; the
+  real needle is hub-side). Removed the dead field; agents read the tide via
+  `war`/`world.war`. Deleted, not cached -- caching would reintroduce the drift.
+- **`commune` said "(+0 HP)" at full health.** Now reads cleanly when there is
+  nothing to mend.
+- **Docs:** added `grid.federation` to the protocol event table; corrected
+  `char.affects` (race, ashsworn) and `world.state` (no tide) in CLAUDE.md.
+
 ## v0.15.0
 
 The wastes answer the tide. The shared faction war, made visible in the world

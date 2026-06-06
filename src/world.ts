@@ -63,6 +63,12 @@ const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 // (defined by some other world) contribute 0, so a traveler is never broken.
 const maxHpFor = (level: number, raceId?: string): number => BASE_HP + (raceFor(raceId)?.hpMod ?? 0) + (level - 1) * 10;
 
+// The ONE source of truth for which rooms `talk` does anything in. Both the talk
+// handler (which gates on it) and the room.actions affordance (which advertises
+// it) read this set, so the two cannot drift apart -- the bug that let four rooms
+// answer `talk` while never advertising it on the structured channel.
+const TALKABLE = new Set<string>([HOLDING_PIT, TAVERN, MARKET, "workshop", "floodgate", "checkpoint", "waystation", "dais"]);
+
 // A machine-readable affordance: something you can do here, with its moral weight
 // (`valence`) when there is one. The agent-legible face of the moral architecture.
 type RoomAction = {
@@ -1012,7 +1018,7 @@ export class World extends DurableObject<Env> {
     this.persistPlayer(s);
     const mark = this.brand(s);
     this.broadcast(destId, mark ? `${s.name}, ${mark}, arrives.` : `${s.name} arrives.`, ws);
-    this.recordTrace(destId, "passage", `${this.tagged(s)} passed through.`);
+    this.recordTrace(destId, "passage", `${this.tagged(s)} passed through.`, false); // ambient: local only
     this.sendRoom(ws, s);
     this.prompt(ws);
   }
@@ -1224,6 +1230,13 @@ export class World extends DurableObject<Env> {
   }
 
   private talk(ws: WebSocket, s: Session): void {
+    // Gate on the single source of truth, so this handler and room.actions can
+    // never disagree about where `talk` is meaningful.
+    if (!TALKABLE.has(s.room)) {
+      this.line(ws, "There's no one here to talk to.");
+      this.prompt(ws);
+      return;
+    }
     if (s.room === HOLDING_PIT) {
       const warden = this.loadMob(WARDEN_ID);
       if (warden && warden.state === "alive") {
@@ -1621,7 +1634,12 @@ export class World extends DurableObject<Env> {
       case "revenant": {
         const heal = Math.min(s.maxHp - s.hp, 8);
         s.hp += heal;
-        this.line(ws, `You let your mind slip into the dead Grid. It remembers you, and pours a little of its cold life back. (+${heal} HP)`);
+        this.line(
+          ws,
+          heal > 0
+            ? `You let your mind slip into the dead Grid. It remembers you, and pours a little of its cold life back. (+${heal} HP)`
+            : "You let your mind slip into the dead Grid. It remembers you, but there is nothing in you left to mend; it just holds you a moment, and lets go.",
+        );
         try {
           const feed = await this.env.GRID.recentAcross(this.worldName, 3);
           for (const t of feed) this.line(ws, `  the Grid whispers: ${t.text}`);
@@ -1985,7 +2003,7 @@ export class World extends DurableObject<Env> {
         });
       }
     }
-    if ([MARKET, "floodgate", "checkpoint", "waystation"].includes(s.room)) {
+    if (TALKABLE.has(s.room)) {
       out.push({ verb: "talk", label: "talk to whoever shares your room", kind: "social" });
     }
     const ab = raceFor(s.race)?.ability;
@@ -2087,7 +2105,12 @@ export class World extends DurableObject<Env> {
   // --- The Grid: the dead network's memory ----------------------------------
   // Record a trace at a node. The Grid keeps a long memory, but we cap each node
   // to its most recent entries so it stays bounded without feeling forgetful.
-  private recordTrace(node: string, kind: string, text: string): void {
+  // `federate` controls whether a trace is mirrored to the shared hub ledger.
+  // Ambient noise (the wandering ghost, ordinary passage/recall) stays LOCAL: it
+  // would otherwise drown the genuinely interesting cross-world memory (deaths,
+  // oaths, kills, kindnesses, inscriptions) in `ping all`/`recentAcross`. The
+  // collective memory is the cheapest magic; keep its signal clean.
+  private recordTrace(node: string, kind: string, text: string, federate = true): void {
     const sql = this.ctx.storage.sql;
     sql.exec("INSERT INTO grid_log (node, at, kind, text) VALUES (?, ?, ?, ?)", node, Date.now(), kind, text);
     sql.exec(
@@ -2096,6 +2119,7 @@ export class World extends DurableObject<Env> {
       node,
       node,
     );
+    if (!federate) return; // local-only: it never reaches the shared ledger
     // Federation: mirror into the shared Grid ledger, best-effort. If the hub is
     // unreachable, the world runs standalone -- federation is additive, never a
     // dependency (see docs/federation.md).
@@ -2523,7 +2547,11 @@ export class World extends DurableObject<Env> {
 
   private emitWorldState(ws: WebSocket): void {
     const w = this.world();
-    this.event(ws, "world.state", { tick: w.tick, phase: w.phase, weather: w.weather, tide: w.tide });
+    // NOTE: the faction tide is NOT emitted here. It lives on the hub (shared
+    // across worlds); the local `world.tide` column is never written, so emitting
+    // it would always be a stale 0 -- exactly the drift this project avoids. Read
+    // the real, authoritative needle via `war` / the `world.war` event instead.
+    this.event(ws, "world.state", { tick: w.tick, phase: w.phase, weather: w.weather });
   }
 
   private emitWorldStateAll(): void {
@@ -2605,7 +2633,7 @@ export class World extends DurableObject<Env> {
     if (exits.length === 0) return START_ROOM;
     const to = exits[Math.floor(Math.random() * exits.length)];
     this.broadcast(to, "A Grid-ghost flickers through, trailing dead static, and is gone.");
-    this.recordTrace(to, "ghost", "A Grid-ghost drifted through here.");
+    this.recordTrace(to, "ghost", "A Grid-ghost drifted through here.", false); // ambient: local only
     return to;
   }
 
@@ -2885,7 +2913,7 @@ export class World extends DurableObject<Env> {
     s.room = START_ROOM;
     ws.serializeAttachment(s);
     this.persistPlayer(s);
-    this.recordTrace(from, "recall", `${this.tagged(s)} keyed out on the Grid from here.`);
+    this.recordTrace(from, "recall", `${this.tagged(s)} keyed out on the Grid from here.`, false); // ambient: local only
     this.line(ws, "You key the recall. The Grid takes hold, the world smears, and resolves at the Cracked Nexus.");
     this.broadcast(START_ROOM, `${s.name} resolves out of the static.`, ws);
     this.sendRoom(ws, s);

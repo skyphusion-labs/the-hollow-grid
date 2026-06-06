@@ -88,16 +88,19 @@ drift (any new player-affecting state must be emitted here).
 | `grid.inscribed` | you `inscribe`/`carve` a message into a node | `node, text` |
 | `grid.worlds` | `worlds` lists the federation | `worlds[] {id, live, here}` |
 | `grid.travel` | `travel` hands you off | `to, url` |
-| `world.state` | login, `world`, and any living-world change | `tick, phase, weather, tide` |
+| `world.state` | login, `world`, and any living-world change | `tick, phase, weather` |
 | `world.war` | `war` reads the global tide | `tide` |
+| `grid.federation` | `ping all` reads the cross-world ledger | `traces[]` |
 | `server.announce` | an admin `wall` broadcast | `from, text` |
 
 Notes:
 - `room.info.exits` is the list of usable directions; an exit not listed does
   not exist (see the no-silent-no-op rule in the architecture doc).
 - `world.state.phase` is one of `dawn|day|dusk|night`; `weather` is a short
-  phrase; `tide` is the shared faction needle, clamped to `-100..+100`
-  (positive = the free folk ascendant, negative = the Cinder Front).
+  phrase. The faction `tide` is NOT on `world.state` (it is shared across worlds
+  and lives on the hub); read it via `war` / the `world.war` event. The tide is
+  the shared needle, clamped to `-100..+100` (positive = the free folk ascendant,
+  negative = the Cinder Front).
 - A faithful port must emit the same events with the same fields, or the smoke
   suite (`smoke.mjs`) and existing tools will not work against it.
 

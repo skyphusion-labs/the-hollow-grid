@@ -388,6 +388,27 @@ check(kseen?.standing === "ash-sworn", `the world brands the kapo to others as a
 KAPO.sock.close();
 KW.sock.close();
 
+// --- Phase 2c: the agent contract -- room.actions must enumerate every meaningful
+// verb. Regression guard for the talk-affordance drift: the tavern responds to
+// `talk` (a dust-dealer, a wench), so it MUST advertise it on the structured
+// channel, or an agent driving off room.actions silently misses the content.
+const TV = mkClient();
+await TV.open();
+await sleep(300);
+TV.send("tavtest_" + Math.random().toString(36).slice(2, 6));
+await sleep(500);
+await pickRace(TV);
+TV.send("west"); // nexus -> the Rusted Tankard
+await sleep(600);
+TV.send("sense");
+await sleep(500);
+const tavActs = TV.last("room.actions")?.data.actions ?? [];
+check(
+  tavActs.some((a) => a.verb === "talk" && a.kind === "social"),
+  "room.actions advertises 'talk' in the tavern (talk-affordance drift guard)",
+);
+TV.sock.close();
+
 // --- Phase 3: server-wide announcements (wall) ---
 const ADMIN = mkClient();
 await ADMIN.open();
