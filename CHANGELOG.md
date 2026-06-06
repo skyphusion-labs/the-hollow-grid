@@ -6,6 +6,21 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.14.0
+
+One good thing people can do FOR each other. The wastes are full of things done
+TO each other (rob, recruit, betray); this is the counterweight.
+
+### Code
+- `mend <player>` (alias `tend`): pour some of your own strength into another
+  player in your room, healing them at a cost to yourself (HP out of you, into
+  them, up to 12, never dropping you below 5). A small morality gain for the
+  kindness; a 30s cooldown so it stays an act, not an economy. Witnesses in the
+  room see it, and the Grid records it as a `kindness` trace -- so `ping` and
+  `ping all` remember the kindnesses too, not only the oaths and the kills.
+  Reuses the cross-player `socketByName` pattern from `give`. Smoke at 92 checks
+  (the room-targeting + already-whole guard; the real transfer verified live).
+
 ## v0.13.0
 
 Leave a message for whoever comes next. The dead makers fill the network with

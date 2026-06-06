@@ -71,6 +71,8 @@ export interface Session {
   traitReadyAt?: number;
   /** when sleep can deliver another dream, epoch ms (in-memory; keeps dreams rare) */
   dreamReadyAt?: number;
+  /** when you can `mend` another player again, epoch ms (in-memory cooldown) */
+  mendReadyAt?: number;
   /** a custom title shown after the player's name (persisted) */
   title?: string;
 }
