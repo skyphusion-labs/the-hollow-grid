@@ -73,6 +73,8 @@ export interface Session {
   dreamReadyAt?: number;
   /** when you can `mend` another player again, epoch ms (in-memory cooldown) */
   mendReadyAt?: number;
+  /** when you can `forgive` another player again, epoch ms (in-memory cooldown) */
+  forgiveReadyAt?: number;
   /** when you can hold another vigil (`witness`), epoch ms (in-memory cooldown) */
   witnessReadyAt?: number;
   /** when the waystation medic can `treat` you again, epoch ms (in-memory cooldown) */
