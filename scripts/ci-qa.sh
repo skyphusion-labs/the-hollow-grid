@@ -52,5 +52,15 @@ node -e '
   })();
 '
 
+echo "=== settle (let both worlds register with the hub) ==="
+# The port being open is not the same as the worker being warm and registered
+# with the Grid hub; the early federation assertions need the cross-world seeds
+# live. A short settle here, plus SMOKE_SLOW below, keeps the suite from racing
+# startup on a loaded CI box.
+sleep 5
+
 echo "=== smoke ==="
-npm run smoke
+# Two wrangler dev processes + Dustfall share this one container, so every fixed
+# wait in the suite is tighter than on a single local dev server. SMOKE_SLOW
+# scales them up under CI (locally it defaults to 1, keeping dev runs fast).
+SMOKE_SLOW="${SMOKE_SLOW:-2}" npm run smoke
