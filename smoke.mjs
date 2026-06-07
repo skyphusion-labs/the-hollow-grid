@@ -248,12 +248,33 @@ ws.send("look rat");
 await sleep(300);
 check(/rodent|luminous/i.test(raw.slice(mark)), "look <mob> shows its description");
 
+// A missed attack names the real targets. Mob NAMES are per-world flavor (this
+// one is "the glow-rat" here, a boss is "the warden"/"the stockade boss" across
+// worlds), so an agent carrying a wrong-world name recovers in one step.
+const missmark = raw.length;
+ws.send("attack the stockade boss"); // not what anything here is called
+await sleep(400);
+check(
+  /nothing like .* to fight here/i.test(raw.slice(missmark)) && /glow-rat/i.test(raw.slice(missmark)),
+  "a missed attack names the valid targets in the room (cross-world recovery)",
+);
+
 // Critical path: a full fight, asserted entirely on the combat.* channel.
 events.length = 0;
 ws.send("attack rat");
 await sleep(800);
 check(!!last("combat.start"), "attack emits combat.start");
 check(last("char.vitals")?.data.inCombat === true, "vitals show inCombat=true mid-fight");
+
+// Re-issuing attack on the mob you're already fighting is a no-op: combat
+// resolves on the world tick, and re-swinging must NOT reset the timer (the
+// footgun an Opus 4.8 session hit -- 40s of zero damage while spamming attack).
+const reatkmark = raw.length;
+events.length = 0;
+ws.send("attack rat");
+await sleep(500);
+check(/already locked/i.test(raw.slice(reatkmark)), "re-attacking the mob you're already fighting is a no-op (no swing-timer reset)");
+check(!last("combat.start"), "a redundant attack does not restart combat (no second combat.start)");
 
 // Combat resolves on a ~3s alarm tick; wait for the kill (12 HP / ~5 dmg a round).
 let ended = last("combat.end");
@@ -268,6 +289,15 @@ const finalVit = last("char.vitals");
 check(finalVit?.data.inCombat === false, "vitals show inCombat=false after the fight");
 // The death-floor lesson, observed: the player survives a starter mob easily.
 check(finalVit?.data.hp > 0, `player survived the glow-rat (hp=${finalVit?.data.hp})`);
+
+// Forgive the phrasing: the captive-rescue verb answers to the obvious
+// near-misses too (unlock/release/liberate/...), so a model reaching for `free`
+// through generic MUD idioms still reaches the captives. Here, in the tunnels,
+// there is no one to free -- which proves the near-miss routes to the handler.
+const synmark = raw.length;
+ws.send("release"); // a near-miss for `free`; same handler
+await sleep(400);
+check(/no one here to free/i.test(raw.slice(synmark)), "free answers to its near-misses -- understood intent isn't lost to vocabulary");
 
 // ...and the clock advanced on its own while we were busy fighting (the alarm
 // heartbeat turns the world even between our actions).

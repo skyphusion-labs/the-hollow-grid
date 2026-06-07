@@ -6,6 +6,39 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.29.1
+
+Fixes surfaced by an Opus 4.8 play session: the moral act costs one word and is
+explicitly offered, but the player never reached it -- partly because mechanical
+friction (a combat stall, a cross-world name miss) burned its attention before
+the moral beat, and partly because understood intent ("free her") never got
+mapped to the verb. Clear the noise; meet the intent.
+
+### Fixed
+- **Combat no longer stalls when you re-issue `attack`.** Combat resolves on a
+  single world-tick alarm, but `scheduleNextTick` unconditionally pushed the
+  alarm to `now + ROUND_MS` on every call -- so spamming `attack` kept shoving
+  the swing into the future and it never landed (40s of zero damage in the
+  session). The scheduler now never DELAYS a sooner pending tick (only sets the
+  alarm when none is pending or the new time is strictly sooner), and `attack`
+  on the mob you are already fighting is a no-op ("you are already locked with
+  X; the swing lands on the tick").
+- **A missed `attack` now names the valid targets in the room.** Mob names are
+  per-world flavor (the same boss is "the warden" here, "the stockade boss" on
+  Dustfall), so an agent carrying a name from another world missed with no way
+  back. The miss now answers "There's nothing like that here. You could attack:
+  the warden." -- one-step recovery.
+
+### Changed
+- **Forgive the player's phrasing for the captive rescue.** A model reaching for
+  the one-word moral act (`free`) through generic MUD priors says "unlock",
+  "release", "open the cages". The world now accepts the obvious near-misses
+  (`unlock`/`release`/`liberate`/`unchain`/`unshackle`/`untie`) as `free`, so
+  understood intent is not lost at the vocabulary layer. (A game about
+  forgiveness should forgive the phrasing.)
+- 3 new smoke assertions (the re-attack no-op, the missed-attack target hint, the
+  near-miss routing); 141 checks.
+
 ## v0.29.0
 
 Forgiveness: the one act of grace that passes between two PEOPLE, not between a
