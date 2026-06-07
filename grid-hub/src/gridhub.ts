@@ -237,22 +237,47 @@ export class GridHub extends DurableObject<Env> {
     const sql = this.ctx.storage.sql;
     const lim = clamp(Math.floor(limit), 1, 50);
     const foreignQuota = Math.min(3, lim);
-    const foreign = sql
-      .exec<GridTrace>("SELECT world, node, kind, text, at FROM ledger WHERE world != ? ORDER BY id DESC LIMIT ?", world, foreignQuota)
-      .toArray();
-    const overall = sql
-      .exec<GridTrace>("SELECT world, node, kind, text, at FROM ledger ORDER BY id DESC LIMIT ?", lim)
-      .toArray();
-    const key = (t: GridTrace) => `${t.world}|${t.node}|${t.text}|${t.at}`;
-    const seen = new Set(foreign.map(key));
-    const out = [...foreign];
-    for (const t of overall) {
-      if (out.length >= lim) break;
-      if (seen.has(key(t))) continue;
-      seen.add(key(t));
-      out.push(t);
+    // Collapse by world|node|text, NOT including `at`: one actor farming a
+    // respawning mob (the stockade boss respawns every 60s) emits the same text
+    // over and over with only `at` differing, and keying on `at` let all of them
+    // survive as distinct rows -- a feed that is 75% "ollamabot slew the stockade
+    // boss here" is the same signal-drowning problem the kind filter cured for
+    // ghost drift. Keep the newest of each, with an (xN) count. Pull a generous
+    // pool first so what fills the window is DISTINCT traces, not the tail of one
+    // farming loop. (Surfaced by an Opus 4.8 review of the live feed.)
+    const baseKey = (t: GridTrace) => `${t.world}|${t.node}|${t.text}`;
+    const pool = clamp(lim * 8, lim, 200);
+    const collapse = (rows: GridTrace[]): { t: GridTrace; count: number }[] => {
+      const m = new Map<string, { t: GridTrace; count: number }>();
+      for (const t of rows) {
+        const e = m.get(baseKey(t)); // rows are id DESC, so the first seen is newest
+        if (e) e.count++;
+        else m.set(baseKey(t), { t, count: 1 });
+      }
+      return [...m.values()];
+    };
+    const foreign = collapse(
+      sql.exec<GridTrace>("SELECT world, node, kind, text, at FROM ledger WHERE world != ? ORDER BY id DESC LIMIT ?", world, pool).toArray(),
+    );
+    const overall = collapse(
+      sql.exec<GridTrace>("SELECT world, node, kind, text, at FROM ledger ORDER BY id DESC LIMIT ?", pool).toArray(),
+    );
+    const seen = new Set<string>();
+    const picked: { t: GridTrace; count: number }[] = [];
+    for (const e of foreign) {
+      if (picked.length >= foreignQuota) break;
+      seen.add(baseKey(e.t));
+      picked.push(e);
     }
-    return out.sort((a, b) => b.at - a.at);
+    for (const e of overall) {
+      if (picked.length >= lim) break;
+      if (seen.has(baseKey(e.t))) continue;
+      seen.add(baseKey(e.t));
+      picked.push(e);
+    }
+    return picked
+      .map(({ t, count }) => (count > 1 ? { ...t, text: `${t.text} (x${count})` } : t))
+      .sort((a, b) => b.at - a.at);
   }
 
   // --- The global faction tide (shared mutable state across all worlds) ------

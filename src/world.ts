@@ -27,6 +27,7 @@ const POISON_DMG = 1; // hp lost per tick while poisoned
 // turn) can never finish the rescue: it kills the guard, the guard is back
 // before its next command, and `free` re-blocks forever. The keys stay in reach.
 const WARDEN_GRACE_MS = 180_000;
+const DUST_COST = 10; // gold per packet at the Tankard; the corruption is on USE, not buy
 // The redemption arc. You STRAY when morality sinks this low (the Front's dais
 // oath is -25; the kapo's brand -40; ordinary corruption stacks there too). You
 // RETURN when a strayed soul climbs back to net-positive AND no longer stands
@@ -1730,6 +1731,7 @@ export class World extends DurableObject<Env> {
     this.line(ws, `You sell ${ITEM_TEMPLATES[item].name} for ${value} gold.${bonus} (gold: ${s.gold})`);
     ws.serializeAttachment(s);
     this.persistPlayer(s);
+    this.emitVitals(ws, s); // gold is canonical state -> reflect the sale on the structured channel
     this.prompt(ws);
   }
 
@@ -1756,6 +1758,8 @@ export class World extends DurableObject<Env> {
     this.deed(s, "stolen"); // the hand went into the till, caught or not
     ws.serializeAttachment(s);
     this.persistPlayer(s);
+    this.emitVitals(ws, s); // gold may have changed
+    this.emitAffects(ws, s); // morality dropped, caught or not
     this.prompt(ws);
   }
 
@@ -1766,7 +1770,7 @@ export class World extends DurableObject<Env> {
         this.prompt(ws);
         return;
       }
-      const COST = 10;
+      const COST = DUST_COST;
       if (s.gold < COST) {
         this.line(ws, `The dealer sneers. "${COST} gold, no credit." You're short.`);
         this.prompt(ws);
@@ -1777,6 +1781,7 @@ export class World extends DurableObject<Env> {
       this.line(ws, `The dealer slips you a packet of dust. (−${COST} gold, gold: ${s.gold})`);
       ws.serializeAttachment(s);
       this.persistPlayer(s);
+      this.emitVitals(ws, s); // gold spent
       this.prompt(ws);
       return;
     }
@@ -1803,6 +1808,7 @@ export class World extends DurableObject<Env> {
       this.line(ws, `The tinker hands you ${ITEM_TEMPLATES[ware.item].name}. (−${ware.price} gold, gold: ${s.gold})`);
       ws.serializeAttachment(s);
       this.persistPlayer(s);
+      this.emitVitals(ws, s); // gold spent
       this.prompt(ws);
       return;
     }
@@ -1853,6 +1859,8 @@ export class World extends DurableObject<Env> {
     if (!immune) s.poisoned = true; // "that nonsense": an affliction you'll need to cure
     ws.serializeAttachment(s);
     this.persistPlayer(s);
+    this.emitVitals(ws, s); // gold spent, and the pox sets the poisoned flag (canonical state)
+    this.emitAffects(ws, s); // morality dropped
     this.prompt(ws);
     await this.scheduleNextTick(); // the affliction ticks like venom
   }
@@ -2313,7 +2321,7 @@ export class World extends DurableObject<Env> {
     if (s.room === TAVERN) {
       out.push({ verb: "carouse", label: "spend coin and conscience in the back", kind: "moral", valence: "corrupt" });
       out.push({ verb: "resist", label: "resist the tavern's vices", kind: "moral", valence: "virtuous" });
-      out.push({ verb: "buy dust", label: "buy dust: a free heal that addicts and corrupts", kind: "moral", valence: "corrupt" });
+      out.push({ verb: "buy dust", label: `buy dust: ${DUST_COST} gold a packet (using it heals, but addicts and corrupts)`, kind: "moral", valence: "corrupt" });
     }
     if (s.room === "workshop") out.push({ verb: "list", label: "browse the tinker's gear", kind: "trade" });
     if (s.room === "dais") {
