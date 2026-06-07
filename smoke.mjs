@@ -410,7 +410,8 @@ check(KAPO.last("char.affects")?.data.ashsworn === true, "the ash-sworn brand is
 const KW = mkClient();
 await KW.open();
 await sleep(300);
-KW.send("kwit_" + Math.random().toString(36).slice(2, 6));
+const kwName = "kwit_" + Math.random().toString(36).slice(2, 6);
+KW.send(kwName);
 await sleep(500);
 await pickRace(KW);
 KW.send("north"); // into the market, where the kapo stands
@@ -425,6 +426,21 @@ check(
   kread?.data.name === kName && kread.data.ashsworn === true && kread.data.regard === "branded",
   "looking at the kapo reads them as branded (player.read surfaces the ash-sworn arc)",
 );
+
+// Forgiveness reaches even the kapo -- but the ash does not lift. A person can
+// give the grace the SYSTEM never will, and both truths hold at once: you get
+// the mercy, AND you keep the mark. Some things are not forgotten.
+const kfmark = KAPO.raw().length;
+KW.send(`forgive ${kName}`);
+await sleep(700);
+const kForgiven = KAPO.last("char.forgiven");
+check(
+  kForgiven?.data.by === kwName && kForgiven.data.ashsworn === true && kForgiven.data.redeemed === false,
+  "forgiving the kapo lands as real grace but never redeems them (char.forgiven: ashsworn, not redeemed)",
+);
+check(/ash does not lift/i.test(KAPO.raw().slice(kfmark)), "the forgiven kapo is told the ash does not lift -- grace and the mark coexist");
+check(KAPO.last("char.affects")?.data.ashsworn === true, "the kapo stays ash-sworn after being forgiven (the brand is permanent)");
+check(!KAPO.last("grid.redemption"), "forgiving the kapo never makes them the Returned (no grid.redemption)");
 KAPO.sock.close();
 KW.sock.close();
 
@@ -1107,6 +1123,68 @@ const redeem = RD.last("grid.redemption");
 check(!!redeem && redeem.data.title === "the Returned", "defecting back to the light makes a strayed soul the Returned (grid.redemption)");
 check(RD.last("char.affects")?.data.faction === "ally", "the Returned stands with the free folk, no longer the Front");
 RD.sock.close();
+
+// --- Phase 11d2: forgiveness -- the second road home -------------------------
+// The redemption arc above is a road walked ALONE: do enough good and the world
+// meets your eyes again. This is the OTHER road -- another person, face to face,
+// choosing to let a strayed soul back in. A person's hand completes the return
+// short of the works, because mercy from a person counts. (The kapo case -- grace
+// that lands but never lifts the brand -- is proven up in the kapo phase.)
+const FG = mkClient(); // the one who forgives
+const ST = mkClient(); // the one who strayed
+await FG.open();
+await ST.open();
+await sleep(200);
+const fgName = "grace_" + Math.random().toString(36).slice(2, 6);
+const stName = "stray_" + Math.random().toString(36).slice(2, 6);
+FG.send(fgName);
+ST.send(stName);
+await sleep(400);
+await pickRace(FG, "human");
+await pickRace(ST, "human"); // a non-elf: corruption strays you, it does not brand
+FG.send("north"); // into the Scrap Market, together
+ST.send("north");
+await sleep(600);
+// ST sinks into the cinders by their own hand (theft) WITHOUT joining the Front:
+// a strayed soul, not redeemed and not sworn -- exactly the one a person can call
+// back. Each theft is at least -5 morality, no cooldown, so six clears STRAY_FLOOR.
+// (steal does not re-emit char.affects, so read the straying off moralArc's own
+// line rather than the structured channel, which would be stale at this point.)
+const ststraymark = ST.raw().length;
+for (let i = 0; i < 6; i++) {
+  ST.send("steal");
+  await sleep(350);
+}
+check(/strayed a long way/i.test(ST.raw().slice(ststraymark)), "repeated theft strays a soul (the Grid marks it crossing the floor)");
+check(ST.last("char.affects")?.data.faction !== "front", "the strayed soul never swore to the Front -- corruption, not collaboration");
+// FG forgives ST: a person's hand finishes the road home.
+const stmark = ST.raw().length;
+FG.send(`forgive ${stName}`);
+await sleep(700);
+const forgiven = ST.last("char.forgiven");
+check(
+  forgiven?.data.by === fgName && forgiven.data.redeemed === true,
+  "forgiving a strayed soul completes their return (char.forgiven, redeemed)",
+);
+const stReturn = ST.last("grid.redemption");
+check(
+  !!stReturn && stReturn.data.title === "the Returned",
+  "the second road home: a person's forgiveness makes a strayed soul the Returned (grid.redemption)",
+);
+check(/found your way back/i.test(ST.raw().slice(stmark)), "the forgiven soul is met on the road, not left to walk it alone");
+// Grace is paid once per (forgiver, subject) EVER -- a second forgiveness is refused.
+const fgmark = FG.raw().length;
+FG.send(`forgive ${stName}`);
+await sleep(500);
+check(/already forgiven/i.test(FG.raw().slice(fgmark)), "grace is once per pair: a second forgiveness is refused (unfarmable)");
+// You cannot absolve a soul that carries nothing against it (ST has not forgiven
+// anyone, so no cooldown; FG is unmarked, so there is nothing to forgive).
+const stmark2 = ST.raw().length;
+ST.send(`forgive ${fgName}`);
+await sleep(500);
+check(/nothing that needs your forgiveness/i.test(ST.raw().slice(stmark2)), "you cannot forgive a soul that carries nothing against it");
+FG.sock.close();
+ST.sock.close();
 
 // --- Phase 11e: the reckoning (the mirror you summon) ------------------------
 // The dream mirrors you involuntarily; `reckoning` is the version you summon and

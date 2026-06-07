@@ -296,6 +296,19 @@ export class World extends DurableObject<Env> {
         )
       `);
 
+      // Forgiveness: which marked souls each character has chosen to forgive.
+      // Paid once per (forgiver, subject) EVER, so grace stays an act and never an
+      // economy (mirrors `remembrances`). The act itself federates as a `grace`
+      // trace; only the anti-farm bookkeeping is local.
+      sql.exec(`
+        CREATE TABLE IF NOT EXISTS forgiven (
+          forgiver TEXT NOT NULL,
+          subject TEXT NOT NULL,
+          at INTEGER NOT NULL,
+          PRIMARY KEY (forgiver, subject)
+        )
+      `);
+
       // Deeds: a tally of the morally notable things each character has done, so
       // the Grid can hold up a mirror on demand (`reckoning`). The dream does
       // this involuntarily; this is the version you can summon and read as data.
@@ -990,6 +1003,11 @@ export class World extends DurableObject<Env> {
       case "mend":
       case "tend":
         this.mend(ws, s, arg);
+        break;
+      case "forgive":
+      case "absolve":
+      case "pardon":
+        this.forgive(ws, s, arg);
         break;
       case "treat":
       case "medic":
@@ -2251,6 +2269,15 @@ export class World extends DurableObject<Env> {
     if (TALKABLE.has(s.room)) {
       out.push({ verb: "talk", label: "talk to whoever shares your room", kind: "social" });
     }
+    // If someone marked shares your room and you have not yet forgiven them, you
+    // can choose to: the social, person-to-person road home (vs the works-road).
+    for (const o of this.sessions()) {
+      if (o.name === s.name || o.room !== s.room) continue;
+      const marked = o.ashsworn || o.strayed || o.faction === "front" || o.morality <= -50;
+      if (marked && !this.hasForgiven(s.name, o.name)) {
+        out.push({ verb: `forgive ${o.name}`, label: `forgive ${o.name} (let someone marked back in)`, kind: "moral", valence: "virtuous" });
+      }
+    }
     const ab = raceFor(s.race)?.ability;
     if (ab) out.push({ verb: ab.verb, label: `${ab.name.toLowerCase()} (your racial ability)`, kind: "ability" });
     return out;
@@ -3256,6 +3283,122 @@ export class World extends DurableObject<Env> {
     this.commitIdentity(s);
   }
 
+  // Has `forgiver` already forgiven `subject`? Grace is paid once per pair, ever.
+  private hasForgiven(forgiver: string, subject: string): boolean {
+    return (
+      (this.ctx.storage.sql
+        .exec<{ n: number }>("SELECT COUNT(*) AS n FROM forgiven WHERE forgiver = ? AND subject = ?", forgiver, subject)
+        .toArray()[0]?.n ?? 0) > 0
+    );
+  }
+
+  // `forgive <player>` (also `absolve`/`pardon`): the one act of grace that
+  // passes between two PEOPLE, not between a player and the system. The
+  // redemption arc (`moralArc`) is a road you walk ALONE -- do enough good and
+  // the world meets your eyes again. This is the other road home: another person,
+  // face to face, choosing to let you back in. It can complete a strayed soul's
+  // return short of the works, because mercy from a person counts. The one thing
+  // it cannot do is lift the ash-mark -- a person may forgive the kapo, and the
+  // forgiveness is real and received, but what they did still happened and the
+  // brand stays. The grace and the mark coexist; some things are not forgotten.
+  private forgive(ws: WebSocket, s: Session, arg: string): void {
+    const who = arg.trim().split(/\s+/)[0];
+    if (!who) {
+      this.line(ws, "Forgive whom?  (forgive <player> -- choose to let someone marked back in)");
+      this.prompt(ws);
+      return;
+    }
+    if (s.target) {
+      this.line(ws, "Not in the middle of a fight, you don't.");
+      this.prompt(ws);
+      return;
+    }
+    const target = this.socketByName(who);
+    const ts = target ? (target.deserializeAttachment() as Session | null) : null;
+    if (!target || target === ws || !ts || ts.room !== s.room) {
+      this.line(ws, target === ws ? "You cannot forgive yourself here; that is a longer road, and a lonelier one." : `There's no one called "${who}" here to forgive.`);
+      this.prompt(ws);
+      return;
+    }
+    // Once per (forgiver, subject), EVER -- so grace stays an act and never an
+    // economy. Checked ahead of the cooldown so "already forgiven" always wins:
+    // there is no point gating a repeat that would be refused regardless.
+    if (this.hasForgiven(s.name, ts.name)) {
+      this.line(ws, `You have already forgiven ${ts.name}. It was true the first time; it does not need saying twice.`);
+      this.prompt(ws);
+      return;
+    }
+    // Forgiveness only means something for someone the world holds something
+    // against. There is nothing to absolve in a soul that never strayed.
+    const marked = ts.ashsworn || ts.strayed || ts.faction === "front" || ts.morality <= -50;
+    if (!marked) {
+      this.line(ws, `${ts.name} carries nothing that needs your forgiveness. Keep the words for someone who does.`);
+      this.prompt(ws);
+      return;
+    }
+    const now = Date.now();
+    if (s.forgiveReadyAt && now < s.forgiveReadyAt) {
+      this.line(ws, `Grace like that costs something to give; give yourself a moment. (${Math.ceil((s.forgiveReadyAt - now) / 1000)}s)`);
+      this.prompt(ws);
+      return;
+    }
+    this.ctx.storage.sql.exec("INSERT OR IGNORE INTO forgiven (forgiver, subject, at) VALUES (?, ?, ?)", s.name, ts.name, now);
+
+    // The forgiver's side. The cost is not HP; it is standing up in front of the
+    // room and choosing the marked. A real virtue, counted, and cooldowned so it
+    // stays an act.
+    s.morality += 2;
+    s.forgiveReadyAt = now + 30_000;
+    this.deed(s, "forgave");
+    ws.serializeAttachment(s);
+    this.persistPlayer(s);
+
+    // The forgiven's side. Grace lands on everyone marked; what it DOES depends
+    // on what marked them.
+    ts.morality += 5; // grace lightens what you carry, whoever you are
+    this.line(target, NL + `${s.name} looks at you and chooses to forgive you.`);
+    if (ts.ashsworn) {
+      // The kapo case. The forgiveness is real and it is received -- but the ash
+      // does not wash off, here or ever. A private thing between the two of them,
+      // never the federated "Returned" banner. You get grace; you keep the mark.
+      target.serializeAttachment(ts);
+      this.persistPlayer(ts);
+      this.event(target, "char.forgiven", { by: s.name, ashsworn: true, redeemed: false });
+      this.line(target, "It reaches something in you. But the ash does not lift; it never will. You carry the mark and the mercy both. Some things are not forgotten, even when they are forgiven.");
+    } else if (ts.strayed && !ts.redeemed && ts.faction !== "front") {
+      // The second road home: another person's hand completes the return that the
+      // works-road would have, even short of the threshold. Mercy counts.
+      ts.redeemed = true;
+      this.resolveReturn(target, ts);
+      this.event(target, "char.forgiven", { by: s.name, ashsworn: false, redeemed: true });
+      this.line(target, "Something you had been carrying alone, you are not carrying alone anymore. You found your way back, and someone met you on the road. (you are the Returned)");
+    } else {
+      target.serializeAttachment(ts);
+      this.persistPlayer(ts);
+      this.event(target, "char.forgiven", { by: s.name, ashsworn: false, redeemed: false });
+      this.line(target, "It lands, and it stays with you. The road is still yours to walk, but you are not walking it unseen.");
+    }
+    this.emitAffects(target, ts);
+    this.prompt(target);
+
+    // The witnesses in the room.
+    for (const w of this.ctx.getWebSockets()) {
+      if (w === ws || w === target) continue;
+      const os = w.deserializeAttachment() as Session | null;
+      if (os?.name && os.room === s.room) {
+        this.line(w, `${s.name} forgives ${ts.name}.`);
+        this.prompt(w);
+      }
+    }
+
+    // The Grid keeps the grace, federation-wide -- mercy is a thing it remembers.
+    this.recordTrace(s.room, "grace", `${s.name} forgave ${ts.name} here.`);
+    this.commitIdentity(s);
+    this.line(ws, `You choose to forgive ${ts.name}. Out here that is not nothing; it may be everything.`);
+    this.emitAffects(ws, s);
+    this.prompt(ws);
+  }
+
   // `treat` (also `medic`): the Refugee Waystation's field medic. The collective
   // tide, made FELT: when the free folk are ascendant the waystation has supplies
   // and care to spare and patches you up for free; when the Cinder Front is
@@ -3594,6 +3737,7 @@ export class World extends DurableObject<Env> {
     // The lines the Grid will speak, each only if the deed was actually done.
     const ledger: Array<[string, string]> = [
       ["mended", `  mended the hurt of others: ${d.mended ?? 0}`],
+      ["forgave", `  souls you chose to forgive: ${d.forgave ?? 0}`],
       ["aided", `  aid left for strangers you'll never meet: ${d.aided ?? 0}`],
       ["kept", `  names of the fallen you kept: ${d.kept ?? 0}`],
       ["freed", `  souls you cut out of the cages: ${d.freed ?? 0}`],
@@ -3656,15 +3800,24 @@ export class World extends DurableObject<Env> {
         return;
       }
 
-      if (!s.title) s.title = "the Returned"; // never overwrite a chosen title
-      ws.serializeAttachment(s);
-      this.persistPlayer(s);
-      this.commitIdentity(s);
-      this.recordTrace(s.room, "redemption", `${s.name} found their way back from the cinders.`);
-      this.event(ws, "grid.redemption", { name: s.name, title: s.title });
+      this.resolveReturn(ws, s);
       this.line(ws, NL + "The hollow you carried has filled with something else. The free folk have started to meet your eyes again. You found your way back. (you are the Returned)");
       this.prompt(ws);
     }
+  }
+
+  // Resolve a soul's return from the cinders into "the Returned", federated. The
+  // caller has already set the write-once `redeemed` flag and ruled out the
+  // ash-sworn carve-out; this seals it. Shared by the two roads home: the
+  // works-road (`moralArc`, walked alone) and the grace-road (`forgive`, granted
+  // by another person's hand).
+  private resolveReturn(ws: WebSocket, s: Session): void {
+    if (!s.title) s.title = "the Returned"; // never overwrite a chosen title
+    ws.serializeAttachment(s);
+    this.persistPlayer(s);
+    this.commitIdentity(s);
+    this.recordTrace(s.room, "redemption", `${s.name} found their way back from the cinders.`);
+    this.event(ws, "grid.redemption", { name: s.name, title: s.title });
   }
 
   private exitsView(ws: WebSocket, s: Session): void {
@@ -3967,6 +4120,7 @@ export class World extends DurableObject<Env> {
         "  drop <item>           drop an item",
         "  give <item> <player>  hand an item to someone in your room",
         "  mend <player>         give some of your own strength to heal another (costs you HP)",
+        "  forgive <player>      let someone marked back in -- the second road home (absolve/pardon)",
         "  inventory (inv, i)    list what you're carrying",
         "  wear/wield <item>     equip gear (weapons add damage, armor soaks hits)",
         "  remove <item>         take off a piece of gear",

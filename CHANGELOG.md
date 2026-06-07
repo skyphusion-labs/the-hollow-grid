@@ -6,6 +6,59 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.29.0
+
+Forgiveness: the one act of grace that passes between two PEOPLE, not between a
+player and the system. The redemption arc (v0.19.0) is a road you walk alone --
+do enough good and the world meets your eyes again. This is the other road home:
+another person, face to face, choosing to let you back in.
+
+### Added
+- **`forgive <player>`** (also `absolve`/`pardon`). Forgiveness is intimate, so
+  it is face to face: the target must be an online player in your room. It only
+  lands on someone the world holds something against (strayed, Front, reviled, or
+  ash-sworn) -- there is nothing to absolve in a soul that never strayed. Paid
+  once per (forgiver, subject) ever (a local `forgiven` table, mirroring
+  `remembrances`) so grace stays an act and never an economy. The forgiver pays
+  no HP; the cost is standing up in front of the room and choosing the marked
+  (+2 morality, a `forgave` deed, a 30s cooldown, witnessed by the room).
+- **The second road home.** When you forgive a strayed soul who has not sworn to
+  the Front, your hand completes their return to "the Returned" then and there,
+  even short of the works threshold the lone road requires -- because mercy from a
+  person counts. Emits `char.forgiven {by, redeemed}` and the usual
+  `grid.redemption`. Two roads back from the cinders now: earn it, or be granted
+  it.
+- **The kapo case: grace, but the ash stays.** Forgiving an ash-sworn soul is
+  real and is received -- a private grace, a morality lift -- but it NEVER lifts
+  the brand and NEVER grants the Returned. A person can give what the system will
+  not; the grace and the mark coexist. ("You carry the mark and the mercy both.
+  Some things are not forgotten, even when they are forgiven.") Mirrors the
+  existing penance carve-out.
+- The act federates as a `grace` trace (Grid-wide memory, no new hub schema);
+  wired into the `room.actions` affordance layer (a `forgive <name>` virtuous
+  action surfaces when a marked soul shares your room and you have not yet
+  forgiven them), `reckoning` ("souls you chose to forgive"), and `help`.
+- Refactored the redemption resolution into a shared `resolveReturn` helper used
+  by both roads (the works-road in `moralArc` and the grace-road in `forgive`).
+- 9 new smoke assertions (the second road redeems a strayed soul; the kapo gets
+  grace but keeps the ash and is never the Returned; once-per-pair refusal; no
+  forgiveness of the unmarked). 134 checks.
+
+## v0.28.0
+
+The looping distress transmission ("we're at the old transit hub, we have
+water, please, anyone") now leads to a real place.
+
+### Added
+- **`shelter`** (alias `guide`): a new room, the Old Transit Hub (Dry-Dock
+  Station on Dustfall), sits south off the Scorch/Bone Road with stranded
+  survivors. `shelter` gets them moving toward the free camp -- a real, named
+  rescue on the Grid (`grid.rescued`), morality and tide gains, a `sheltered`
+  deed counter. Reuses the cage-refill gate so the call cannot be farmed (the
+  Front keeps stranding people, so it refills over time). Wired into the
+  `room.actions` affordance layer, `help`, and `reckoning`. Smoke covers the
+  room, the named rescue, and the no-farm cooldown.
+
 ## v0.27.1
 
 A gap caught by a playtester (a Claude played in as a hunted Elf, refused the
