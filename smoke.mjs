@@ -798,6 +798,16 @@ if (pitDied) {
     "freeing the holding-pit captive registers on the rescued roll, a named rescue (grid.rescued)",
   );
   check((PIT.last("char.affects")?.data.morality ?? 0) > mMoral, "freeing the captive counts as the virtuous act it is (+morality), not just an item");
+  // Once the rescue is done (you carry her vial), the affordance layer must stop
+  // advertising `free`: a bot trusting room.actions as the valid verbs would
+  // otherwise loop on a virtuous act that no longer pays.
+  PIT.send("look");
+  await sleep(500);
+  const pitActs = PIT.last("room.actions")?.data.actions ?? [];
+  check(
+    !pitActs.some((a) => a.verb === "free"),
+    "after the rescue, room.actions no longer offers `free` (the affordance doesn't outlive the deed)",
+  );
 }
 PIT.sock.close();
 
