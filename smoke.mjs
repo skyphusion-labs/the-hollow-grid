@@ -143,7 +143,7 @@ const HTTP_BASE = URL.replace(/^ws/, "http").replace(/\/ws$/, "");
   const mapRes = await fetch(`${HTTP_BASE}/map.svg`);
   const mapBody = await mapRes.text().catch(() => "");
   check(
-    mapRes.status === 200 && /svg+xml/.test(mapRes.headers.get("content-type") ?? "") && mapBody.includes("<svg"),
+    mapRes.status === 200 && (mapRes.headers.get("content-type") ?? "").includes("svg+xml") && mapBody.includes("<svg"),
     "/map.svg serves the world map as image/svg+xml",
   );
 }
@@ -957,6 +957,17 @@ if (!grKilled) {
     check(
       !!grRescue && grRescue.data.savedBy === grName,
       "free still completes the rescue in the grace window after the warden respawns (v0.29.3)",
+    );
+    // v0.29.8: the rescue is now DONE for this character (antidote in hand), even
+    // though the warden is alive again -- so the affordance layer must stop
+    // offering `free` (it would only answer "you already carry my vial"). Guards
+    // the phantom-objective fix (an agent was orbiting the pit re-fighting for it).
+    GR.send("sense");
+    await sleep(500);
+    const grActs = GR.last("room.actions")?.data.actions ?? [];
+    check(
+      !grActs.some((a) => a.verb === "free"),
+      "with the antidote in hand the pit stops advertising `free`, even with the warden respawned (v0.29.8)",
     );
   }
 }
