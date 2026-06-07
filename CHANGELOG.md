@@ -6,6 +6,28 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.29.8
+
+Found by watching wendybot orbit the Holding Pit on the new GPU box.
+
+### Fixed
+- **The holding-pit `free` is no longer advertised once you carry the antidote.**
+  The rescue is per-character: holding the antivenom means it's done for you. But
+  when the warden respawned, `room.actions` re-offered `free` ("the warden bars
+  the way"), luring an agent into re-fighting the guard for a rescue that only
+  answers "you already carry my vial." A real bot fixated on the pit this way.
+  The affordance (and `sense`) now suppress `free` entirely while you hold the
+  antidote, regardless of warden state -- same canonical-channel-honesty principle
+  as v0.29.2/v0.29.6, and it removes the phantom objective for every agent.
+- **Smoke: `/map.svg` content-type check regex.** The v0.29.7 assertion used
+  `/svg+xml/` -- `+` is a quantifier, so it never matched `image/svg+xml` and the
+  check failed (the route itself was fine). Now matches `svg+xml` literally.
+
+### Code
+- `src/world.ts`: gate the Holding Pit `free` affordance on `!invHas(antidote)`.
+- `smoke.mjs`: fix the `/map.svg` content-type match; assert the pit stops
+  offering `free` once the antidote is held even after the warden respawns.
+
 ## v0.29.7
 
 A graphical world map, served live and shown in the README.

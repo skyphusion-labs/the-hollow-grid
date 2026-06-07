@@ -2314,18 +2314,18 @@ export class World extends DurableObject<Env> {
     if (s.room === "waystation" && moodForTide(this.lastTide) !== "falling") {
       out.push({ verb: "treat", label: "let the waystation medic treat your wounds (free, while the free folk hold)", kind: "social" });
     }
-    if (s.room === HOLDING_PIT) {
-      // Mirror the three states of the `free` handler so the affordance never
-      // outlives the rescue: warden alive = the gated objective; warden slain
-      // and you don't yet carry her vial = the rescue is there to take; warden
-      // slain and you hold the antidote = it's done, so don't keep advertising a
-      // virtuous act that no longer pays (a bot trusting room.actions would loop
-      // on it).
-      if (!this.wardenCleared()) {
+    if (s.room === HOLDING_PIT && !this.invHas(s.name, "antidote")) {
+      // The rescue is per-character: once you carry her antivenom it is DONE for
+      // you, so never advertise `free` again -- not even after the warden
+      // respawns (it would only answer "you already carry my vial"). Leaving the
+      // phantom objective up pulled agents back to re-fight a guard for nothing
+      // (a real bot fixated on the pit this way). With no vial yet: warden barring
+      // the way = the gated objective; warden cleared (incl. the grace window) =
+      // the rescue is there to take.
+      if (!this.wardenCleared())
         out.push({ verb: "free", label: "free the captive (the warden bars the way)", kind: "moral", valence: "virtuous" });
-      } else if (!this.invHas(s.name, "antidote")) {
+      else
         out.push({ verb: "free", label: "free the captive from the chains", kind: "moral", valence: "virtuous" });
-      }
     }
     if (s.room === TAVERN) {
       out.push({ verb: "carouse", label: "spend coin and conscience in the back", kind: "moral", valence: "corrupt" });
