@@ -545,9 +545,16 @@ export class World extends DurableObject<Env> {
       .one();
     if (soonest.t != null) next = Math.min(next, Math.max(soonest.t, now + 100));
 
+    // Never DELAY a tick that is already pending sooner. The alarm is the single
+    // combat/world heartbeat; re-issuing `attack` (or any command that reschedules)
+    // must not shove the swing into the future, or the fight stalls and lands zero
+    // damage while the player spams attack. So only set the alarm when none is
+    // pending or the new time is strictly sooner; the running heartbeat is left to
+    // fire on schedule (alarm() reschedules itself from null after each tick).
+    const existing = await this.ctx.storage.getAlarm();
     if (next === Infinity) {
-      await this.ctx.storage.deleteAlarm();
-    } else {
+      if (existing != null) await this.ctx.storage.deleteAlarm();
+    } else if (existing == null || next < existing) {
       await this.ctx.storage.setAlarm(next);
     }
   }
@@ -931,6 +938,17 @@ export class World extends DurableObject<Env> {
         break;
       case "free":
       case "rescue":
+      // Forgive the phrasing. The moral act costs one word, but a model reaching
+      // for it through MUD priors says "unlock", "release", "open the cages". The
+      // world should meet understood intent rather than punish vocabulary, so the
+      // obvious near-misses all reach the captives. (freeMaiden gates by room, so
+      // these are no-ops where there is no one to free.)
+      case "unlock":
+      case "release":
+      case "liberate":
+      case "unchain":
+      case "unshackle":
+      case "untie":
         this.freeMaiden(ws, s);
         break;
       case "shelter":
@@ -1189,11 +1207,25 @@ export class World extends DurableObject<Env> {
     }
     const mob = this.livingMobsInRoom(s.room).find((m) => this.mobMatches(m.id, arg));
     if (!mob) {
-      this.line(ws, `There's nothing like "${arg}" to fight here.`);
+      // Name what IS here to fight. Mob NAMES are per-world flavor (the same boss
+      // is "the warden" here and "the stockade boss" on Dustfall), so an agent
+      // carrying a name from another world misses; pointing at the local targets
+      // lets it recover in one step instead of guessing.
+      const here = this.livingMobsInRoom(s.room).map((m) => this.mobById[m.id].name);
+      const hint = here.length ? ` You could attack: ${here.join(", ")}.` : "";
+      this.line(ws, `There's nothing like "${arg}" to fight here.${hint}`);
       this.prompt(ws);
       return;
     }
     const t = this.mobById[mob.id];
+    // Already locked with this one. Combat resolves on the world tick, not per
+    // keystroke; re-swinging does nothing but risk resetting the timer, so say so
+    // and leave the pending tick alone.
+    if (s.target === mob.id) {
+      this.line(ws, `You are already locked with ${t.name}; the swing lands on the tick. Hold steady.`);
+      this.prompt(ws);
+      return;
+    }
     if ((s.position ?? "standing") !== "standing") {
       s.position = "standing";
       this.line(ws, "You scramble to your feet.");
@@ -4127,7 +4159,7 @@ export class World extends DurableObject<Env> {
         "  equipment (eq)        show what you're wearing and wielding",
         "  use/drink <item>      use an item (antidote, rad-cell, ...)",
         "  examine <item>        look closely at an item",
-        "  free/rescue           free the captive (in the Holding Pit)",
+        "  free/rescue           free the caged/captive (also unlock/release/liberate)",
         "  sell <item>           sell salvage to the market vendor (honest coin)",
         "  steal                 lift gold from the market stall (risky, corrupting)",
         "  buy <item>            buy from a vendor (dust at the Tankard; gear at the Workshop)",
