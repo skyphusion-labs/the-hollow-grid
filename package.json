@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p grid-hub/tsconfig.json",
     "smoke": "node smoke.mjs",
     "connect": "node scripts/connect.mjs",
+    "map": "node scripts/render-map.mjs > docs/map.svg",
     "cf-typegen": "wrangler types"
   },
   "devDependencies": {
