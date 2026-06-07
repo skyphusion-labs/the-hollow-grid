@@ -92,8 +92,10 @@ language. References in this repo:
 
 - `scripts/connect.mjs` -- a ~90-line dependency-free terminal client.
 - `src/webclient.ts` -- the in-browser xterm.js client served at `/`.
-- `bot.mjs` -- an AI player driven entirely by the `@event` channel.
 - `smoke.mjs` -- an assertion harness over the same events.
+
+An AI player driven entirely by the `@event` channel lives in the separate
+[`mud-bots`](https://github.com/SkyPhusion/mud-bots) repo (`hollow-grid/bot.mjs`).
 
 Ports in Go, Rust, Python, Elixir, and friends are welcome; a world that speaks
 the `GridHubApi` contract (`shared/grid.ts`) joins the same federation.

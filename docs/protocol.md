@@ -144,7 +144,8 @@ Notes:
 ### The agent environment: affordances with moral valence
 
 The Hollow Grid is meant to be a good place for an agent (an LLM player; see
-`bot.mjs`) to perceive, act, and grow, not just a place for humans. The same
+`bot.mjs` in the separate `mud-bots` repo) to perceive, act, and grow, not just a
+place for humans. The same
 property that makes ethics legible to a person makes it legible to an agent.
 
 With every room view, and on demand via `sense` (alias `actions`), the server
@@ -247,8 +248,9 @@ methods joins the same universe.
 
 To write a **client or bot**, you only need section 1 (connect, send commands)
 and section 2 (parse `@event` for state). `scripts/connect.mjs` is a ~90-line
-reference client; `bot.mjs` is an AI player driven entirely by the `@event`
-channel; `smoke.mjs` is an assertion harness over the same events.
+reference client; `smoke.mjs` is an assertion harness over the same events; and
+an AI player driven entirely by the `@event` channel lives in the separate
+`mud-bots` repo (`hollow-grid/bot.mjs`).
 
 **`smoke.mjs` is the executable conformance suite.** It is written against the
 `@event` channel, not the reference implementation, so it runs against ANY port:
