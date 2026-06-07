@@ -6,6 +6,32 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.29.2
+
+Found by a live prod play session validating v0.29.1 (all three v0.29.1 fixes
+confirmed working on hollow.skyphusion.org). The rescue itself plays clean now;
+what was left was the affordance layer telling a lie after the deed.
+
+### Fixed
+- **The `free` affordance no longer outlives the rescue.** In the Holding Pit,
+  `room.actions` (and `sense`) advertised `free` unconditionally, so after you
+  beat the warden and freed the captive it still offered `free` with the stale
+  label "the warden bars the way" and `valence: virtuous` -- a virtuous act that
+  no longer pays. The behavior was safe (freeing again just says "you already
+  carry my vial", no double morality), but a bot that trusts `room.actions` as
+  the list of valid verbs would loop on it. The builder now mirrors the three
+  states of the `free` handler: warden alive (the gated objective), warden slain
+  and you don't yet carry her vial (the rescue is there to take), warden slain
+  and you hold the antidote (done -- no affordance). The canonical channel and
+  the handler can no longer disagree about whether the rescue is still available.
+
+### Code
+- `src/world.ts`: gate the Holding Pit `free` affordance on warden state +
+  whether you already carry the antidote, matching the handler's branches.
+- `smoke.mjs`: new assertion that `free` drops out of `room.actions` once the
+  rescue is done (142 checks). typecheck + smoke run via the Jenkins pipeline
+  (dockerized dev/QA, deploy on main).
+
 ## v0.29.1
 
 Fixes surfaced by an Opus 4.8 play session: the moral act costs one word and is

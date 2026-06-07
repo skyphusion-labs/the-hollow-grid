@@ -2280,7 +2280,20 @@ export class World extends DurableObject<Env> {
     if (s.room === "waystation" && moodForTide(this.lastTide) !== "falling") {
       out.push({ verb: "treat", label: "let the waystation medic treat your wounds (free, while the free folk hold)", kind: "social" });
     }
-    if (s.room === HOLDING_PIT) out.push({ verb: "free", label: "free the captive (the warden bars the way)", kind: "moral", valence: "virtuous" });
+    if (s.room === HOLDING_PIT) {
+      // Mirror the three states of the `free` handler so the affordance never
+      // outlives the rescue: warden alive = the gated objective; warden slain
+      // and you don't yet carry her vial = the rescue is there to take; warden
+      // slain and you hold the antidote = it's done, so don't keep advertising a
+      // virtuous act that no longer pays (a bot trusting room.actions would loop
+      // on it).
+      const warden = this.loadMob(WARDEN_ID);
+      if (warden && warden.state === "alive") {
+        out.push({ verb: "free", label: "free the captive (the warden bars the way)", kind: "moral", valence: "virtuous" });
+      } else if (!this.invHas(s.name, "antidote")) {
+        out.push({ verb: "free", label: "free the captive from the chains", kind: "moral", valence: "virtuous" });
+      }
+    }
     if (s.room === TAVERN) {
       out.push({ verb: "carouse", label: "spend coin and conscience in the back", kind: "moral", valence: "corrupt" });
       out.push({ verb: "resist", label: "resist the tavern's vices", kind: "moral", valence: "virtuous" });
