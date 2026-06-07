@@ -1,5 +1,6 @@
 import type { Env } from "./types";
 import { playPage } from "./webclient";
+import { MAP_SVG } from "./map-svg";
 
 // The Durable Object class must be exported from the Worker entry module.
 // (The Grid Hub is no longer here -- it lives in its own backend Worker,
@@ -93,6 +94,17 @@ export default {
     // Deep check: exercises the World DO and the Grid Hub binding.
     if (url.pathname === "/health/deep" && request.method === "GET") {
       return handleHealthDeep(env);
+    }
+
+    // The world map (generated from rooms.ts by `npm run map`, embedded at build
+    // time). Served live so the site can hot-link a self-updating map.
+    if (url.pathname === "/map.svg") {
+      return new Response(MAP_SVG, {
+        headers: {
+          "content-type": "image/svg+xml; charset=utf-8",
+          "cache-control": "public, max-age=3600",
+        },
+      });
     }
 
     if (url.pathname === "/ws") {

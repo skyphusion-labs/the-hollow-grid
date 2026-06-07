@@ -138,6 +138,14 @@ const HTTP_BASE = URL.replace(/^ws/, "http").replace(/\/ws$/, "");
   check(deepRes.status === 200 && deepBody.ok === true, "/health/deep returns 200 ok with all critical checks green");
   check(deepBody.checks?.world?.ok === true, "/health/deep exercises the World DO (SQLite) and reports it healthy");
   check(deepBody.checks?.grid_hub?.ok === true, "/health/deep exercises the Grid Hub binding and reports it reachable");
+
+  // The world map is served live (generated from rooms.ts, embedded in the Worker).
+  const mapRes = await fetch(`${HTTP_BASE}/map.svg`);
+  const mapBody = await mapRes.text().catch(() => "");
+  check(
+    mapRes.status === 200 && /svg+xml/.test(mapRes.headers.get("content-type") ?? "") && mapBody.includes("<svg"),
+    "/map.svg serves the world map as image/svg+xml",
+  );
 }
 
 // Use a fresh, unique name each run so the test never inherits a persisted
