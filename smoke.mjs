@@ -255,6 +255,11 @@ for (let attempt = 0; attempt < 3 && !hasOtherWorld(fed); attempt++) {
 }
 check(!!fed && Array.isArray(fed.data.traces) && fed.data.traces.length > 0, "ping all returns the federation feed (grid.federation)");
 check(hasOtherWorld(fed), "the feed carries echoes from OTHER worlds on the shared Grid");
+// The feed collapses repeats (one actor farming a respawning mob must not crowd
+// the window with near-duplicates): no two traces share world|node|text. The
+// collapse appends an (xN) count, so the displayed text is distinct per group.
+const feedKeys = (fed?.data.traces ?? []).map((t) => `${t.world}|${t.node}|${t.text}`);
+check(new Set(feedKeys).size === feedKeys.length, "the federation feed has no duplicate world|node|text rows (farming-loop collapse)");
 
 // Move into a mob room and confirm the structured room graph tracks us.
 events.length = 0;
@@ -540,6 +545,23 @@ check(
   tavActs.some((a) => a.verb === "talk" && a.kind === "social"),
   "room.actions advertises 'talk' in the tavern (talk-affordance drift guard)",
 );
+// The buy-dust affordance must be honest: buying costs gold; the heal/addiction/
+// morality hit is on USE, not purchase. The old label lied ("a free heal that
+// addicts and corrupts") on both counts.
+const dustAct = tavActs.find((a) => a.verb === "buy dust");
+check(
+  !!dustAct && !/free/i.test(dustAct.label) && /gold/i.test(dustAct.label),
+  `the buy-dust affordance states the cost, not "free" (label: ${JSON.stringify(dustAct?.label)})`,
+);
+// Buying dust must move gold ON THE STRUCTURED CHANNEL (a tool reading @event has
+// to see economic state change, not only prose), and must NOT itself corrupt --
+// the corruption is on USE.
+const tvGold0 = TV.last("char.vitals")?.data.gold ?? 0;
+const tvMoral0 = TV.last("char.affects")?.data.morality ?? 0;
+TV.send("buy dust");
+const tvBuy = await waitFor(TV.last, "char.vitals", (d) => (d.gold ?? tvGold0) < tvGold0, 4000);
+check((tvBuy?.data.gold ?? tvGold0) < tvGold0, `buying dust emits the gold spend on char.vitals (${tvGold0} -> ${tvBuy?.data.gold})`);
+check((TV.last("char.affects")?.data.morality ?? tvMoral0) === tvMoral0, "buying dust does not itself corrupt (morality unchanged; the hit is on USE)");
 TV.sock.close();
 
 // --- Phase 3: server-wide announcements (wall) ---

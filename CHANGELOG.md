@@ -6,6 +6,43 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.29.4
+
+A legibility pass: keep the canonical channels (room.actions affordances, the
+`@event` stream, the federation feed) honest, since a lying or noisy channel is
+exactly what makes the world un-tool-able. Two items from a prod play session,
+one from an Opus 4.8 review of the live feed.
+
+### Fixed
+- **The `buy dust` affordance no longer lies.** It read "buy dust: a free heal
+  that addicts and corrupts" -- but buying costs 10 gold (not free) and does
+  neither: the heal, the addiction, and the morality hit are all on USE. The
+  label now reads "buy dust: 10 gold a packet (using it heals, but addicts and
+  corrupts)", and the price is a shared `DUST_COST` so label and charge can't
+  drift.
+- **Economic and vice actions now emit their state on the structured channel.**
+  `sell`, `steal`, `buy` (dust and gear), and `carouse` changed gold (and, for
+  steal/carouse, morality, and for carouse the `poisoned` flag) but emitted no
+  `char.vitals`/`char.affects` -- so a tool reading `@event` saw the change only
+  in prose. They now emit, like every other state-changing handler. (`resist`
+  already did; this brings the rest in line.)
+- **The federation feed collapses farming-loop repeats.** `recentAcross` keyed
+  dedup on `world|node|text|at`, so one actor farming a respawning mob filled
+  `ping all` with near-identical "slew the stockade boss here" rows (only `at`
+  differed). It now collapses by `world|node|text` (newest kept, with an `(xN)`
+  count) over a larger candidate pool, so the window fills with DISTINCT signal
+  -- the same fix in spirit as the kind filter that cured ambient ghost drift.
+  (Surfaced by an Opus 4.8 review.)
+
+### Code
+- `src/world.ts`: `DUST_COST` constant; honest `buy dust` affordance label;
+  `emitVitals`/`emitAffects` in `sell`, `steal`, `buy`, `carouse`.
+- `grid-hub/src/gridhub.ts`: `recentAcross` collapses by `world|node|text` with a
+  count, over a generous pool.
+- `smoke.mjs`: assert the buy-dust affordance states a cost (not "free"), that
+  buying emits the gold spend on `char.vitals` without changing morality, and
+  that the federation feed has no duplicate `world|node|text` rows.
+
 ## v0.29.3
 
 Found by watching the live `ollamabot` (a local-LLM agent) play prod on acab: it
