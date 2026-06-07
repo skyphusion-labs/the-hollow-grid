@@ -1446,8 +1446,8 @@ if (!dustfallUp) {
   await sleep(600);
   const pw = P.last("grid.worlds");
   check(
-    !!pw && pw.data.worlds.some((w) => /Dustfall/i.test(w.id) && w.live),
-    "the primary world sees Dustfall registered LIVE on the Grid (a real second deployment, not a stub)",
+    !!pw && pw.data.worlds.some((w) => /Dustfall/i.test(w.id) && w.reachable),
+    "the primary world sees Dustfall registered REACHABLE on the Grid (a real second deployment, not a seeded stub)",
   );
   P.send("travel Dustfall");
   await sleep(700);

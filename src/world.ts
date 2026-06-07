@@ -2606,15 +2606,32 @@ export class World extends DurableObject<Env> {
       this.prompt(ws);
       return;
     }
+    // Separate REACHABILITY from ACTIVITY. A world that has checked in at least
+    // once (last_seen > 0) has a real URL and, being a serverless Worker, wakes on
+    // the next connect -- so it is travelable whether or not anyone is on it right
+    // now. `active` is the orthogonal "someone was here lately" signal. The old
+    // single `live` flag conflated the two, so an idle-but-deployed world read as
+    // dead (and `travel` to it works regardless -- it uses the stored URL). A
+    // genuinely-down world is caught out of band (Uptime Kuma), not here. Worlds
+    // with last_seen 0 are seeded notional siblings, not yet real.
     const now = Date.now();
+    const reachable = (w: WorldInfo) => w.last_seen > 0;
+    const active = (w: WorldInfo) => w.last_seen > now - 60_000;
     const lines = ["Worlds linked on the Grid (say 'travel <world>'):"];
     for (const w of worlds) {
-      const live = w.last_seen > now - 60_000 ? "live" : "quiet";
-      lines.push(`  ${w.id}  [${live}]${w.id === this.worldName ? "   <- you are here" : ""}`);
+      const tag =
+        w.id === this.worldName ? "you are here" : !reachable(w) ? "seeded (not yet live)" : active(w) ? "reachable, active now" : "reachable, quiet";
+      lines.push(`  ${w.id}  [${tag}]`);
     }
     this.line(ws, lines.join(NL));
     this.event(ws, "grid.worlds", {
-      worlds: worlds.map((w) => ({ id: w.id, live: w.last_seen > now - 60_000, here: w.id === this.worldName })),
+      worlds: worlds.map((w) => ({
+        id: w.id,
+        reachable: reachable(w),
+        active: active(w),
+        lastSeen: w.last_seen,
+        here: w.id === this.worldName,
+      })),
     });
     this.prompt(ws);
   }
