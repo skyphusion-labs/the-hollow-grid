@@ -6,6 +6,29 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.29.6
+
+Another prod play-session find, the mirror image of v0.29.2: there the affordance
+layer advertised a verb that no longer worked; here it HID verbs that still do.
+
+### Fixed
+- **The market keeps advertising sell/steal after you pick a side.** `sell` and
+  `steal` were bundled into the same `faction === "none"` gate as the one-time
+  `defend`/`join` choice, so the moment you sided (ally or Front) they vanished
+  from `room.actions` and `sense` -- yet both still work: `sell` pays allies a
+  bonus ("the free folk remember their friends"), and `steal` only checks the
+  room. A bot driving off the affordance layer would believe it could no longer
+  trade once aligned. The verbs are now gated on what the handlers actually do:
+  `sell` shows for everyone except the Front (the market shuts them out), `steal`
+  shows for all. The one-time `defend`/`join` choice is still offered only while
+  unaligned.
+
+### Code
+- `src/world.ts`: split the market affordance gate -- `defend`/`join` stay
+  `faction === "none"`, `sell` is `faction !== "front"`, `steal` is always shown.
+- `smoke.mjs`: assert an ally still sees sell+steal (and not the spent `defend`),
+  and that the Front sees steal but not sell.
+
 ## v0.29.5
 
 The registry was telling a half-truth: an idle-but-deployed world showed as
