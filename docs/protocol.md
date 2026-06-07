@@ -115,7 +115,7 @@ drift (any new player-affecting state must be emitted here).
 | `grid.echo` | `ping` replays a node's traces | `node, traces[]` |
 | `grid.transmission` | the dead network bleeds a fragment (tick) or `listen` | `kind, text` (`kind`: `signal`/`ad`/`human`/`self`/`echo`; an `echo` is a real recorded Grid trace, not a canned line) |
 | `grid.inscribed` | you `inscribe`/`carve` a message into a node | `node, text` |
-| `grid.worlds` | `worlds` lists the federation | `worlds[] {id, live, here}` |
+| `grid.worlds` | `worlds` lists the federation | `worlds[] {id, reachable, active, lastSeen, here}` |
 | `grid.who` | `who` lists players online across the Grid | `players[] {world, name, regard, here}` |
 | `grid.travel` | `travel` hands you off | `to, url` |
 | `world.state` | login, `world`, and any living-world change | `tick, phase, weather` |

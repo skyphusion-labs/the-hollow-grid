@@ -6,6 +6,37 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.29.5
+
+The registry was telling a half-truth: an idle-but-deployed world showed as
+`live: false`, which reads as "dead" even though you can travel there and it
+wakes on the next connect (it is a serverless Worker). The fix is to model what
+is actually true, not to bolt on a heartbeat.
+
+### Why not a heartbeat
+A periodic check-in can't fire for an idle world without keeping its Durable
+Object awake forever (the world deletes its alarm when the last player leaves, on
+purpose, to hibernate) -- so it would cost real money to refresh a cosmetic flag.
+And a deployed Worker is reachable on demand regardless; `travel` already proves
+this by routing off the stored URL, not the liveness flag. Genuine "is it down"
+health is monitored out of band (Uptime Kuma), where it belongs, not in the
+federation contract.
+
+### Changed
+- **`worlds` separates reachability from activity.** A world that has checked in
+  at least once (`last_seen > 0`) has a real URL and is travelable -- it now reads
+  as `reachable`, with an orthogonal `active` ("someone was here in the last 60s")
+  signal and a `lastSeen` timestamp. Seeded notional siblings (never checked in)
+  read as "seeded (not yet live)". The prose now says "reachable, quiet" instead
+  of a bare "quiet" that looked like death. The `grid.worlds` event shape is now
+  `{id, reachable, active, lastSeen, here}` (was `{id, live, here}`).
+
+### Code
+- `src/world.ts`: `worldsList` reports `reachable`/`active`/`lastSeen` and clearer
+  prose.
+- `docs/protocol.md`: `grid.worlds` event shape updated.
+- `smoke.mjs`: the Dustfall-registration assertion now checks `reachable`.
+
 ## v0.29.4
 
 A legibility pass: keep the canonical channels (room.actions affordances, the
