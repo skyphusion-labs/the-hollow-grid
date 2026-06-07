@@ -436,6 +436,15 @@ check(A.last("char.affects")?.data.faction === "front", "joining brands the play
 A.send("sell scrap");
 await sleep(500);
 check(/don't trade with your kind/i.test(A.raw()), "the market refuses to trade with a Cinder Front member");
+// The affordance layer must MATCH that: the Front is shut out of `sell` (so it is
+// not advertised), but `steal` only checks the room, so it stays offered.
+A.send("sense");
+await sleep(400);
+const frontActs = A.last("room.actions")?.data.actions ?? [];
+check(
+  !frontActs.some((a) => a.verb === "sell") && frontActs.some((a) => a.verb === "steal"),
+  "the Front is not offered sell (the market shuts them out) but can still steal",
+);
 
 // And anyone else who walks in sees the brand on them.
 const B = mkClient();
@@ -665,6 +674,17 @@ check(/already whole/i.test(P.raw().slice(mmark)), "mend finds an ally in the ro
 // P sides with the free folk (gets an elven charm), then hands it to Q.
 P.send("defend");
 await sleep(500);
+// As an ally the market's economic verbs must stay advertised: `sell` still
+// serves allies (with a bonus) and `steal` only checks the room, so room.actions
+// must keep offering them even though the one-time defend/join choice is spent.
+// (They used to be gated behind faction === "none" and vanished once you sided.)
+P.send("sense");
+await sleep(400);
+const allyActs = P.last("room.actions")?.data.actions ?? [];
+check(
+  allyActs.some((a) => a.verb === "sell") && allyActs.some((a) => a.verb === "steal") && !allyActs.some((a) => a.verb === "defend"),
+  "an ally still sees sell+steal in the market (the spent defend choice is gone, the economic verbs are not)",
+);
 P.send(`give charm ${qName}`);
 await sleep(500);
 Q.send("inventory");

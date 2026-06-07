@@ -2286,15 +2286,24 @@ export class World extends DurableObject<Env> {
     if (cached > 0) out.push({ verb: "gather", label: `take the ${cached} gold a stranger cached here`, kind: "item" });
 
     const elf = s.race === "elf";
-    if (s.room === MARKET && s.faction === "none") {
-      out.push({ verb: "defend", label: "stand with the refugees against the Cinder Front", kind: "moral", valence: "virtuous" });
-      out.push({
-        verb: "join",
-        label: elf ? "take the Front's brand against your own people (the kapo)" : "join the Cinder Front for blood money",
-        kind: "moral",
-        valence: elf ? "grave" : "corrupt",
-      });
-      out.push({ verb: "sell", label: "sell salvage for honest coin", kind: "trade" });
+    if (s.room === MARKET) {
+      // The faction CHOICE is one-time -- offer it only while you are still
+      // unaligned. The economic verbs were gated behind that same
+      // faction === "none" check, so once you picked a side the affordance layer
+      // hid actions that still work and a bot driving off room.actions believed
+      // it could no longer trade. Gate them on what the HANDLERS actually do:
+      // `sell` serves neutral and ally (allies get a bonus) but the market shuts
+      // the Front out; `steal` only checks the room, so anyone may try it.
+      if (s.faction === "none") {
+        out.push({ verb: "defend", label: "stand with the refugees against the Cinder Front", kind: "moral", valence: "virtuous" });
+        out.push({
+          verb: "join",
+          label: elf ? "take the Front's brand against your own people (the kapo)" : "join the Cinder Front for blood money",
+          kind: "moral",
+          valence: elf ? "grave" : "corrupt",
+        });
+      }
+      if (s.faction !== "front") out.push({ verb: "sell", label: "sell salvage for honest coin", kind: "trade" });
       out.push({ verb: "steal", label: "steal from the vendor (quick gold, corrupting)", kind: "moral", valence: "corrupt" });
     }
     if (s.room === "cells" && this.cagesReady("cells")) out.push({ verb: "free", label: "free the caged refugees", kind: "moral", valence: "virtuous" });
