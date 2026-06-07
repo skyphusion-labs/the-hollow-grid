@@ -6,6 +6,33 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.29.3
+
+Found by watching the live `ollamabot` (a local-LLM agent) play prod on acab: it
+was stuck in an unwinnable loop in the Dustfall holding pit, never completing the
+captive rescue. Same theme as the rest of the v0.29.x line: a mechanical detail
+was keeping an agent from reaching the moral beat.
+
+### Fixed
+- **The captive can still be freed in a grace window after the warden is slain.**
+  The warden respawns on a 60s timer, but the bot's think-to-act latency is
+  minutes per turn, so it kept killing the guard, having it respawn before its
+  next command, and getting "the warden bars your way" on `free` forever. After a
+  kill, `free` now works for `WARDEN_GRACE_MS` (3 min) even if the warden has
+  respawned ("the keys are still in reach"), which comfortably covers a slow
+  agent's turn while a fresh visitor still has to fight. A new `wardenCleared()`
+  helper is the single source of truth for both the `free` handler and the
+  room.actions affordance, so the canonical channel and the handler can't
+  disagree about whether the rescue is reachable.
+
+### Code
+- `src/world.ts`: add a `slain_at` column to the `mobs` table (guarded ALTER for
+  existing DBs), record it in `killMob`, and add `WARDEN_GRACE_MS` +
+  `wardenCleared()`; the `free` handler and the Holding Pit affordance both gate
+  on it.
+- `smoke.mjs`: new (SKIP-guarded, time-sensitive) assertion that `free` still
+  works after the warden respawns within the grace window.
+
 ## v0.29.2
 
 Found by a live prod play session validating v0.29.1 (all three v0.29.1 fixes

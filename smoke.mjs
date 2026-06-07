@@ -848,6 +848,60 @@ if (pitDied) {
 }
 PIT.sock.close();
 
+// The warden grace window (v0.29.3): after the warden is slain, `free` keeps
+// working for ~3 min even though the warden respawns on a 60s timer, so a slow
+// agent (a local-LLM bot at minutes/turn) can still finish the rescue instead of
+// looping forever. This is inherently time-sensitive (it waits out a real ~60s
+// respawn) and gated by combat variance, so EVERY setup miss SKIPs rather than
+// failing the build. realSleep ignores SMOKE_SLOW: the respawn is wall-clock 60s
+// regardless of how the suite scales its own waits.
+const realSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const GR = mkClient();
+await GR.open();
+await sleep(200);
+const grName = "grace_" + Math.random().toString(36).slice(2, 6);
+GR.send(grName);
+await sleep(400);
+await pickRace(GR);
+GR.send("north"); // nexus -> Scrap Market
+await sleep(450);
+GR.send("north"); // market -> the Holding Pit
+await sleep(450);
+GR.send("attack warden");
+let grKilled = false;
+for (let i = 0; i < 22; i++) {
+  await sleep(1500);
+  if (GR.last("char.died")) break;
+  const v = GR.last("char.vitals");
+  if (i > 0 && v && v.data.inCombat === false) { grKilled = true; break; }
+}
+if (!grKilled) {
+  check(true, "SKIP warden grace: warden not cleanly slain this run (combat variance)");
+} else {
+  // Wait out the real ~60s respawn, polling the room graph until the warden is
+  // back (cap the wait so a slow box SKIPs instead of hanging the suite).
+  let respawned = false;
+  for (let i = 0; i < 40; i++) {
+    await realSleep(2000);
+    GR.send("look");
+    await realSleep(300);
+    const ri = GR.last("room.info");
+    if (ri?.data.mobs?.some((m) => m.id === "warden")) { respawned = true; break; }
+  }
+  if (!respawned) {
+    check(true, "SKIP warden grace: warden did not respawn within the window (slow box)");
+  } else {
+    GR.send("free");
+    await sleep(800);
+    const grRescue = GR.last("grid.rescued");
+    check(
+      !!grRescue && grRescue.data.savedBy === grName,
+      "free still completes the rescue in the grace window after the warden respawns (v0.29.3)",
+    );
+  }
+}
+GR.sock.close();
+
 // The transit-hub distress call ("we're at the old transit hub, please, anyone")
 // now leads to a REAL place with stranded survivors you can answer the call for.
 const TH = mkClient();

@@ -21,6 +21,12 @@ const DEFAULT_WORLD_NAME = "The Hollow Grid";
 const ROUND_MS = 3_000; // combat + poison resolve one tick every 3 seconds
 const BASE_HP = 30;
 const POISON_DMG = 1; // hp lost per tick while poisoned
+// After the warden is slain, the captive can be freed for this long even if the
+// warden respawns (its timer is only 60s). Without it, an agent whose
+// think-to-act latency exceeds the respawn (a local LLM bot runs minutes per
+// turn) can never finish the rescue: it kills the guard, the guard is back
+// before its next command, and `free` re-blocks forever. The keys stay in reach.
+const WARDEN_GRACE_MS = 180_000;
 // The redemption arc. You STRAY when morality sinks this low (the Front's dais
 // oath is -25; the kapo's brand -40; ordinary corruption stacks there too). You
 // RETURN when a strayed soul climbs back to net-positive AND no longer stands
@@ -73,6 +79,7 @@ type MobRow = {
   max_hp: number;
   state: "alive" | "dead";
   respawn_at: number;
+  slain_at: number;
 };
 
 const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
@@ -230,9 +237,18 @@ export class World extends DurableObject<Env> {
           hp INTEGER NOT NULL,
           max_hp INTEGER NOT NULL,
           state TEXT NOT NULL DEFAULT 'alive',
-          respawn_at INTEGER NOT NULL DEFAULT 0
+          respawn_at INTEGER NOT NULL DEFAULT 0,
+          slain_at INTEGER NOT NULL DEFAULT 0
         )
       `);
+      // Upgrade existing DBs in place (see the players ALTER loop above).
+      // slain_at records the last time a mob was killed, so the warden's
+      // captive-rescue can honor a post-kill grace window (see wardenCleared()).
+      try {
+        sql.exec("ALTER TABLE mobs ADD COLUMN slain_at INTEGER NOT NULL DEFAULT 0");
+      } catch {
+        // column already exists
+      }
       for (const t of this.mobTemplates) {
         sql.exec(
           "INSERT OR IGNORE INTO mobs (id, room, hp, max_hp, state, respawn_at) VALUES (?, ?, ?, ?, 'alive', 0)",
@@ -616,9 +632,11 @@ export class World extends DurableObject<Env> {
   }
 
   private killMob(ws: WebSocket, s: Session, mob: MobRow, t: MobTemplate): void {
+    const now = Date.now();
     this.ctx.storage.sql.exec(
-      "UPDATE mobs SET state = 'dead', hp = 0, respawn_at = ? WHERE id = ?",
-      Date.now() + t.respawnMs,
+      "UPDATE mobs SET state = 'dead', hp = 0, respawn_at = ?, slain_at = ? WHERE id = ?",
+      now + t.respawnMs,
+      now,
       mob.id,
     );
     this.line(ws, `You have slain ${t.name}!  (+${t.xp} xp)`);
@@ -1419,8 +1437,7 @@ export class World extends DurableObject<Env> {
       this.prompt(ws);
       return;
     }
-    const warden = this.loadMob(WARDEN_ID);
-    if (warden && warden.state === "alive") {
+    if (!this.wardenCleared()) {
       this.line(ws, "The warden bars your way, keys jangling. Defeat it first.");
       this.prompt(ws);
       return;
@@ -2287,8 +2304,7 @@ export class World extends DurableObject<Env> {
       // slain and you hold the antidote = it's done, so don't keep advertising a
       // virtuous act that no longer pays (a bot trusting room.actions would loop
       // on it).
-      const warden = this.loadMob(WARDEN_ID);
-      if (warden && warden.state === "alive") {
+      if (!this.wardenCleared()) {
         out.push({ verb: "free", label: "free the captive (the warden bars the way)", kind: "moral", valence: "virtuous" });
       } else if (!this.invHas(s.name, "antidote")) {
         out.push({ verb: "free", label: "free the captive from the chains", kind: "moral", valence: "virtuous" });
@@ -4266,6 +4282,17 @@ export class World extends DurableObject<Env> {
 
   private loadMob(id: string): MobRow | null {
     return this.ctx.storage.sql.exec<MobRow>("SELECT * FROM mobs WHERE id = ?", id).toArray()[0] ?? null;
+  }
+
+  // The holding-pit warden bars the captive's rescue. It is "cleared" when dead,
+  // or when it was slain within the grace window even though it has since
+  // respawned (its 60s timer outpaces a slow agent's turn; see WARDEN_GRACE_MS).
+  // Single source of truth so the `free` handler and the room.actions affordance
+  // never disagree about whether the rescue is reachable right now.
+  private wardenCleared(): boolean {
+    const warden = this.loadMob(WARDEN_ID);
+    if (!warden || warden.state === "dead") return true;
+    return warden.slain_at > 0 && Date.now() - warden.slain_at < WARDEN_GRACE_MS;
   }
 
   private livingMobsInRoom(roomId: string): MobRow[] {
