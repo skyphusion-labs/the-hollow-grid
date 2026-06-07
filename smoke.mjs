@@ -22,7 +22,30 @@ function ingest(text) {
   }
 }
 const last = (name) => [...events].reverse().find((e) => e.name === name);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Under CI load the suite runs two `wrangler dev` processes + Dustfall in one
+// container on a shared box, so every fixed wait is tighter than on a single
+// local dev server and a late event races the assertion that follows it (a
+// different 1-3 checks flaked per run until this landed). SMOKE_SLOW scales every
+// sleep: CI sets it >1 (see scripts/ci-qa.sh); locally it defaults to 1, so
+// developer runs stay fast. waitFor() below is the per-check belt to this braces.
+const SLOW = Math.max(1, Number(process.env.SMOKE_SLOW ?? 1));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms * SLOW));
+
+// Poll until the latest `name` event satisfies `pred`, or time out. A fixed
+// sleep races the server under CI load (two wrangler dev processes + Dustfall on
+// one box), so an event that lands late makes last() return the PRIOR state and
+// a check flakes (e.g. `remove` once failed on main while passing on the branch:
+// the char.equipment event hadn't arrived in 400ms). Returns the matching event,
+// or the latest seen on timeout so the caller's assertion can still report it.
+async function waitFor(getLast, name, pred, ms = 3000) {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    const e = getLast(name);
+    if (e && pred(e.data)) return e;
+    if (Date.now() >= deadline) return e ?? null;
+    await sleep(100);
+  }
+}
 
 // A self-contained client (its own event buffer), for multi-player checks.
 // Defaults to the primary world; pass a url to talk to another world on the Grid
@@ -191,10 +214,10 @@ ws.send("inventory");
 await sleep(300);
 check(/shiv/i.test(raw.slice(invMark)), "new character starts with a shiv in inventory");
 ws.send("wield shiv");
-await sleep(400);
+await waitFor(last, "char.equipment", (d) => d.weapon === "shiv");
 check(last("char.equipment")?.data.weapon === "shiv", "wield puts the shiv in the weapon slot (char.equipment)");
 ws.send("remove shiv");
-await sleep(400);
+await waitFor(last, "char.equipment", (d) => d.weapon === null);
 check(last("char.equipment")?.data.weapon === null, "remove clears the weapon slot");
 ws.send("wield shiv"); // re-equip for the fight ahead
 await sleep(300);
@@ -203,21 +226,35 @@ await sleep(300);
 ws.send("title the Ash-Walker");
 await sleep(400);
 const wmark = raw.length;
-ws.send("who");
-await sleep(400);
-check(/the Ash-Walker/.test(raw.slice(wmark)), "title shows after your name in who");
+// `who` is a federation-wide reply; re-issue and poll for the title rather than
+// betting it lands inside one fixed wait (readWarTide does the same for `war`).
+let titleSeen = false;
+for (let attempt = 0; attempt < 3 && !titleSeen; attempt++) {
+  ws.send("who");
+  for (let i = 0; i < 8; i++) {
+    await sleep(300);
+    if (/the Ash-Walker/.test(raw.slice(wmark))) { titleSeen = true; break; }
+  }
+}
+check(titleSeen, "title shows after your name in who");
 
 // Federation (phase 1): 'ping all' reaches the shared Grid backend and hears
 // echoes from OTHER worlds on the network. Checked early, before this world has
 // generated traces of its own, so the feed is purely the cross-world seeds.
-ws.send("ping all");
-await sleep(500);
-const fed = last("grid.federation");
+// It is a hub RPC and the cross-world seeds can lag startup, so poll (re-issuing)
+// until an other-world trace appears instead of trusting a single fixed wait.
+let fed = null;
+const hasOtherWorld = (e) => e?.data.traces?.some((t) => t.world && t.world !== "The Hollow Grid");
+for (let attempt = 0; attempt < 3 && !hasOtherWorld(fed); attempt++) {
+  ws.send("ping all");
+  for (let i = 0; i < 10; i++) {
+    await sleep(400);
+    fed = last("grid.federation");
+    if (hasOtherWorld(fed)) break;
+  }
+}
 check(!!fed && Array.isArray(fed.data.traces) && fed.data.traces.length > 0, "ping all returns the federation feed (grid.federation)");
-check(
-  fed?.data.traces.some((t) => t.world && t.world !== "The Hollow Grid"),
-  "the feed carries echoes from OTHER worlds on the shared Grid",
-);
+check(hasOtherWorld(fed), "the feed carries echoes from OTHER worlds on the shared Grid");
 
 // Move into a mob room and confirm the structured room graph tracks us.
 events.length = 0;
