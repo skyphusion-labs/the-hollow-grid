@@ -6,6 +6,27 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.29.7
+
+A graphical world map, served live and shown in the README.
+
+### Added
+- **`GET /map.svg`** serves a styled, zone-coloured SVG map of the world,
+  generated from `src/rooms.ts` (the single source of truth for rooms + exits) by
+  `npm run map`. The generator (`scripts/render-map.mjs`, dependency-free) lays
+  the 24 rooms out by walking compass exits from the Nexus, routes links as
+  right-angle corridors with dashed up/down shafts, and emits two artifacts:
+  `docs/map.svg` (static, for the site) and `src/map-svg.ts` (the markup embedded
+  as a string so the Worker serves it with no build step or asset rule). Cached
+  an hour. The README embeds the live map.
+
+### Code
+- `scripts/render-map.mjs`: emit both `docs/map.svg` and `src/map-svg.ts`.
+- `src/index.ts`: route `/map.svg` (image/svg+xml, cache-control 1h).
+- `src/map-svg.ts`: generated map markup (do not hand-edit).
+- `smoke.mjs`: assert `/map.svg` returns 200 image/svg+xml with `<svg`.
+- `README.md`: a "The map" section embedding the live SVG.
+
 ## v0.29.6
 
 Another prod play-session find, the mirror image of v0.29.2: there the affordance

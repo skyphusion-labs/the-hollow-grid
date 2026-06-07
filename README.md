@@ -22,6 +22,18 @@ Each domain serves its own in-browser terminal (xterm.js) and accepts any raw
 WebSocket client at `/ws`. Make a character in one, `travel` to the other, and
 your name, level, and standing come with you.
 
+## The map
+
+![The Hollow Grid world map](https://hollow.skyphusion.org/map.svg)
+
+The world at a glance: the Nexus and town (cyan), the Undercity server farm
+(green), the open wastes (amber), and the Cinder Front's stronghold (red), with
+dashed links for the ladders and shafts. It is **generated from `src/rooms.ts`**
+(the single source of truth for rooms and exits) by `npm run map`, served live at
+**[hollow.skyphusion.org/map.svg](https://hollow.skyphusion.org/map.svg)**, and
+committed at [`docs/map.svg`](docs/map.svg). The topology is shared across the
+federation, so the same shape is Dustfall's too (it just relabels the rooms).
+
 ## What makes it interesting
 
 - **A universe, not a server.** The engine is generic; rooms, creatures, gear,

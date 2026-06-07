@@ -1,6 +1,6 @@
 {
   "name": "the-hollow-grid",
-  "version": "0.29.6",
+  "version": "0.29.7",
   "private": true,
   "description": "A MUD built on Cloudflare Workers + Durable Objects",
   "license": "MIT",
@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p grid-hub/tsconfig.json",
     "smoke": "node smoke.mjs",
     "connect": "node scripts/connect.mjs",
-    "map": "node scripts/render-map.mjs > docs/map.svg",
+    "map": "node scripts/render-map.mjs",
     "cf-typegen": "wrangler types"
   },
   "devDependencies": {
