@@ -1,75 +1,48 @@
 // CI/CD for The Hollow Grid.
 //
-// On every push: install, typecheck, and run the smoke suite against a real
-// local `wrangler dev` (both worlds + the hub). On main, after those pass, deploy
-// to Cloudflare (hub, then The Hollow Grid, then Dustfall).
+// Every stage that builds, tests, or deploys runs INSIDE a throwaway
+// `docker run --rm node:24` container on the Jenkins agent. This buys two things:
+//   1. Isolation. The smoke stage spins up two `wrangler dev` servers; the
+//      container is the process boundary, so they die with it on exit. There is
+//      no setsid/process-group teardown and no way for a stray kill to reach the
+//      Jenkins controller (an earlier `npm run dev` kill-0 once SIGTERM'd the JVM).
+//   2. A pinned toolchain. The container brings Node 24; the agent's own Node
+//      version no longer matters.
 //
-// Requirements on the Jenkins agent / controller:
-//   - Node 24+ and npm on PATH (the smoke suite uses the global WebSocket).
-//   - A "Secret text" credential with id 'cloudflare-api-token' holding a
-//     Cloudflare API token scoped to deploy Workers + edit the skyphusion.org
-//     zone (Workers Scripts: Edit, Workers Routes: Edit, DNS: Edit, SSL: Edit).
-//     wrangler reads it from $CLOUDFLARE_API_TOKEN; this replaces interactive
-//     `wrangler login` for headless CI.
+// Requirements on the Jenkins agent:
+//   - Docker, with the `jenkins` user in the `docker` group (so it can `docker run`).
+//   - A "Secret text" credential id 'cloudflare-api-token' holding a Cloudflare
+//     API token scoped to deploy Workers + edit the skyphusion.org zone (Workers
+//     Scripts: Edit, Workers Routes: Edit, DNS: Edit, SSL: Edit). It is passed
+//     into the deploy container as $CLOUDFLARE_API_TOKEN (wrangler reads it,
+//     replacing interactive `wrangler login`).
+//
+// Containers run as the agent's uid:gid with HOME=/tmp so workspace files
+// (node_modules, .wrangler, logs) stay agent-owned and cleanable, never root.
 pipeline {
   agent any
 
   options {
     timestamps()
-    timeout(time: 25, unit: 'MINUTES')
+    timeout(time: 30, unit: 'MINUTES')
     disableConcurrentBuilds()
   }
 
   environment {
-    CI = 'true'
     CLOUDFLARE_API_TOKEN = credentials('cloudflare-api-token')
   }
 
   stages {
-    stage('Install') {
+    stage('Build, typecheck & smoke') {
       steps {
-        sh 'node --version && npm --version'
-        sh 'npm ci'
-      }
-    }
-
-    stage('Typecheck') {
-      steps {
-        sh 'npm run typecheck'
-      }
-    }
-
-    stage('Smoke') {
-      steps {
-        // Start both worlds + hub, wait for the ports, run the smoke suite.
-        //
-        // CRITICAL: each world runs under its OWN process group via `setsid`, and
-        // teardown kills exactly those groups (`kill -- -$PGID`). We do NOT use
-        // `npm run dev` (its kill-0 once SIGTERM'd the Jenkins controller) and we
-        // do NOT `pkill wrangler` (rude on a shared controller). WORLD_URL is
-        // overridden back to localhost so the registry/travel assertions hold.
+        // install -> typecheck -> both worlds + hub under wrangler dev -> smoke,
+        // all inside one container (see scripts/ci-qa.sh). Single-quoted so the
+        // shell (not Groovy) expands $(id -u)/$WORKSPACE at runtime.
         sh '''
-          set -e
-          rm -rf .wrangler/state
-          setsid ./node_modules/.bin/wrangler dev -c wrangler.jsonc -c grid-hub/wrangler.jsonc --var WORLD_URL:ws://localhost:8787/ws > dev-hollow.log 2>&1 &
-          P1=$!
-          setsid ./node_modules/.bin/wrangler dev -c worlds/dustfall.jsonc --var WORLD_URL:ws://localhost:8788/ws > dev-dustfall.log 2>&1 &
-          P2=$!
-          trap 'kill -- -$P1 -$P2 2>/dev/null || true' EXIT
-          # Wait (up to ~90s) for Dustfall's port, using node (no extra deps).
-          node -e '
-            const net = require("net");
-            const up = () => new Promise((res) => {
-              const s = net.connect(8788, "127.0.0.1");
-              s.on("connect", () => { s.destroy(); res(true); });
-              s.on("error", () => res(false));
-            });
-            (async () => {
-              for (let i = 0; i < 90; i++) { if (await up()) process.exit(0); await new Promise(r => setTimeout(r, 1000)); }
-              console.error("dev servers did not come up in time"); process.exit(1);
-            })();
-          '
-          npm run smoke
+          docker run --rm \
+            -u "$(id -u):$(id -g)" -e HOME=/tmp -e CI=true \
+            -v "$WORKSPACE":/app -w /app \
+            node:24 bash scripts/ci-qa.sh
         '''
       }
       post {
@@ -83,8 +56,15 @@ pipeline {
       when { branch 'main' }
       steps {
         // hub first (the worlds bind it), then the two worlds. npm run deploy
-        // chains them in that order. wrangler authenticates via CLOUDFLARE_API_TOKEN.
-        sh 'npm run deploy'
+        // chains them in that order; wrangler authenticates via CLOUDFLARE_API_TOKEN
+        // (passed through to the container with -e).
+        sh '''
+          docker run --rm \
+            -u "$(id -u):$(id -g)" -e HOME=/tmp -e CI=true \
+            -e CLOUDFLARE_API_TOKEN \
+            -v "$WORKSPACE":/app -w /app \
+            node:24 bash -c "npm ci --no-audit --no-fund && npm run deploy"
+        '''
       }
     }
   }
