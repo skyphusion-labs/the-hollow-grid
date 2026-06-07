@@ -141,5 +141,7 @@ shared/grid.ts    THE federation contract (GridHubApi + data types)
 grid-hub/         the Grid Hub backend Worker (GridHub DO + GridHubService)
 smoke.mjs         end-to-end test harness over the @event channel
 scripts/connect.mjs   dependency-free terminal client
-bot.mjs           an AI player driven by the @event channel
 ```
+
+The AI player (`bot.mjs`, driven by the @event channel) lives in the separate
+`mud-bots` repo under `hollow-grid/`.

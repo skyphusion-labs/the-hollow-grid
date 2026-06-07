@@ -339,9 +339,19 @@ check(/no one here to free/i.test(raw.slice(synmark)), "free answers to its near
 // ...and the clock advanced on its own while we were busy fighting (the alarm
 // heartbeat turns the world even between our actions).
 events.length = 0;
-ws.send("world");
-await sleep(500);
-const w1 = last("world.state");
+// `world` is a hub-aware reply and the heartbeat advances the tick every few
+// seconds; re-issue and poll until the tick has moved rather than betting it
+// both arrives and advances inside one fixed wait (it flaked otherwise: the
+// reply hadn't landed, so last() was undefined and 0 > tick0 failed).
+let w1 = null;
+for (let attempt = 0; attempt < 6 && !((w1?.data.tick ?? 0) > worldTick0); attempt++) {
+  ws.send("world");
+  for (let i = 0; i < 8; i++) {
+    await sleep(400);
+    w1 = last("world.state");
+    if ((w1?.data.tick ?? 0) > worldTick0) break;
+  }
+}
 check(
   (w1?.data.tick ?? 0) > worldTick0,
   `the world turned on its own (tick ${worldTick0} -> ${w1?.data.tick ?? "?"})`,
