@@ -20,7 +20,7 @@
 // Containers run as the agent's uid:gid with HOME=/tmp so workspace files
 // (node_modules, .wrangler, logs) stay agent-owned and cleanable, never root.
 pipeline {
-  agent any
+  agent { label 'build' }
 
   options {
     timestamps()
