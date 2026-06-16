@@ -4,9 +4,7 @@ import { cloudflareTest } from '@cloudflare/vitest-pool-workers';
 export default defineConfig({
   plugins: [
     cloudflareTest({
-      // Use configPath to load settings, leaving "main" to auto-resolve from wrangler
       configPath: './wrangler.jsonc',
-      
       auxiliaryWorkers: [
         { configPath: './grid-hub/wrangler.jsonc' },
         { configPath: './worlds/dustfall.jsonc' }
@@ -14,8 +12,9 @@ export default defineConfig({
     })
   ],
   test: {
+    globals: true, 
     coverage: {
-      provider: 'istanbul', // Bypasses node:inspector completely
+      provider: 'istanbul',
       reporter: ['cobertura'],
       reportsDirectory: './coverage'
     }

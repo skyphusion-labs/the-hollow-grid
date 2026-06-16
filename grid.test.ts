@@ -1,7 +1,5 @@
-import { runInDurableObject } from 'cloudflare:test';
+import { env, runInDurableObject } from 'cloudflare:test';
 import { describe, it, expect } from 'vitest';
-
-const env = (import.meta as any).env;
 
 describe('The Hollow Grid - Durable Object State Tests', () => {
   it('should initialize stub and mutate isolated storage states', async () => {
