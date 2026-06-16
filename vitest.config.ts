@@ -6,13 +6,13 @@ export default defineConfig({
     cloudflareTest({
       wrangler: { configPath: './wrangler.jsonc' },
       
-      workers: [
+      auxiliaryWorkers: [
         {
-          name: 'grid-hub', 
+          name: 'grid-hub',
           configPath: './grid-hub/wrangler.jsonc'
         },
         {
-          name: 'dustfall', 
+          name: 'dustfall',
           configPath: './worlds/dustfall.jsonc'
         }
       ]
