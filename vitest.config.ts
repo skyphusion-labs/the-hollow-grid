@@ -12,8 +12,14 @@ export default defineConfig({
     })
   ],
   test: {
+    name: 'the-hollow-grid', 
     pool: 'workers',
     globals: true,
+    poolOptions: {
+      workers: {
+        wrangler: { configPath: './wrangler.jsonc' }
+      }
+    },
     coverage: {
       provider: 'istanbul',
       reporter: ['cobertura'],
