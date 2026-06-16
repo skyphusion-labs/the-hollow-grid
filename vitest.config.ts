@@ -4,22 +4,28 @@ import { cloudflareTest } from '@cloudflare/vitest-pool-workers';
 export default defineConfig({
   plugins: [
     cloudflareTest({
-      configPath: './wrangler.jsonc',
-      auxiliaryWorkers: [
-        { configPath: './grid-hub/wrangler.jsonc' },
-        { configPath: './worlds/dustfall.jsonc' }
-      ]
+      configPath: './wrangler.jsonc'
     })
   ],
   test: {
-    name: 'the-hollow-grid', 
+    name: 'the-hollow-grid',
     pool: 'workers',
-    globals: true,
-    poolOptions: {
-      workers: {
-        wrangler: { configPath: './wrangler.jsonc' }
-      }
+    
+    workers: {
+      isolatedStorage: true,
+      auxiliaryWorkers: [
+        {
+          name: 'grid-hub',
+          configPath: './grid-hub/wrangler.jsonc'
+        },
+        {
+          name: 'dustfall',
+          configPath: './worlds/dustfall.jsonc'
+        }
+      ]
     },
+    
+    globals: true,
     coverage: {
       provider: 'istanbul',
       reporter: ['cobertura'],
