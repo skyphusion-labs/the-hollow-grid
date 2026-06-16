@@ -1499,5 +1499,10 @@ if (!dustfallUp) {
   D.sock.close();
 }
 
-console.log(failures ? `\n${failures} check(s) FAILED` : "\nSMOKE TEST PASSED");
-process.exit(failures ? 1 : 0);
+// Only pull the plug if running directly in terminal, let Vitest exit naturally 
+if (!process.env.VITEST) {
+  process.exit(failures ? 1 : 0);
+} else if (failures) {
+  // Forces Vitest to fail the build if any internal smoke assertions broke
+  throw new Error(`${failures} check(s) FAILED during smoke execution loop.`);
+}
