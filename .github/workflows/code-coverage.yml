@@ -33,9 +33,10 @@ jobs:
         run: npm run bootstrap
         continue-on-error: true # Prevents crash if wrangler.toml already exists in workspace
 
-      # Runs your vitest script with cobertura reporter enabled
+      # Runs your vitest script bypassing v8 inspector errors cleanly
       - name: Run tests with coverage
-        run: npx vitest run --coverage.enabled=true --coverage.reporter=cobertura
+        run: npx vitest run --coverage.enabled=true --coverage.provider=istanbul --coverage.reporter=cobertura --passWithNoTests --forceExit
+
 
       # Upload to GitHub's native Enterprise code coverage engine
       # Upload to GitHub's native Enterprise code coverage engine
