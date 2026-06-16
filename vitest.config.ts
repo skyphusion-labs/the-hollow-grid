@@ -15,7 +15,21 @@ export default defineConfig({
           name: 'dustfall',
           configPath: './worlds/dustfall.jsonc'
         }
-      ]
+      ],
+
+      // CONRAD YOU NEED TO FORCE THE UNSAFE BINDING HERE BECAUSE OF THE CONFIGURATION ISOLATION
+      config: {
+        unsafe: {
+          bindings: [
+            {
+              name: 'GRID',
+              type: 'service',
+              service: 'grid-hub',
+              entrypoint: 'GridHubService'
+            }
+          ]
+        }
+      }
     })
   ]
 });
