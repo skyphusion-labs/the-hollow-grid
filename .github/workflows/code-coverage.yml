@@ -35,7 +35,7 @@ jobs:
 
       # Runs your vitest script bypassing v8 inspector errors cleanly
       - name: Run tests with coverage
-        run: npx vitest run --coverage.enabled=true --coverage.provider=istanbul --coverage.reporter=cobertura --passWithNoTests --forceExit
+        run: npx vitest run --coverage.enabled=true --coverage.provider=istanbul --coverage.reporter=cobertura --passWithNoTests --teardownTimeout=1
 
 
       # Upload to GitHub's native Enterprise code coverage engine
