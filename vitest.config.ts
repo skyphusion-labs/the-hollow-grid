@@ -12,7 +12,8 @@ export default defineConfig({
     })
   ],
   test: {
-    globals: true, 
+    pool: 'workers',
+    globals: true,
     coverage: {
       provider: 'istanbul',
       reporter: ['cobertura'],
