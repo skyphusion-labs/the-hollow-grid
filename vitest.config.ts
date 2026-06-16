@@ -4,14 +4,7 @@ import { cloudflareTest } from '@cloudflare/vitest-pool-workers';
 export default defineConfig({
   plugins: [
     cloudflareTest({
-      configPath: './wrangler.jsonc'
-    })
-  ],
-  test: {
-    name: 'the-hollow-grid',
-    pool: 'workers',
-    
-    workers: {
+      wrangler: { configPath: './wrangler.jsonc' },
       isolatedStorage: true,
       auxiliaryWorkers: [
         {
@@ -23,8 +16,9 @@ export default defineConfig({
           configPath: './worlds/dustfall.jsonc'
         }
       ]
-    },
-    
+    })
+  ],
+  test: {
     globals: true,
     coverage: {
       provider: 'istanbul',
