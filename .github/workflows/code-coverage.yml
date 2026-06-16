@@ -11,9 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write      # Required for GitHub Code Quality features
-      code-quality: write    # Grants the action permission to upload coverage data
-      pull-requests: write   # Allows the coverage engine to append the PR
+      id-token: write      
+      code-quality: write    # Required for GitHub Enterprise Code Coverage API
+      pull-requests: write   # Allows appending the widget inside the PR
 
     steps:
       - name: Checkout repository
@@ -28,18 +28,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Create wrangler.toml before testing so environment types evaluate properly
-      - name: Bootstrap wrangler configuration
-        run: npm run bootstrap
-        continue-on-error: true # Prevents crash if wrangler.toml already exists in workspace
+      # 1. Start the local MUD server mesh in the background using your script
+      - name: Start Local MUD Dev Servers
+        run: npm run dev & 
+        env:
+          WORLD_URL: ws://localhost:8787/ws
 
-      # Run Smoke Test to obtain code coverage
+      # 2. Wait up to 30 seconds for port 8787 to become active before moving forward
+      - name: Wait for Dev Servers to be ready
+        run: |
+          echo "Waiting for local worker to start on port 8787..."
+          timeout 30s bash -c 'until lsof -i :8787 -s TCP:LISTEN; do sleep 1; done' || true
+
+      # 3. Run your instrumented smoke test wrapper against the active server
       - name: Run Smoke Test with Coverage
         run: npx vitest run --coverage.enabled=true --coverage.provider=istanbul --coverage.reporter=cobertura --teardownTimeout=1
 
-
-      # Upload to GitHub's native Enterprise code coverage engine
-      # Upload to GitHub's native Enterprise code coverage engine
+      # 4. Upload the compiled metrics to GitHub's native Enterprise engine
       - name: Upload coverage report
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/upload-code-coverage@v1
