@@ -1,9 +1,11 @@
-name: ci (self-hosted)
+name: ci
 
-# Full CI (typecheck + smoke + deploy) on the self-hosted fleet runner.
+# Full CI (typecheck + smoke + deploy) on a GitHub-hosted runner.
 # Mirrors the former Jenkinsfile pipeline: typecheck -> smoke (two wrangler dev
-# servers + smoke suite) -> wrangler deploy on main.
-# The GitHub-hosted typecheck.yml stays as the safe path for untrusted fork PRs.
+# servers + smoke suite) -> wrangler deploy on main. This repo is PUBLIC, so a
+# self-hosted runner would let fork PRs execute on a build box; GitHub-hosted is
+# fork-safe and removes the single-runner SPOF. typecheck.yml stays as the
+# always-on hosted typecheck path.
 on:
   push:
     branches: [main]
@@ -14,19 +16,14 @@ on:
 permissions:
   contents: read
 
-# Supersede in-flight runs on the same ref so a self-hosted runner is never
-# queued up behind stale commits.
+# Supersede in-flight runs on the same ref so a new push cancels stale ones.
 concurrency:
-  group: ci-self-hosted-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   ci:
-    # SECURITY: this repo is PUBLIC and the runner is self-hosted. Never let an
-    # untrusted fork PR execute on the box. Run for pushes (trusted) and only for
-    # same-repo (non-fork) PRs; fork PRs still get typecheck via the hosted workflow.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       CI: 'true'
