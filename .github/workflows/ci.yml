@@ -1,6 +1,8 @@
 name: ci (self-hosted)
 
-# Full CI (typecheck + tests) on the self-hosted dischord runner.
+# Full CI (typecheck + smoke + deploy) on the self-hosted fleet runner.
+# Mirrors the former Jenkinsfile pipeline: typecheck -> smoke (two wrangler dev
+# servers + smoke suite) -> wrangler deploy on main.
 # The GitHub-hosted typecheck.yml stays as the safe path for untrusted fork PRs.
 on:
   push:
@@ -8,7 +10,7 @@ on:
   pull_request:
     branches: [main]
 
-# Least privilege: CI only needs to read the repo. No write scopes on the token.
+# Least privilege: CI only needs to read the repo.
 permissions:
   contents: read
 
@@ -25,11 +27,77 @@ jobs:
     # same-repo (non-fork) PRs; fork PRs still get typecheck via the hosted workflow.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: 'false'
     steps:
       - uses: actions/checkout@v6
+
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          # Node 24 to match the former Jenkinsfile node:24 toolchain.
+          node-version: '24'
           cache: npm
-      - run: npm ci
-      - run: npm run typecheck
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Smoke (both worlds + hub under wrangler dev)
+        run: |
+          # Clear per-world dev state so each CI run starts from a clean Grid.
+          rm -rf .wrangler grid-hub/.wrangler worlds/.wrangler
+
+          # Start hollow + hub (port 8787) and dustfall (port 8788) in background.
+          # GHA job isolation is the process boundary: both servers die when the
+          # job ends, the same guarantee the Jenkinsfile's docker wrapper gave.
+          ./node_modules/.bin/wrangler dev -c wrangler.jsonc -c grid-hub/wrangler.jsonc \
+            --var WORLD_URL:ws://localhost:8787/ws > dev-hollow.log 2>&1 &
+          ./node_modules/.bin/wrangler dev -c worlds/dustfall.jsonc \
+            --var WORLD_URL:ws://localhost:8788/ws > dev-dustfall.log 2>&1 &
+
+          # Wait for dustfall (8788) -- once it answers, both are up (same logic
+          # as ci-qa.sh, inlined to avoid the docker wrapper).
+          node -e '
+            const net = require("net");
+            const up = () => new Promise((res) => {
+              const s = net.connect(8788, "127.0.0.1");
+              s.on("connect", () => { s.destroy(); res(true); });
+              s.on("error", () => res(false));
+            });
+            (async () => {
+              for (let i = 0; i < 120; i++) {
+                if (await up()) process.exit(0);
+                await new Promise(r => setTimeout(r, 1000));
+              }
+              console.error("dev servers did not come up in time");
+              process.exit(1);
+            })();
+          '
+
+          # Settle: let both worlds register with the hub before smoke hits them.
+          sleep 5
+
+          # Run the smoke suite. SMOKE_SLOW=2 matches the Jenkinsfile CI setting.
+          SMOKE_SLOW=2 npm run smoke
+
+      - name: Archive dev logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-logs
+          path: |
+            dev-hollow.log
+            dev-dustfall.log
+          if-no-files-found: ignore
+
+      - name: Deploy (main only)
+        if: github.ref == 'refs/heads/main'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # npm run deploy chains hub -> hollow -> dustfall in the correct order.
+        run: npm run deploy
