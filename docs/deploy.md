@@ -1,7 +1,7 @@
 # Running, deploying, and CI/CD
 
-How to run The Hollow Grid locally, ship it to Cloudflare, and the Jenkins
-pipeline that does it automatically.
+How to run The Hollow Grid locally, ship it to Cloudflare, and the GitHub
+Actions pipeline that does it automatically.
 
 ## The three Workers
 
@@ -78,29 +78,29 @@ provisions the TLS cert in the zone automatically:
 For a fresh deploy to a different domain, set each world's `WORLD_URL` and
 `routes[].pattern` to your hostnames. The hub needs no domain.
 
-## CI/CD (Jenkins)
+## CI/CD (GitHub Actions)
 
-A `Jenkinsfile` at the repo root defines the pipeline; a multibranch job builds
-each branch.
+CI/CD runs in GitHub Actions (`.github/workflows/`); the former Jenkins pipeline
+was retired in the Jenkins->GHA migration (#41). This repo is PUBLIC, so the
+deploy job runs on a GitHub-hosted runner (fork-safe; no self-hosted build box
+exposed to fork PRs).
 
-- **Install** -- `npm ci`.
-- **Typecheck** -- `npm run typecheck` (the gate).
-- **Smoke** -- starts both worlds + the hub and runs the 81-check suite. Each
-  world runs under its own process group via `setsid`, and teardown kills exactly
-  those groups (`kill -- -$PGID`). It does **not** use `npm run dev` (whose
-  `kill 0` once SIGTERM'd the Jenkins controller) and does **not** `pkill`
-  broadly on the shared controller. This safety is deliberate; preserve it.
-- **Deploy** -- on `main` only, runs `npm run deploy`. wrangler authenticates via
-  a `cloudflare-api-token` Jenkins credential exposed as `$CLOUDFLARE_API_TOKEN`
-  (Secret text, scoped to Workers Scripts/Routes + DNS + SSL on the zone).
+- **ci.yml** (push + PR, deploys on `main`):
+  - **Install** -- `npm ci`.
+  - **Typecheck** -- `npm run typecheck` (the gate).
+  - **Smoke** -- starts both worlds + the hub and runs the 81-check suite. Each
+    world runs under its own process group via `setsid`, and teardown kills
+    exactly those groups (`kill -- -$PGID`). It does **not** use `npm run dev`
+    (whose `kill 0` would reach the CI runner) and does **not** `pkill` broadly.
+    This safety is deliberate; preserve it.
+  - **Deploy** -- on `main` only, runs `npm run deploy` (which chains hub ->
+    hollow -> dustfall in the correct bind order). wrangler authenticates via the
+    `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` GitHub Actions secrets
+    (the token scoped to Workers Scripts/Routes + DNS + SSL on the zone).
+- **typecheck.yml** -- the always-on hosted typecheck path.
 
-A push to `main` triggers the webhook, which triggers a repo scan, which builds
-and deploys. Multibranch build strategy must allow branch builds (the default
-empty `<buildStrategies/>`); a tags-only strategy will detect the change but log
-"No automatic build triggered" and never build.
-
-Agent requirements: Node 24+ on PATH (the smoke suite uses the global
-`WebSocket`).
+A push to `main` runs the full pipeline and, on green, deploys. The runner uses
+Node 24+ (the smoke suite uses the global `WebSocket`).
 
 ## Health endpoints + Cloudflare Access
 
@@ -113,12 +113,14 @@ application:
   (covers `/health` and `/health/deep`; the rest of the site, including `/ws`
   and the play client, stays public).
 - **Policies** -- mirror the other SkyPhusion apps: a `non_identity` "Health
-  Checks" policy admitting the shared `kuma-monitor` service token (so Uptime
-  Kuma can poll non-interactively with `CF-Access-Client-Id` /
+  Checks" policy admitting the shared `gatus-monitor` service token (so Gatus
+  can poll non-interactively with `CF-Access-Client-Id` /
   `CF-Access-Client-Secret` headers), plus an `allow` email policy for the
   operators (so a browser hit prompts for SSO).
-- **Monitoring** -- point a Kuma monitor at `https://hollow.skyphusion.org/health`
-  (60s) and `/health/deep` (5min), sending the `kuma-monitor` token headers.
+- **Monitoring** -- Gatus (status.skyphusion.org) polls
+  `https://hollow.skyphusion.org/health` (60s) and `/health/deep` (5min),
+  sending the `gatus-monitor` token headers. (Uptime Kuma was retired in favor
+  of Gatus.)
 
 Access is configured via the Cloudflare API (account-level Zero Trust), not in
 `wrangler.jsonc`; it sits in front of the Worker, so the Worker code is

@@ -3,7 +3,8 @@
 # suite against a real `wrangler dev` of BOTH worlds + the hub (so the federation
 # phase is exercised, not skipped).
 #
-# This runs INSIDE a throwaway `docker run --rm` container (see the Jenkinsfile),
+# This runs INSIDE a throwaway `docker run --rm` container (the Jenkins-era CI
+# wrapper; the live GitHub Actions ci.yml inlines this same QA without docker),
 # which is the whole point: the container is the process boundary, so the two
 # background `wrangler dev` servers die with it on exit -- no setsid/process-group
 # teardown, and no way for a stray kill to reach the Jenkins controller (the bug
