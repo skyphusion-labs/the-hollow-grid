@@ -135,4 +135,4 @@ Full design and the five rules a port should keep: `docs/architecture.md`.
 
 ## License
 
-MIT © 2026 Conrad Rockenhaus
+[AGPL-3.0-only](LICENSE) (C) 2026 Conrad Rockenhaus. Run a modified version as a network service and the AGPL has you offer users the corresponding source. Releases tagged before this 2026 relicense remain available under the MIT license they were published under.
