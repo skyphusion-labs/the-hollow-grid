@@ -62,7 +62,7 @@ There is no unit-test suite. Features are verified end-to-end against a live `wr
 
 ## SkyPhusion house conventions (shared across the author's Cloudflare repos)
 
-These come from the sibling `skyphusion-llm-public` repo and apply here too:
+These come from the sibling `prism` repo and apply here too:
 
 - **No em-dashes (U+2014) or en-dashes (U+2013) anywhere in source, comments, docs, or in-game text.** Use commas, semicolons, or parentheses. (This rule names the codepoints rather than printing the glyphs, on purpose.)
 - **Handle/username is `skyphusion`** across all services. Default to it when a username is needed.
