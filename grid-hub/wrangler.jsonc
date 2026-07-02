@@ -6,6 +6,11 @@
   "observability": {
     "enabled": true
   },
+
+  // No workers.dev route: grid-hub is a backend-only Worker reached via the
+  // world Workers as a service binding, so *.workers.dev is an unneeded door
+  // (defense-in-depth; fleet-chezmoi#46).
+  "workers_dev": false,
   "durable_objects": {
     "bindings": [{ "name": "GRIDHUB", "class_name": "GridHub" }]
   },
