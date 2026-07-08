@@ -52,9 +52,8 @@ async function handleHealthDeep(env: Env): Promise<Response> {
       const res = await stub.fetch("https://world/health");
       if (!res.ok) throw new Error(`world DO returned ${res.status}`);
       checks.world = { ok: true, latency_ms: Date.now() - t0, critical: true };
-    } catch (err) {
-      const m = err instanceof Error ? err.message : String(err);
-      checks.world = { ok: false, latency_ms: Date.now() - t0, critical: true, error: m };
+    } catch {
+      checks.world = { ok: false, latency_ms: Date.now() - t0, critical: true, error: "health check failed" };
     }
   }
 
@@ -67,9 +66,8 @@ async function handleHealthDeep(env: Env): Promise<Response> {
     try {
       await env.GRID.tide();
       checks.grid_hub = { ok: true, latency_ms: Date.now() - t0, critical: false };
-    } catch (err) {
-      const m = err instanceof Error ? err.message : String(err);
-      checks.grid_hub = { ok: false, latency_ms: Date.now() - t0, critical: false, error: m };
+    } catch {
+      checks.grid_hub = { ok: false, latency_ms: Date.now() - t0, critical: false, error: "health check failed" };
     }
   }
 
