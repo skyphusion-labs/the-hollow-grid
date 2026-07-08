@@ -402,9 +402,8 @@ export class World extends DurableObject<Env> {
       try {
         this.ctx.storage.sql.exec("SELECT 1");
         return new Response("ok", { status: 200 });
-      } catch (err) {
-        const m = err instanceof Error ? err.message : String(err);
-        return new Response(m, { status: 503 });
+      } catch {
+        return new Response("unavailable", { status: 503 });
       }
     }
 
