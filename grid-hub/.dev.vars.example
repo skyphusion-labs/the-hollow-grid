@@ -1,0 +1,2 @@
+# Local dev only: copy to grid-hub/.dev.vars (gitignored) for POST /rpc testing.
+GRID_RPC_TOKEN=dev-grid-rpc-token
