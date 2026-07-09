@@ -144,4 +144,20 @@ scripts/connect.mjs   dependency-free terminal client
 ```
 
 The AI player (`bot.mjs`, driven by the @event channel) lives in the separate
-`mud-bots` repo under `hollow-grid/`.
+`mud-bots` repo under `hollow-grid/` (GHCR `mud-bots-hg`; fleet load layout in
+`fleet-chezmoi/system/stacks/biafra/mud-bots/README.md`).
+
+## Ports and alternate engines
+
+This repo is the **reference** TypeScript implementation. A faithful port
+implements section 1-2 of `docs/protocol.md` and optionally the `GridHubApi`
+client in section 3.
+
+**Rust Choir** ([hollow-grid-go](https://github.com/SkyPhusion/hollow-grid-go))
+is the first non-TS world on the live Grid: a Go container on the Hetzner fleet,
+registered via HTTP RPC at `grid-hub.skyphusion.org/rpc`, scored by the same
+`smoke.mjs` suite. It reuses the canonical room graph and anchor ids, with a
+grafted Grid Gate signature zone (see `hollow-grid-go/docs/WORLD.md`).
+
+When adding features here, mirror them in ports or file issues; the smoke suite
+is the shared contract both sides build to.

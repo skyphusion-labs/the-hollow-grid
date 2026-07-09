@@ -72,7 +72,9 @@ GET /health/deep ->
 ```
 
 A port should expose the same two paths so the same monitor config works
-against any world.
+against any world. Non-Worker ports (e.g. hollow-grid-go on the fleet) use
+equivalent check names (`world` = local game loop / store; `grid_hub` = HTTP
+RPC `tide()` when `GRID_HUB_URL` is set).
 
 ## 2. The structured `@event` channel
 
@@ -255,7 +257,7 @@ an AI player driven entirely by the `@event` channel lives in the separate
 **`smoke.mjs` is the executable conformance suite.** It is written against the
 `@event` channel, not the reference implementation, so it runs against ANY port:
 point it at your server with `MUD_URL=ws://host:port/ws node smoke.mjs` (set
-`DUSTFALL_URL` too, or it will SKIP the second-world federation phase). A green
-run (113 checks at v0.20.0) means your server honors the contract. Build the port
-to pass it phase by phase; that is the definition of done. The suite is the
-fastest way to find where prose and the structured channel have drifted.
+`DUSTFALL_URL` too, or it will SKIP the second-world federation phase). The suite
+ships **135 checks** (v0.29.9); a green run means your server honors the contract.
+Build the port to pass it phase by phase; that is the definition of done. The
+suite is the fastest way to find where prose and the structured channel have drifted.
