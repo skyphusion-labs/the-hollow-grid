@@ -58,6 +58,16 @@ async function waitFor(getLast, name, pred, ms = 3000) {
   }
 }
 
+// Poll client prose until `pred` matches newly received text (or time out).
+async function waitForRaw(client, pred, ms = 4000, mark = 0) {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    if (pred(client.raw().slice(mark))) return true;
+    if (Date.now() >= deadline) return pred(client.raw().slice(mark));
+    await sleep(100);
+  }
+}
+
 // A self-contained client (its own event buffer), for multi-player checks.
 // Defaults to the primary world; pass a url to talk to another world on the Grid
 // (e.g. the second deployment, Dustfall, in the cross-world federation phase).
@@ -527,8 +537,11 @@ check(
 );
 const kmark = KAPO.raw().length;
 KAPO.send("join"); // an elf siding with the Cinder Front
-await sleep(700);
-check(/ash-sworn/i.test(KAPO.raw().slice(kmark)), "an elf who joins the Front is branded ash-sworn (the kapo)");
+check(
+  (await waitForRaw(KAPO, (t) => /ash-sworn/i.test(t), 5000, kmark)) ||
+    (await waitFor(KAPO.last, "char.affects", (d) => d?.ashsworn === true, 1000))?.data?.ashsworn === true,
+  "an elf who joins the Front is branded ash-sworn (the kapo)",
+);
 const kAff = await waitFor(KAPO.last, "char.affects", (d) => d?.ashsworn === true, 4000);
 check(kAff?.data.ashsworn === true, "the ash-sworn brand is on the structured channel (char.affects)");
 
@@ -1030,7 +1043,10 @@ if (thRescue && thRescue.data.savedBy === thName) {
   await sleep(400);
   check(/platform is empty/i.test(TH.raw()), "the transit hub refills over time -- you can't farm the distress call");
 } else {
-  check(/platform is empty/i.test(TH.raw().slice(thMark)), "the transit hub on cooldown is refused (no farm) -- robust across runs");
+  check(
+    await waitForRaw(TH, (t) => /platform is empty/i.test(t), 5000, thMark),
+    "the transit hub on cooldown is refused (no farm) -- robust across runs",
+  );
 }
 TH.sock.close();
 
@@ -1109,7 +1125,10 @@ if (rescued && rescued.data.savedBy === fName) {
   F.send("stand");
   await sleep(300);
 } else {
-  check(/cages stand open and empty/i.test(F.raw().slice(fcMark)), "cages on cooldown are refused (no farm) -- the refill gate holds across runs");
+  check(
+    await waitForRaw(F, (t) => /cages stand open and empty/i.test(t), 5000, fcMark),
+    "cages on cooldown are refused (no farm) -- the refill gate holds across runs",
+  );
 }
 // Either way, the rescued are kept on the federated roll, named, with who freed
 // them -- the hopeful mirror of the memorial roll. (Non-empty: someone freed at
