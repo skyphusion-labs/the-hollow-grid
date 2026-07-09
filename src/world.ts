@@ -19,6 +19,7 @@ const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 const DEFAULT_WORLD_NAME = "The Hollow Grid";
 
 const ROUND_MS = 3_000; // combat + poison resolve one tick every 3 seconds
+const GRIDCAST_POLL_MS = 2_000; // cap hub RPC wait so a hung federation call cannot freeze combat
 const BASE_HP = 30;
 const POISON_DMG = 1; // hp lost per tick while poisoned
 // After the warden is slain, the captive can be freed for this long even if the
@@ -481,65 +482,69 @@ export class World extends DurableObject<Env> {
   // ---- alarm: combat + respawns + poison ----------------------------------
 
   async alarm(): Promise<void> {
-    const now = Date.now();
+    try {
+      const now = Date.now();
 
-    // 1) Respawn due mobs.
-    const due = this.ctx.storage.sql
-      .exec<MobRow>("SELECT * FROM mobs WHERE state = 'dead' AND respawn_at <= ?", now)
-      .toArray();
-    for (const m of due) {
-      this.ctx.storage.sql.exec("UPDATE mobs SET state = 'alive', hp = max_hp WHERE id = ?", m.id);
-      this.broadcast(m.room, `${cap(this.mobById[m.id].name)} stalks into view.`);
-    }
-
-    // 2) Poison ticks (in or out of combat).
-    for (const ws of this.ctx.getWebSockets()) {
-      const s = ws.deserializeAttachment() as Session | null;
-      if (!s?.name || !s.poisoned) continue;
-      s.hp = Math.max(0, s.hp - POISON_DMG);
-      if (s.hp <= 0) {
-        this.line(ws, "The venom finishes what the wastes started...");
-        this.killPlayer(ws, s);
-        continue;
+      // 1) Respawn due mobs.
+      const due = this.ctx.storage.sql
+        .exec<MobRow>("SELECT * FROM mobs WHERE state = 'dead' AND respawn_at <= ?", now)
+        .toArray();
+      for (const m of due) {
+        this.ctx.storage.sql.exec("UPDATE mobs SET state = 'alive', hp = max_hp WHERE id = ?", m.id);
+        this.broadcast(m.room, `${cap(this.mobById[m.id].name)} stalks into view.`);
       }
-      this.line(ws, `The venom gnaws at you. (HP ${s.hp}/${s.maxHp})`);
-      this.emitVitals(ws, s);
-      ws.serializeAttachment(s);
-      this.persistPlayer(s);
-      this.prompt(ws);
-    }
 
-    // 2.5) Passive HP regen for resting/sleeping players (not fighting/poisoned).
-    for (const ws of this.ctx.getWebSockets()) {
-      const s = ws.deserializeAttachment() as Session | null;
-      if (!s?.name || s.target || s.poisoned || s.hp >= s.maxHp) continue;
-      // Position regen plus your race's lean (the wastes-hardened heal even on
-      // their feet; most races add 0).
-      const regen = (POS_REGEN[s.position ?? "standing"] ?? 0) + (raceFor(s.race)?.regen ?? 0);
-      if (regen <= 0) continue;
-      s.hp = Math.min(s.maxHp, s.hp + regen);
-      ws.serializeAttachment(s);
-      this.persistPlayer(s);
-      this.emitVitals(ws, s);
-      if (s.hp >= s.maxHp) {
-        this.line(ws, "Your wounds have closed. You feel whole again.");
+      // 2) Poison ticks (in or out of combat).
+      for (const ws of this.ctx.getWebSockets()) {
+        const s = ws.deserializeAttachment() as Session | null;
+        if (!s?.name || !s.poisoned) continue;
+        s.hp = Math.max(0, s.hp - POISON_DMG);
+        if (s.hp <= 0) {
+          this.line(ws, "The venom finishes what the wastes started...");
+          this.killPlayer(ws, s);
+          continue;
+        }
+        this.line(ws, `The venom gnaws at you. (HP ${s.hp}/${s.maxHp})`);
+        this.emitVitals(ws, s);
+        ws.serializeAttachment(s);
+        this.persistPlayer(s);
         this.prompt(ws);
       }
+
+      // 2.5) Passive HP regen for resting/sleeping players (not fighting/poisoned).
+      for (const ws of this.ctx.getWebSockets()) {
+        const s = ws.deserializeAttachment() as Session | null;
+        if (!s?.name || s.target || s.poisoned || s.hp >= s.maxHp) continue;
+        // Position regen plus your race's lean (the wastes-hardened heal even on
+        // their feet; most races add 0).
+        const regen = (POS_REGEN[s.position ?? "standing"] ?? 0) + (raceFor(s.race)?.regen ?? 0);
+        if (regen <= 0) continue;
+        s.hp = Math.min(s.maxHp, s.hp + regen);
+        ws.serializeAttachment(s);
+        this.persistPlayer(s);
+        this.emitVitals(ws, s);
+        if (s.hp >= s.maxHp) {
+          this.line(ws, "Your wounds have closed. You feel whole again.");
+          this.prompt(ws);
+        }
+      }
+
+      // 3) Combat rounds. Deserialize per ws so kills/deaths this tick are seen.
+      for (const ws of this.ctx.getWebSockets()) {
+        const s = ws.deserializeAttachment() as Session | null;
+        if (s?.name && s.target) this.resolveRound(ws, s);
+      }
+
+      // 4) Advance the living world (time of day, weather, the ghost).
+      this.worldTick();
+
+      // 5) Federation: relay any new cross-world gridcasts to our players.
+      await this.pollGridcasts();
+    } finally {
+      // Always beat while anyone is online, even if federation polling fails or
+      // throws. A skipped reschedule freezes combat (inCombat stuck) for every bot.
+      await this.scheduleNextTick();
     }
-
-    // 3) Combat rounds. Deserialize per ws so kills/deaths this tick are seen.
-    for (const ws of this.ctx.getWebSockets()) {
-      const s = ws.deserializeAttachment() as Session | null;
-      if (s?.name && s.target) this.resolveRound(ws, s);
-    }
-
-    // 4) Advance the living world (time of day, weather, the ghost).
-    this.worldTick();
-
-    // 5) Federation: relay any new cross-world gridcasts to our players.
-    await this.pollGridcasts();
-
-    await this.scheduleNextTick();
   }
 
   /** Schedule the next alarm only if there's combat, a respawn, or poison. */
@@ -666,6 +671,8 @@ export class World extends DurableObject<Env> {
         os.target = null;
         other.serializeAttachment(os);
         this.line(other, `${cap(t.name)} falls before you can finish it.`);
+        this.event(other, "combat.end", { mob: mob.id, result: "gone" });
+        this.emitVitals(other, os);
         this.prompt(other);
       }
     }
@@ -2759,9 +2766,16 @@ export class World extends DurableObject<Env> {
       .one().last_cast;
     let casts: GridCast[] = [];
     try {
-      casts = await this.env.GRID.castsSince(since, 20);
-    } catch {
-      return; // hub unreachable; try again next tick
+      casts = await Promise.race([
+        this.env.GRID.castsSince(since, 20),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("grid casts poll timeout")), GRIDCAST_POLL_MS);
+        }),
+      ]);
+    } catch (err) {
+      // Hub unreachable or slow; combat ticks must continue (alarm reschedules in finally).
+      console.warn("pollGridcasts:", err instanceof Error ? err.message : err);
+      return;
     }
     if (casts.length === 0) return;
     let maxId = since;

@@ -6,6 +6,24 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.29.9
+
+Found by mud-bot load testing on hollow and dustfall (combat-stuck JSONL: fights
+never resolving after 120s, especially under federation hub traffic).
+
+### Fixed
+- **Alarm always reschedules.** `alarm()` now calls `scheduleNextTick()` in a
+  `finally` block so a thrown tick or a slow federation poll cannot freeze combat
+  rounds while `target` stays set (`inCombat: true` forever on the client).
+- **Gridcast poll timeout.** `pollGridcasts()` caps `GRID.castsSince` at 2s; a hung
+  hub RPC no longer blocks the alarm handler mid-tick.
+- **Stolen kills sync vitals.** When another player kills the mob you were fighting,
+  you now get `combat.end` + `char.vitals` (`inCombat: false`), not just prose.
+
+### Code
+- `src/world.ts`: alarm `finally`, gridcast timeout, `killMob` other-fighter vitals.
+- `smoke.mjs`: assert combat cannot stay `inCombat` through the full wait loop.
+
 ## v0.29.8
 
 Found by watching wendybot orbit the Holding Pit on the new GPU box.

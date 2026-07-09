@@ -366,6 +366,8 @@ let ended = last("combat.end");
 for (let i = 0; i < 8 && !ended; i++) {
   await sleep(2500);
   ended = last("combat.end");
+  const stuck = last("char.vitals")?.data.inCombat === true;
+  check(i < 7 || !stuck, "combat resolves within ~20s (inCombat must not stay true after alarm ticks)");
 }
 check(!!last("combat.round"), "combat produced at least one combat.round event");
 check(ended?.data.result === "killed", `combat ended in a kill (result=${JSON.stringify(ended?.data.result)})`);
