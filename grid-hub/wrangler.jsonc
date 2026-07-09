@@ -11,6 +11,9 @@
   // world Workers as a service binding, so *.workers.dev is an unneeded door
   // (defense-in-depth; fleet-chezmoi#46).
   "workers_dev": false,
+  // RPC ingress for fleet Go worlds (hollow-grid-go) and other external nodes.
+  // Token auth via GRID_RPC_TOKEN (wrangler secret in prod; see grid-hub/.dev.vars.example).
+  "routes": [{ "pattern": "grid-hub.skyphusion.org", "custom_domain": true }],
   "durable_objects": {
     "bindings": [{ "name": "GRIDHUB", "class_name": "GridHub" }]
   },
