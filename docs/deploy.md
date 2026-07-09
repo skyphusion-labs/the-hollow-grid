@@ -102,26 +102,12 @@ exposed to fork PRs).
 A push to `main` runs the full pipeline and, on green, deploys. The runner uses
 Node 24+ (the smoke suite uses the global `WebSocket`).
 
-## Health endpoints + Cloudflare Access
+## Health endpoints
 
 The world serves `GET /health` (liveness) and `GET /health/deep` (deep check;
-see docs/protocol.md). At the Worker layer both are unauthenticated; the prod
-deployment gates them at the edge with a Cloudflare Access self-hosted
-application:
+see docs/protocol.md). Both are **public** at the edge, same as Dustfall and
+Rust Choir: no Cloudflare Access app on these paths.
 
-- **App** -- "The Hollow Grid Health", domain `hollow.skyphusion.org/health`
-  (covers `/health` and `/health/deep`; the rest of the site, including `/ws`
-  and the play client, stays public).
-- **Policies** -- mirror the other SkyPhusion apps: a `non_identity` "Health
-  Checks" policy admitting the shared `gatus-monitor` service token (so Gatus
-  can poll non-interactively with `CF-Access-Client-Id` /
-  `CF-Access-Client-Secret` headers), plus an `allow` email policy for the
-  operators (so a browser hit prompts for SSO).
 - **Monitoring** -- Gatus (status.skyphusion.org) polls
-  `https://hollow.skyphusion.org/health` (60s) and `/health/deep` (5min),
-  sending the `gatus-monitor` token headers. (Uptime Kuma was retired in favor
-  of Gatus.)
-
-Access is configured via the Cloudflare API (account-level Zero Trust), not in
-`wrangler.jsonc`; it sits in front of the Worker, so the Worker code is
-unchanged.
+  `https://hollow.skyphusion.org/health` (60s) and `/health/deep` (5min) with
+  no Access headers, matching dustfall and rustchoir.
