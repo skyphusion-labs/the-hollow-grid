@@ -14,5 +14,10 @@
   "durable_objects": {
     "bindings": [{ "name": "GRIDHUB", "class_name": "GridHub" }]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GridHub"] }]
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GridHub"] }],
+
+  // Dev token for local /rpc testing (override in production via wrangler secret).
+  "vars": {
+    "GRID_RPC_TOKEN": "dev-grid-rpc-token"
+  }
 }

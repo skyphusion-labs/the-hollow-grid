@@ -85,13 +85,22 @@ export class GridHubService extends WorkerEntrypoint<Env> implements GridHubApi 
   }
 }
 
-// The hub has no public HTTP surface of its own: worlds reach it only through the
-// GRID service binding (RPC). This default handler is just a friendly signpost.
+import { handleRPC } from "./rpc";
+
+// Worlds on Cloudflare reach the hub via the GRID service binding. External nodes
+// (fleet Go worlds) use POST /rpc with GRID_RPC_TOKEN when configured.
 export default {
-  async fetch(): Promise<Response> {
+  async fetch(req: Request, env: Env): Promise<Response> {
+    const path = new URL(req.url).pathname;
+    if (req.method === "POST" && path === "/rpc") {
+      return handleRPC(req, env);
+    }
+    if (req.method === "GET" && path === "/health") {
+      return Response.json({ ok: true, service: "grid-hub" });
+    }
     return new Response(
       "THE GRID HUB: the federation backend for The Hollow Grid.\n" +
-        "No public HTTP surface; worlds reach it via the GRID service binding (RPC).\n",
+        "Worlds on Cloudflare bind GRID (RPC). External nodes POST /rpc with GRID_RPC_TOKEN.\n",
       { headers: { "content-type": "text/plain" } },
     );
   },
