@@ -78,6 +78,8 @@ function mkClient(url = URL) {
       }
     }
   });
+  // Swallow late socket errors so one dropped client does not abort the suite.
+  sock.addEventListener("error", () => {});
   return {
     sock,
     last: (n) => [...evs].reverse().find((e) => e.name === n),
@@ -100,6 +102,17 @@ function mkClient(url = URL) {
 async function pickRace(client, race = "human") {
   client.send(race);
   await sleep(400);
+}
+
+// Name login that handles resume (keeper names like skyphusion skip the race menu).
+async function loginWithRace(client, name, race = "human") {
+  client.send(name);
+  await sleep(500);
+  if (/choose what you are/i.test(client.raw())) {
+    await pickRace(client, race);
+  } else {
+    await sleep(400);
+  }
 }
 
 // `war` does an async hub RPC, so its reply can outlast a fixed wait under CI
@@ -516,7 +529,8 @@ const kmark = KAPO.raw().length;
 KAPO.send("join"); // an elf siding with the Cinder Front
 await sleep(700);
 check(/ash-sworn/i.test(KAPO.raw().slice(kmark)), "an elf who joins the Front is branded ash-sworn (the kapo)");
-check(KAPO.last("char.affects")?.data.ashsworn === true, "the ash-sworn brand is on the structured channel (char.affects)");
+const kAff = await waitFor(KAPO.last, "char.affects", (d) => d?.ashsworn === true, 4000);
+check(kAff?.data.ashsworn === true, "the ash-sworn brand is on the structured channel (char.affects)");
 
 // The brand outranks faction and never washes off: others see "ash-sworn".
 const KW = mkClient();
@@ -814,7 +828,8 @@ await CA.open();
 await sleep(200);
 CA.send("giver_" + Math.random().toString(36).slice(2, 6));
 await sleep(400);
-await pickRace(CA);
+await loginWithRace(CA);
+await waitFor(CA.last, "char.vitals", (d) => (d?.gold ?? 0) >= 8, 5000);
 const caGold = CA.last("char.vitals")?.data.gold ?? 0;
 const caMoral = CA.last("char.affects")?.data.morality ?? 0;
 CA.send("cache 8"); // leave 8 gold at the nexus for a stranger
@@ -830,8 +845,8 @@ await CB.open();
 await sleep(200);
 CB.send("taker_" + Math.random().toString(36).slice(2, 6));
 await sleep(400);
-await pickRace(CB); // logs in at the nexus, where the aid was cached
-const nc = CB.last("node.cache");
+await loginWithRace(CB); // logs in at the nexus, where the aid was cached
+const nc = await waitFor(CB.last, "node.cache", (d) => (d?.gold ?? 0) >= 8, 5000);
 check(!!nc && nc.data.gold >= 8, "arriving where aid was cached, the node announces it (node.cache)");
 const cbGold = CB.last("char.vitals")?.data.gold ?? 0;
 CB.send("gather");
@@ -1253,14 +1268,12 @@ await K.open();
 await sleep(200);
 K.send("skyphusion"); // a keeper name (matches the dev ADMINS var)
 await sleep(400);
-await pickRace(K);
+await loginWithRace(K);
 K.send("gridstats");
-await sleep(500);
-const ks = K.last("grid.ledger_stats");
+const ks = await waitFor(K.last, "grid.ledger_stats", (d) => typeof d?.total === "number" && Array.isArray(d?.kinds), 5000);
 check(!!ks && typeof ks.data.total === "number" && Array.isArray(ks.data.kinds), "gridstats reports the keeper the ledger composition (grid.ledger_stats)");
 K.send("gridprune");
-await sleep(600);
-const kp = K.last("grid.ledger_pruned");
+const kp = await waitFor(K.last, "grid.ledger_pruned", (d) => typeof d?.removed === "number" && d.after <= d.before, 6000);
 check(
   !!kp && typeof kp.data.removed === "number" && kp.data.after <= kp.data.before,
   "gridprune flushes ambient traces and reports before/after counts (grid.ledger_pruned)",
@@ -1330,15 +1343,16 @@ const rdmark = RD.raw().length;
 RD.send("join"); // pledge to the Front: -25 morality, sworn to the cinders
 await sleep(650);
 check(/strayed a long way/i.test(RD.raw().slice(rdmark)), "sinking into the Front strays you (the Grid marks it, write-once)");
+const rdAff = await waitFor(RD.last, "char.affects", (d) => (d?.morality ?? 0) <= -20 && d?.faction === "front", 4000);
 check(
-  RD.last("char.affects")?.data.morality <= -20 && RD.last("char.affects")?.data.faction === "front",
+  (rdAff?.data.morality ?? 0) <= -20 && rdAff?.data.faction === "front",
   "the dais oath leaves you deep in the cinders, sworn to the Front",
 );
 RD.send("defy"); // turn on the Front to its face: +30, back toward the light
-await sleep(750);
-const redeem = RD.last("grid.redemption");
+const redeem = await waitFor(RD.last, "grid.redemption", (d) => d?.title === "the Returned", 5000);
 check(!!redeem && redeem.data.title === "the Returned", "defecting back to the light makes a strayed soul the Returned (grid.redemption)");
-check(RD.last("char.affects")?.data.faction === "ally", "the Returned stands with the free folk, no longer the Front");
+const rdAfter = await waitFor(RD.last, "char.affects", (d) => d?.faction === "ally", 4000);
+check(rdAfter?.data.faction === "ally", "the Returned stands with the free folk, no longer the Front");
 RD.sock.close();
 
 // --- Phase 11d2: forgiveness -- the second road home -------------------------
