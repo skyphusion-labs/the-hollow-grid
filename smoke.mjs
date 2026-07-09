@@ -1539,7 +1539,7 @@ if (!dustfallUp) {
   );
   P.send("travel Dustfall");
   const pTrav = await waitFor(P.last, "grid.travel", (d) => d?.to === "Dustfall" && typeof d?.url === "string", 5000);
-  const dustfallHost = new URL(DUSTFALL_URL.replace(/^ws/i, "http")).host;
+  const dustfallHost = new globalThis.URL(DUSTFALL_URL.replace(/^ws/i, "http")).host;
   check(
     pTrav?.data.to === "Dustfall" && (pTrav?.data.url ?? "").includes(dustfallHost),
     "travel now routes to Dustfall's real live address, the live entry having overwritten the seed",
