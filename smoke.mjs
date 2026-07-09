@@ -1032,8 +1032,7 @@ check(TH.last("room.info")?.data.id === "transit_hub", "the distress call leads 
 await waitFor(TH.last, "room.info", (d) => d?.id === "transit_hub", 3000);
 const thMark = TH.raw().length;
 TH.send("shelter");
-await sleep(600);
-const thRescue = TH.last("grid.rescued");
+const thRescue = await waitFor(TH.last, "grid.rescued", (d) => d?.savedBy === thName, 5000);
 if (thRescue && thRescue.data.savedBy === thName) {
   check(
     Array.isArray(thRescue.data.freed) && thRescue.data.freed.length >= 1,
@@ -1099,8 +1098,7 @@ await sleep(500);
 await waitFor(F.last, "room.info", (d) => d?.id === "cells", 5000);
 const fcMark = F.raw().length;
 F.send("free");
-await sleep(500);
-const rescued = F.last("grid.rescued");
+const rescued = await waitFor(F.last, "grid.rescued", (d) => d?.savedBy === fName, 5000);
 // The cages are SHARED, time-refilled world state, so a prior run (or another
 // player) may have just emptied them. Cover both states so the test is robust to
 // rerun -- in CI's fresh state it takes the freed branch (full coverage).
@@ -1365,8 +1363,7 @@ for (const dir of ["east", "up", "north", "north", "north", "north", "north", "u
 check(RD.last("room.info")?.data.id === "dais", "the oathbreaker-to-be reaches the Ashmonger's dais");
 const rdmark = RD.raw().length;
 RD.send("join"); // pledge to the Front: -25 morality, sworn to the cinders
-await sleep(650);
-check(/strayed a long way/i.test(RD.raw().slice(rdmark)), "sinking into the Front strays you (the Grid marks it, write-once)");
+check(await waitForRaw(RD, (t) => /strayed a long way/i.test(t), 5000, rdmark), "sinking into the Front strays you (the Grid marks it, write-once)");
 const rdAff = await waitFor(RD.last, "char.affects", (d) => (d?.morality ?? 0) <= -20 && d?.faction === "front", 4000);
 check(
   (rdAff?.data.morality ?? 0) <= -20 && rdAff?.data.faction === "front",
