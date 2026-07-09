@@ -58,16 +58,6 @@ async function waitFor(getLast, name, pred, ms = 3000) {
   }
 }
 
-// Poll client prose until `pred` matches newly received text (or time out).
-async function waitForRaw(client, pred, ms = 4000, mark = 0) {
-  const deadline = Date.now() + ms;
-  for (;;) {
-    if (pred(client.raw().slice(mark))) return true;
-    if (Date.now() >= deadline) return pred(client.raw().slice(mark));
-    await sleep(100);
-  }
-}
-
 // A self-contained client (its own event buffer), for multi-player checks.
 // Defaults to the primary world; pass a url to talk to another world on the Grid
 // (e.g. the second deployment, Dustfall, in the cross-world federation phase).
@@ -538,11 +528,7 @@ check(
 const kmark = KAPO.raw().length;
 KAPO.send("join"); // an elf siding with the Cinder Front
 await sleep(700);
-check(
-  (await waitForRaw(KAPO, (t) => /ash-sworn/i.test(t), 5000, kmark)) ||
-    (await waitFor(KAPO.last, "char.affects", (d) => d?.ashsworn === true, 1000))?.data?.ashsworn === true,
-  "an elf who joins the Front is branded ash-sworn (the kapo)",
-);
+check(/ash-sworn/i.test(KAPO.raw().slice(kmark)), "an elf who joins the Front is branded ash-sworn (the kapo)");
 const kAff = await waitFor(KAPO.last, "char.affects", (d) => d?.ashsworn === true, 4000);
 check(kAff?.data.ashsworn === true, "the ash-sworn brand is on the structured channel (char.affects)");
 
@@ -595,10 +581,10 @@ TV.send("tavtest_" + Math.random().toString(36).slice(2, 6));
 await sleep(500);
 await pickRace(TV);
 TV.send("west"); // nexus -> the Rusted Tankard
-await waitFor(TV.last, "room.info", (d) => d?.id === "tavern", 5000);
+await sleep(600);
 TV.send("sense");
-const tavActsEv = await waitFor(TV.last, "room.actions", (d) => Array.isArray(d?.actions) && d.actions.some((a) => a.verb === "talk"), 5000);
-const tavActs = tavActsEv?.data.actions ?? [];
+await sleep(500);
+const tavActs = TV.last("room.actions")?.data.actions ?? [];
 check(
   tavActs.some((a) => a.verb === "talk" && a.kind === "social"),
   "room.actions advertises 'talk' in the tavern (talk-affordance drift guard)",
@@ -674,12 +660,11 @@ await pickRace(Q);
 
 // tell + reply (private, cross-room)
 P.send(`tell ${qName} you there?`);
-await sleep(400);
-const told = Q.last("comm.tell");
-check(told?.data.from === pName && /you there/i.test(told?.data.text ?? ""), "tell delivers a private message (comm.tell)");
+const told = await waitFor(Q.last, "comm.tell", (d) => d?.from === pName && /you there/i.test(d?.text ?? ""), 5000);
+check(!!told, "tell delivers a private message (comm.tell)");
+const replyMark = P.raw().length;
 Q.send("reply loud and clear");
-await sleep(400);
-check(/loud and clear/i.test(P.raw()), "reply answers the last teller");
+check(await waitForRaw(P, (t) => /loud and clear/i.test(t), 5000, replyMark), "reply answers the last teller");
 
 // yell (global player chat)
 P.send("yell the wastes are restless tonight");
@@ -864,8 +849,8 @@ const nc = await waitFor(CB.last, "node.cache", (d) => (d?.gold ?? 0) >= 8, 5000
 check(!!nc && nc.data.gold >= 8, "arriving where aid was cached, the node announces it (node.cache)");
 const cbGold = CB.last("char.vitals")?.data.gold ?? 0;
 CB.send("gather");
-const cbVit = await waitFor(CB.last, "char.vitals", (d) => (d?.gold ?? 0) >= cbGold + 8, 5000);
-check((cbVit?.data.gold ?? 0) >= cbGold + 8, "a stranger gathers the aid left for them (gold received)");
+await sleep(500);
+check((CB.last("char.vitals")?.data.gold ?? 0) >= cbGold + 8, "a stranger gathers the aid left for them (gold received)");
 CB.send("gather");
 await sleep(400);
 check(/nothing cached here/i.test(CB.raw()), "once gathered the cache is empty -- aid given is aid received, once");
@@ -880,7 +865,7 @@ EC.send("echo_" + Math.random().toString(36).slice(2, 6));
 await sleep(400);
 await pickRace(EC);
 let gotEcho = false;
-for (let i = 0; i < 24 && !gotEcho; i++) {
+for (let i = 0; i < 16 && !gotEcho; i++) {
   EC.send("listen");
   await sleep(350);
   if (EC.last("grid.transmission")?.data.kind === "echo") gotEcho = true;
@@ -1031,6 +1016,7 @@ for (const dir of ["east", "up", "north", "east", "south"]) {
   await sleep(450);
 }
 check(TH.last("room.info")?.data.id === "transit_hub", "the distress call leads somewhere real: the old transit hub, south off the Scorch Road");
+await waitFor(TH.last, "room.info", (d) => d?.id === "transit_hub", 3000);
 const thMark = TH.raw().length;
 TH.send("shelter");
 await sleep(600);
@@ -1044,10 +1030,7 @@ if (thRescue && thRescue.data.savedBy === thName) {
   await sleep(400);
   check(/platform is empty/i.test(TH.raw()), "the transit hub refills over time -- you can't farm the distress call");
 } else {
-  check(
-    await waitForRaw(TH, (t) => /platform is empty/i.test(t), 5000, thMark),
-    "the transit hub on cooldown is refused (no farm) -- robust across runs",
-  );
+  check(/platform is empty/i.test(TH.raw().slice(thMark)), "the transit hub on cooldown is refused (no farm) -- robust across runs");
 }
 TH.sock.close();
 
@@ -1097,6 +1080,7 @@ check(Array.isArray(mu?.data.mobs) && mu.data.mobs.some((m) => m.id === "trooper
 
 F.send("west"); // muster -> the cages
 await sleep(500);
+await waitFor(F.last, "room.info", (d) => d?.id === "cells", 5000);
 const fcMark = F.raw().length;
 F.send("free");
 await sleep(500);
@@ -1125,16 +1109,14 @@ if (rescued && rescued.data.savedBy === fName) {
   F.send("stand");
   await sleep(300);
 } else {
-  check(
-    await waitForRaw(F, (t) => /cages stand open and empty/i.test(t), 5000, fcMark),
-    "cages on cooldown are refused (no farm) -- the refill gate holds across runs",
-  );
+  check(/cages stand open and empty/i.test(F.raw().slice(fcMark)), "cages on cooldown are refused (no farm) -- the refill gate holds across runs");
 }
 // Either way, the rescued are kept on the federated roll, named, with who freed
 // them -- the hopeful mirror of the memorial roll. (Non-empty: someone freed at
 // some point this run or a prior one.)
 F.send("saved");
-const sroll = await waitFor(F.last, "grid.rescued_roll", (d) => Array.isArray(d?.rescued) && d.rescued.length >= 1, 5000);
+await sleep(500);
+const sroll = F.last("grid.rescued_roll");
 check(
   !!sroll &&
     Array.isArray(sroll.data.rescued) &&
@@ -1220,11 +1202,8 @@ check(
 
 // Federation phase 3: the canonical identity lives in the hub and follows you.
 GX.send("whoami");
-await sleep(500);
-check(
-  GX.last("char.identity")?.data.faction === "ally",
-  "whoami reads your canonical self live from the Grid (faction committed to the hub)",
-);
+const gxId = await waitFor(GX.last, "char.identity", (d) => d?.faction === "ally", 5000);
+check(gxId?.data.faction === "ally", "whoami reads your canonical self live from the Grid (faction committed to the hub)");
 GX.sock.close(); // commits the canonical sheet on logout
 await sleep(800);
 // Re-enter as the SAME character -- a stand-in for arriving in another world.
@@ -1332,13 +1311,20 @@ VG.send("witness");
 await sleep(500);
 const roll = VG.last("grid.fallen");
 check(!!roll && Array.isArray(roll.data.fallen), "witness reads the Grid's memorial roll of the fallen (grid.fallen)");
+const vgSelfMark = VG.raw().length;
 VG.send("witness " + wname); // a vigil for yourself is refused
-await sleep(400);
-check(!VG.last("grid.remembrance") && /vigil for yourself/i.test(VG.raw()), "you cannot hold a vigil for yourself");
+check(
+  (await waitForRaw(VG, (t) => /vigil for yourself/i.test(t), 5000, vgSelfMark)) && !VG.last("grid.remembrance"),
+  "you cannot hold a vigil for yourself",
+);
 const noone = "nobody_" + Math.random().toString(36).slice(2, 7);
+const vgNoMark = VG.raw().length;
 VG.send("witness " + noone); // an unknown name keeps no one and rewards nothing
 await sleep(400);
-check(!VG.last("grid.remembrance") && /no recent memory/i.test(VG.raw()), "witnessing an unknown name keeps no one (no grid.remembrance)");
+check(
+  (await waitForRaw(VG, (t) => /no recent memory/i.test(t), 5000, vgNoMark)) && !VG.last("grid.remembrance"),
+  "witnessing an unknown name keeps no one (no grid.remembrance)",
+);
 VG.sock.close();
 
 // --- Phase 11d: the redemption arc (stray -> return) -------------------------
@@ -1361,10 +1347,7 @@ check(RD.last("room.info")?.data.id === "dais", "the oathbreaker-to-be reaches t
 const rdmark = RD.raw().length;
 RD.send("join"); // pledge to the Front: -25 morality, sworn to the cinders
 await sleep(650);
-check(
-  await waitForRaw(RD, (t) => /strayed a long way/i.test(t), 5000, rdmark),
-  "sinking into the Front strays you (the Grid marks it, write-once)",
-);
+check(/strayed a long way/i.test(RD.raw().slice(rdmark)), "sinking into the Front strays you (the Grid marks it, write-once)");
 const rdAff = await waitFor(RD.last, "char.affects", (d) => (d?.morality ?? 0) <= -20 && d?.faction === "front", 4000);
 check(
   (rdAff?.data.morality ?? 0) <= -20 && rdAff?.data.faction === "front",
@@ -1458,12 +1441,11 @@ check(
 );
 check(/Nothing yet weighs/i.test(RK.raw()), "a fresh soul's reckoning is empty -- the wastes are still waiting to see who you are");
 RK.send("north"); // nexus -> the Scrap Market
-await sleep(450);
+await waitFor(RK.last, "room.info", (d) => d?.id === "market", 5000);
 RK.send("steal"); // a theft: a deed the Grid keeps count of
 await sleep(500);
 RK.send("reckoning");
-await sleep(500);
-const r1 = RK.last("char.reckoning");
+const r1 = await waitFor(RK.last, "char.reckoning", (d) => (d?.deeds?.stolen ?? 0) >= 1, 5000);
 check(!!r1 && (r1.data.deeds.stolen ?? 0) >= 1, "the reckoning counts what you've done: a theft now shows on your ledger");
 RK.sock.close();
 
@@ -1540,10 +1522,10 @@ if (!dustfallUp) {
     "the primary world sees Dustfall registered REACHABLE on the Grid (a real second deployment, not a seeded stub)",
   );
   P.send("travel Dustfall");
-  await sleep(700);
-  const pTrav = P.last("grid.travel");
+  const pTrav = await waitFor(P.last, "grid.travel", (d) => d?.to === "Dustfall" && typeof d?.url === "string", 5000);
+  const dustfallHost = new URL(DUSTFALL_URL.replace(/^ws/i, "http")).host;
   check(
-    pTrav?.data.to === "Dustfall" && /localhost:8788/i.test(pTrav?.data.url ?? ""),
+    pTrav?.data.to === "Dustfall" && (pTrav?.data.url ?? "").includes(dustfallHost),
     "travel now routes to Dustfall's real live address, the live entry having overwritten the seed",
   );
   P.sock.close();
