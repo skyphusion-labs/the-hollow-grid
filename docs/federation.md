@@ -1,12 +1,19 @@
 # The Hollow Grid Federation: design and status
 
-Status: **LIVE.** Federation phases 1-5 are built, merged, and deployed. Two
-worlds run on one shared Grid in production (hollow.skyphusion.org and
-dustfall.skyphusion.org), with cross-world identity, a global faction tide, a
-shared ledger and chat, and `travel`. This document is the design and the trust
-model; for the contract see `docs/protocol.md` (section 3), for running and
-deploying it see `docs/deploy.md`, and for building a second world see
-`docs/worlds.md`. The remaining open work is noted in section 10.
+Status: **LIVE.** Federation phases 1-5 are built, merged, and deployed. **Three
+worlds** run on one shared Grid in production:
+
+| World | URL | Engine |
+| --- | --- | --- |
+| The Hollow Grid | hollow.skyphusion.org | Cloudflare Workers |
+| Dustfall | dustfall.skyphusion.org | Cloudflare Workers |
+| Rust Choir | rustchoir.skyphusion.org | Go container ([hollow-grid-go](https://github.com/SkyPhusion/hollow-grid-go)) |
+
+Cross-world identity, a global faction tide, a shared ledger and chat, and
+`travel` work across all three when the hub is reachable. This document is the
+design and the trust model; for the contract see `docs/protocol.md` (section 3),
+for running and deploying see `docs/deploy.md`, and for building a second TS world
+see `docs/worlds.md`. The remaining open work is noted in section 10.
 
 **Design vs as-built.** This document is the original design and the north-star
 trust model. The shipped contract is intentionally simpler and is specified
@@ -173,6 +180,12 @@ so it's the highest-magic, lowest-risk first step. It also makes the federation
    same code, its own name/url/Durable Object namespace, binding the same
    `grid-hub`. Two worlds, one Grid; identity, tide, ledger, and `travel` all
    cross between them. Proven by smoke phase 12. DONE.
+6. **A third world on the Grid (Rust Choir, Go)** -- the
+   [`hollow-grid-go`](https://github.com/SkyPhusion/hollow-grid-go) port joins the
+   live hub over **HTTP RPC** (`grid-hub.skyphusion.org/rpc`) from the Hetzner
+   fleet. Same wire protocol and smoke suite; differentiation is place and voice
+   (the Grid Gate tract), not engine. Proven in production 2026-07-09 with LLM
+   load bots on all three worlds. DONE.
 
 ## 9a. Running the federation locally
 
@@ -205,3 +218,9 @@ same shape as two separate production deployments binding one backend Worker.
 - Most of the wonder (shared memory, a global faction war, cross-world chat, one
   character across worlds) is reachable with a *thin* shared layer. Resist
   building a metaverse; build the smallest thing that feels like a living network.
+- **Fleet nodes (Rust Choir)** cannot use Cloudflare service bindings. The hub
+  exposes HTTP RPC at `grid-hub.skyphusion.org/rpc` for external world engines;
+  see `grid-hub/wrangler.jsonc` and `hollow-grid-go/internal/grid/`.
+- **Load testing:** LLM agents (`mud-bots`, GHCR `mud-bots-hg`) soak all three
+  worlds; findings in `*-bugs.jsonl`. Operational layout:
+  `fleet-chezmoi/system/stacks/biafra/mud-bots/README.md`.

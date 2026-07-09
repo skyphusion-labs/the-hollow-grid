@@ -110,6 +110,17 @@ it. (Detected as `race === "elf" && faction === "front"`; see `factionChoice` an
 
 ## Adding a new world
 
+Two paths:
+
+1. **TypeScript content pack (this repo)** -- same engine, new `WORLD_MAP` selector
+   (the Dustfall recipe below).
+2. **Alternate engine (port)** -- reimplement the world server in another language
+   against `docs/protocol.md`. **Rust Choir** ([hollow-grid-go](https://github.com/SkyPhusion/hollow-grid-go))
+   is the live example: canonical map + a grafted signature zone, registered on
+   the hub via HTTP RPC from the fleet. See `hollow-grid-go/docs/WORLD.md`.
+
+### TypeScript content pack (Dustfall recipe)
+
 Say you want `saltreach` (already seeded as a stub in the registry):
 
 1. **Rooms** -- in `src/rooms.ts`, add `ROOMS_SALTREACH` (reuse the 23 room ids

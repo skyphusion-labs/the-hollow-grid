@@ -13,14 +13,18 @@ Read the writeup (the story, the design decisions, and how it was built):
 
 ## Play now
 
-Two live worlds on one shared Grid. Open either in a browser and you are in:
+Three live worlds on one shared Grid. Open any in a browser or connect with a raw
+WebSocket client at `/ws`. Make a character in one, `travel` to another, and your
+name, level, and standing come with you.
 
-- **The Hollow Grid** -- https://hollow.skyphusion.org (the dead neon city)
-- **Dustfall** -- https://dustfall.skyphusion.org (the open salt pan people fled to)
+| World | URL | Engine |
+| --- | --- | --- |
+| **The Hollow Grid** (dead neon city) | https://hollow.skyphusion.org | Cloudflare Workers |
+| **Dustfall** (open salt pan) | https://dustfall.skyphusion.org | Cloudflare Workers |
+| **Rust Choir** (memory / archivist node) | https://rustchoir.skyphusion.org | Go fleet container ([hollow-grid-go](https://github.com/SkyPhusion/hollow-grid-go)) |
 
-Each domain serves its own in-browser terminal (xterm.js) and accepts any raw
-WebSocket client at `/ws`. Make a character in one, `travel` to the other, and
-your name, level, and standing come with you.
+Each domain serves its own in-browser terminal (xterm.js on the TS worlds; Rust
+Choir is WebSocket-only today) and accepts any raw WebSocket client at `/ws`.
 
 ## The map
 
@@ -69,8 +73,8 @@ npm run connect -- ws://localhost:8788/ws    # play Dustfall
 ```
 
 No global install needed (`scripts/connect.mjs` is dependency-free; `npx wscat`
-works too). Verify changes with `npm run typecheck` then `npm run smoke` (81
-end-to-end checks over the `@event` channel). See `docs/deploy.md`.
+works too). Verify changes with `npm run typecheck` then `npm run smoke` (**135
+end-to-end checks** over the `@event` channel). See `docs/deploy.md`.
 
 ## The game
 
@@ -107,10 +111,14 @@ language. References in this repo:
 - `smoke.mjs` -- an assertion harness over the same events.
 
 An AI player driven entirely by the `@event` channel lives in the separate
-[`mud-bots`](https://github.com/SkyPhusion/mud-bots) repo (`hollow-grid/bot.mjs`).
+[`mud-bots`](https://github.com/SkyPhusion/mud-bots) repo (`hollow-grid/bot.mjs`,
+GHCR `mud-bots-hg`). As of 2026-07-09 the fleet runs **11 LLM bots** (3 hollow +
+3 dustfall + 5 rustchoir) for load soak; layout in
+`fleet-chezmoi/system/stacks/biafra/mud-bots/README.md`.
 
-Ports in Go, Rust, Python, Elixir, and friends are welcome; a world that speaks
-the `GridHubApi` contract (`shared/grid.ts`) joins the same federation.
+Ports in Go, Rust, Python, Elixir, and friends are welcome; **Rust Choir** (Go) is
+the first non-TS world on the live Grid. Any world that speaks the `GridHubApi`
+contract (`shared/grid.ts`) can join the same federation.
 
 ## Architecture, in one breath
 
@@ -125,13 +133,30 @@ Full design and the five rules a port should keep: `docs/architecture.md`.
 
 ## Documentation
 
-- [`docs/architecture.md`](docs/architecture.md) -- the runtime model, design rules, command set, repo layout.
+- [`docs/architecture.md`](docs/architecture.md) -- the runtime model, design rules, command set, repo layout, ports.
 - [`docs/protocol.md`](docs/protocol.md) -- the wire protocol, the `@event` vocabulary, and the federation contract (for ports and clients).
-- [`docs/worlds.md`](docs/worlds.md) -- authoring a world / content packs (`WORLD_MAP`).
-- [`docs/federation.md`](docs/federation.md) -- the federation design and trust model.
-- [`docs/deploy.md`](docs/deploy.md) -- running, deploying to Cloudflare, and the GitHub Actions CI/CD pipeline.
+- [`docs/worlds.md`](docs/worlds.md) -- authoring a world / content packs (`WORLD_MAP`) or joining via a port.
+- [`docs/federation.md`](docs/federation.md) -- the federation design and trust model (three live worlds).
+- [`docs/deploy.md`](docs/deploy.md) -- Cloudflare Workers deploy, Rust Choir (Go fleet), CI/CD, health probes.
 - [`CLAUDE.md`](CLAUDE.md) -- conventions and the working method for contributors.
 - [`CHANGELOG.md`](CHANGELOG.md) -- version history.
+
+Related (outside this repo):
+
+- [`hollow-grid-go`](https://github.com/SkyPhusion/hollow-grid-go) -- Rust Choir Go world server.
+- [`mud-bots`](https://github.com/SkyPhusion/mud-bots) -- LLM agents and load soak (`hollow-grid/bot.mjs`).
+
+## Who this is for
+
+Game developers, MUD authors, and agent builders who want a persistent multiplayer text world on Cloudflare's free tier, with optional federation and AI inhabitants.
+
+## Links
+
+- **Play now:** [hollow.skyphusion.org](https://hollow.skyphusion.org) · [dustfall.skyphusion.org](https://dustfall.skyphusion.org)
+- **Writeup:** [The Hollow Grid on skyphusion.net](https://skyphusion.net/blog/the-hollow-grid/)
+- **AI players:** [mud-bots](https://github.com/skyphusion-labs/mud-bots)
+- **Go port:** [hollow-grid-go](https://github.com/skyphusion-labs/hollow-grid-go)
+- **Skyphusion Labs:** https://skyphusion.org · **Org:** https://github.com/skyphusion-labs
 
 ## License
 

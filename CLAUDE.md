@@ -12,7 +12,7 @@ Deep docs live in `docs/`; this file is the contributor working-method and conve
 - `docs/protocol.md` -- the language-agnostic wire protocol, the full `@event` vocabulary, and the federation contract (`GridHubApi`). The spec a port or client builds against.
 - `docs/worlds.md` -- authoring a world / content packs: the `WORLD_MAP` selectors and the shared anchor ids a new world must reuse.
 - `docs/federation.md` -- the federation design and trust model (the trust hardening is the main open item; the build trusts all worlds today).
-- `docs/deploy.md` -- the three Workers, env vars, npm scripts, Cloudflare deploy (custom domains), and the GitHub Actions CI/CD pipeline.
+- `docs/deploy.md` -- the three Workers, env vars, npm scripts, Cloudflare deploy, Rust Choir (Go fleet), and the GitHub Actions CI/CD pipeline.
 
 ## Commands
 
