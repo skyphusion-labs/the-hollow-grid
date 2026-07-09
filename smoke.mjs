@@ -116,13 +116,17 @@ async function pickRace(client, race = "human") {
 
 // Name login that handles resume (keeper names like skyphusion skip the race menu).
 async function loginWithRace(client, name, race = "human") {
+  if (typeof name !== "string" || name.length < 2) {
+    throw new Error("loginWithRace requires a character name");
+  }
   client.send(name);
   await sleep(500);
-  if (/choose what you are/i.test(client.raw())) {
+  // Resume logins emit room.info immediately; brand-new characters get the race
+  // menu first ("WHAT you are" -- not the old "choose what you are" substring).
+  if (!client.last("room.info")) {
     await pickRace(client, race);
-  } else {
-    await sleep(400);
   }
+  await waitFor(client.last, "room.info", (d) => !!d?.id, 5000);
 }
 
 // `war` does an async hub RPC, so its reply can outlast a fixed wait under CI
@@ -837,12 +841,11 @@ MED.sock.close();
 // --- The cache: asynchronous mutual aid --------------------------------------
 // One traveler leaves gold for whoever comes next; another, arriving later,
 // finds and gathers it. Give-only generosity across time, not concurrency.
+const caName = "giver_" + Math.random().toString(36).slice(2, 6);
 const CA = mkClient();
 await CA.open();
 await sleep(200);
-CA.send("giver_" + Math.random().toString(36).slice(2, 6));
-await sleep(400);
-await loginWithRace(CA);
+await loginWithRace(CA, caName);
 await waitFor(CA.last, "char.vitals", (d) => (d?.gold ?? 0) >= 8, 5000);
 const caGold = CA.last("char.vitals")?.data.gold ?? 0;
 const caMoral = CA.last("char.affects")?.data.morality ?? 0;
@@ -854,12 +857,11 @@ check((caVit?.data.gold ?? caGold) === caGold - 8, "caching aid costs you the go
 check((caAff?.data.morality ?? caMoral) === caMoral + 2, "leaving aid for a stranger you'll never meet is a kindness the world counts");
 CA.sock.close();
 
+const cbName = "taker_" + Math.random().toString(36).slice(2, 6);
 const CB = mkClient();
 await CB.open();
 await sleep(200);
-CB.send("taker_" + Math.random().toString(36).slice(2, 6));
-await sleep(400);
-await loginWithRace(CB); // logs in at the nexus, where the aid was cached
+await loginWithRace(CB, cbName); // logs in at the nexus, where the aid was cached
 const nc = await waitFor(CB.last, "node.cache", (d) => (d?.gold ?? 0) >= 8, 5000);
 check(!!nc && nc.data.gold >= 8, "arriving where aid was cached, the node announces it (node.cache)");
 const cbGold = CB.last("char.vitals")?.data.gold ?? 0;
@@ -1283,9 +1285,7 @@ GY.sock.close();
 const K = mkClient();
 await K.open();
 await sleep(200);
-K.send("skyphusion"); // a keeper name (matches the dev ADMINS var)
-await sleep(400);
-await loginWithRace(K);
+await loginWithRace(K, "skyphusion"); // keeper name (matches the dev ADMINS var)
 K.send("gridstats");
 const ks = await waitFor(K.last, "grid.ledger_stats", (d) => typeof d?.total === "number" && Array.isArray(d?.kinds), 5000);
 check(!!ks && typeof ks.data.total === "number" && Array.isArray(ks.data.kinds), "gridstats reports the keeper the ledger composition (grid.ledger_stats)");
