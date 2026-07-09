@@ -8,6 +8,17 @@
 // (or `npm run smoke`). Requires Node 24+ for the global WebSocket.
 const URL = process.env.MUD_URL ?? "ws://localhost:8787/ws";
 
+// Derive the world name from env or the /health probe so the suite works against
+// fleet Go worlds (Rust Choir) as well as the TS reference world.
+const HTTP_BASE_FOR_NAME = URL.replace(/^ws/, "http").replace(/\/ws$/, "");
+const WORLD_NAME =
+  process.env.WORLD_NAME ??
+  (await fetch(`${HTTP_BASE_FOR_NAME}/health`)
+    .then((r) => r.json())
+    .then((b) => b.world)
+    .catch(() => null)) ??
+  "The Hollow Grid";
+
 const events = []; // parsed structured events: { name, data }
 function ingest(text) {
   for (const line of String(text).split(/\r?\n/)) {
@@ -157,17 +168,18 @@ await sleep(500);
 await pickRace(ws); // pick a race -> server logs us in and shows the start room
 
 // Logging in already emits the start room + vitals via the structured channel.
-const room = last("room.info");
+// Remote fleet worlds need a poll: WSS latency can exceed a fixed sleep.
+const room = await waitFor(last, "room.info", (d) => d?.id === "nexus", 5000);
 check(!!room, "received a room.info event on login");
 check(room?.data.id === "nexus", `start room id is "nexus" (got ${JSON.stringify(room?.data.id)})`);
 check(Array.isArray(room?.data.exits) && room.data.exits.includes("north"), "room.info lists exits, including north");
 
-const vit = last("char.vitals");
+const vit = await waitFor(last, "char.vitals", (d) => (d?.hp ?? 0) > 0 && (d?.maxHp ?? 0) > 0, 5000);
 check(!!vit, "received a char.vitals event");
 check(vit?.data.hp > 0 && vit?.data.maxHp > 0, `vitals carry hp/maxHp (${vit?.data.hp}/${vit?.data.maxHp})`);
 check(vit?.data.inCombat === false, "vitals report inCombat=false out of combat");
 
-const aff = last("char.affects");
+const aff = await waitFor(last, "char.affects", (d) => d?.faction != null, 5000);
 check(!!aff, "received a char.affects event");
 check(
   aff?.data.addiction === 0 && aff?.data.faction === "none" && aff?.data.resisted === false,
@@ -252,7 +264,7 @@ check(titleSeen, "title shows after your name in who");
 // It is a hub RPC and the cross-world seeds can lag startup, so poll (re-issuing)
 // until an other-world trace appears instead of trusting a single fixed wait.
 let fed = null;
-const hasOtherWorld = (e) => e?.data.traces?.some((t) => t.world && t.world !== "The Hollow Grid");
+const hasOtherWorld = (e) => e?.data.traces?.some((t) => t.world && t.world !== WORLD_NAME);
 for (let attempt = 0; attempt < 3 && !hasOtherWorld(fed); attempt++) {
   ws.send("ping all");
   for (let i = 0; i < 10; i++) {
@@ -438,7 +450,8 @@ A.send("north"); // nexus -> Scrap Market, where the recruiter rallies
 await sleep(500);
 A.send("join"); // side with the Cinder Front
 await sleep(700);
-check(A.last("char.affects")?.data.faction === "front", "joining brands the player Cinder Front (char.affects)");
+const affFront = await waitFor(A.last, "char.affects", (d) => d?.faction === "front", 4000);
+check(affFront?.data.faction === "front", "joining brands the player Cinder Front (char.affects)");
 
 // The honest market remembers, and shuts them out.
 A.send("sell scrap");
@@ -806,8 +819,10 @@ const caGold = CA.last("char.vitals")?.data.gold ?? 0;
 const caMoral = CA.last("char.affects")?.data.morality ?? 0;
 CA.send("cache 8"); // leave 8 gold at the nexus for a stranger
 await sleep(500);
-check(CA.last("char.vitals")?.data.gold === caGold - 8, "caching aid costs you the gold you give away (cache <n>)");
-check((CA.last("char.affects")?.data.morality ?? 0) === caMoral + 2, "leaving aid for a stranger you'll never meet is a kindness the world counts");
+const caVit = await waitFor(CA.last, "char.vitals", (d) => (d?.gold ?? caGold) === caGold - 8, 4000);
+const caAff = await waitFor(CA.last, "char.affects", (d) => (d?.morality ?? 0) === caMoral + 2, 4000);
+check((caVit?.data.gold ?? caGold) === caGold - 8, "caching aid costs you the gold you give away (cache <n>)");
+check((caAff?.data.morality ?? caMoral) === caMoral + 2, "leaving aid for a stranger you'll never meet is a kindness the world counts");
 CA.sock.close();
 
 const CB = mkClient();
@@ -854,7 +869,7 @@ await sleep(400);
 await pickRace(WH);
 WH.send("who");
 await sleep(600);
-const whoEv = WH.last("grid.who");
+const whoEv = await waitFor(WH.last, "grid.who", (d) => Array.isArray(d?.players) && d.players.some((p) => p.name === whName && p.here === true), 5000);
 check(
   !!whoEv && Array.isArray(whoEv.data.players) && whoEv.data.players.some((p) => p.name === whName && p.here === true),
   "who lists you among the survivors online on this world (grid.who)",
@@ -1207,8 +1222,8 @@ TR.send("worlds");
 await sleep(600);
 const wl = TR.last("grid.worlds");
 check(
-  !!wl && wl.data.worlds.some((w) => w.here && w.id === "The Hollow Grid"),
-  "the registry lists this world (The Hollow Grid) and marks it as where you are",
+  !!wl && wl.data.worlds.some((w) => w.here && w.id === WORLD_NAME),
+  `the registry lists this world (${WORLD_NAME}) and marks it as where you are`,
 );
 check(
   !!wl && wl.data.worlds.some((w) => /Saltreach/i.test(w.id)),
@@ -1265,7 +1280,7 @@ await sleep(400);
 await pickRace(NK);
 NK.send("gridstats");
 await sleep(400);
-check(!NK.last("grid.ledger_stats") && /keeper of the Grid/i.test(NK.raw()), "gridstats is refused to a non-keeper");
+check(!NK.last("grid.ledger_stats")?.data?.total && /keeper of the Grid/i.test(NK.raw()), "gridstats is refused to a non-keeper");
 NK.sock.close();
 
 // --- Phase 11c: the rite of remembrance (witness) ----------------------------
