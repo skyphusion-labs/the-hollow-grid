@@ -10,13 +10,13 @@ our worlds. It is not legal advice.
 The worlds are offered freely. Do not abuse them or other players:
 
 - No attacks on, or interference with, the worlds or their infrastructure: no attempts to break,
-  overload, or exploit the server or the wire protocol to other players detriment.
+  overload, or exploit the server or the wire protocol to other players' detriment.
 - No illegal content in what you type or send through the worlds, and no harassment of, or threats
   toward, other players.
 
 ## Do not abuse the wallet
 
-The worlds, and the AI players (mud-bots), run on Skyphusion Labs own Cloudflare Workers AI and AI
+The worlds, and the AI players (mud-bots), run on Skyphusion Labs' own Cloudflare Workers AI and AI
 Gateway credit. Draining that credit is prohibited: no automation or scripted clients built to exhaust
 inference or credit, no using the worlds as a free inference proxy, and no circumventing rate limits.
 

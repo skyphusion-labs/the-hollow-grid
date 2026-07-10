@@ -3,7 +3,7 @@
 **Scope.** This notice applies only to the public worlds that Skyphusion Labs operates at
 hollow.skyphusion.org and dustfall.skyphusion.org. The Hollow Grid is self-hosted software
 (AGPL-3.0-only). If you run your own world, this notice does not apply: you are its operator (see the
-project README). This is a plain-language description of how the hosted worlds handle data. It is not
+project's README). This is a plain-language description of how the hosted worlds handle data. It is not
 legal advice.
 
 ## We do not want your data
