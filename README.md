@@ -161,3 +161,12 @@ Game developers, MUD authors, and agent builders who want a persistent multiplay
 ## License
 
 [AGPL-3.0-only](LICENSE) (C) 2026 Conrad Rockenhaus. Run a modified version as a network service and the AGPL has you offer users the corresponding source. Releases tagged before this 2026 relicense remain available under the MIT license they were published under.
+
+## Hosted worlds: privacy and acceptable use
+
+The Hollow Grid is self-hosted software; run your own world and you are the operator (see License).
+Separately, Skyphusion Labs operates the public worlds at **hollow.skyphusion.org** and
+**dustfall.skyphusion.org** under their own instance notices:
+[privacy](docs/legal/INSTANCE-PRIVACY.md) (we do not retain your data; your character record is
+erasable) and [acceptable use](docs/legal/INSTANCE-ACCEPTABLE-USE.md) (good-faith play, no wallet
+abuse). These bind players on the hosted worlds only, not self-hosters.
