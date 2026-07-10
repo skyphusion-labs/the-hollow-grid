@@ -22,6 +22,8 @@ export function playPage(worldName: string): string {
   header { display: flex; justify-content: space-between; align-items: center;
     padding: 8px 14px; border-bottom: 1px solid #18181f; font-size: 13px; color: #6aa3a3; }
   header .net { color: #4a4a55; }
+  header a.policies { color: #6aa3a3; text-decoration: none; }
+  header a.policies:hover { text-decoration: underline; }
   #status { font-size: 12px; color: #888; }
   #term { flex: 1; min-height: 0; padding: 6px 4px 4px 10px; }
   .term-wrap { height: 100%; }
@@ -30,7 +32,7 @@ export function playPage(worldName: string): string {
 <body>
 <div id="wrap">
   <header>
-    <span>${title} <span class="net">:: the hollow grid network</span></span>
+    <span>${title} <span class="net">:: the hollow grid network</span> <a class="net policies" href="https://github.com/skyphusion-labs/the-hollow-grid/tree/main/docs/legal" target="_blank" rel="noopener">policies</a></span>
     <span id="status">connecting&hellip;</span>
   </header>
   <div id="term" class="term-wrap"></div>
