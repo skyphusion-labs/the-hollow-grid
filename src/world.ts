@@ -876,6 +876,7 @@ export class World extends DurableObject<Env> {
           "Survive, explore, and decide what the wastes make of you. Nothing here is hidden",
           "behind secret commands: type 'help' (or '?') for everything you can do, and 'look'",
           "to take in your surroundings. The exits of each room are always listed.",
+          "(Skyphusion runs these worlds: type 'policies' for the privacy and acceptable-use notices.)",
         ].join(NL) + NL,
       );
     } else {
@@ -1175,6 +1176,12 @@ export class World extends DurableObject<Env> {
       case "help":
       case "?":
         ws.send(this.help());
+        this.prompt(ws);
+        break;
+      case "policies":
+      case "privacy":
+      case "terms":
+        ws.send(this.policies());
         this.prompt(ws);
         break;
       case "quit":
@@ -4211,6 +4218,19 @@ export class World extends DurableObject<Env> {
     this.prompt(ws);
   }
 
+  private policies(): string {
+    return (
+      [
+        "",
+        "Skyphusion Labs operates these hosted worlds. Two plain-language notices govern the",
+        "hosted instance (they do not bind you if you run your own world):",
+        "  Privacy notice   https://github.com/skyphusion-labs/the-hollow-grid/blob/main/docs/legal/INSTANCE-PRIVACY.md",
+        "  Acceptable use   https://github.com/skyphusion-labs/the-hollow-grid/blob/main/docs/legal/INSTANCE-ACCEPTABLE-USE.md",
+        "Not legal advice.",
+      ].join(NL) + NL
+    );
+  }
+
   private help(): string {
     return (
       [
@@ -4270,6 +4290,7 @@ export class World extends DurableObject<Env> {
         "  shelter               answer the transit-hub distress call: get the stranded survivors to safety",
         "  gridstats / gridprune read or flush the Grid ledger's ambient noise (keepers only)",
         "  world / weather       check the time of day and the weather",
+        "  policies              privacy + acceptable-use notices (hosted worlds)",
         "  help (?)              this message",
         "  quit                  disconnect",
       ].join(NL) + NL
