@@ -68,6 +68,10 @@ async function waitForRaw(client, pred, ms = 4000, mark = 0) {
   }
 }
 
+// CONNECT_TIMEOUT_MS: a stalled wss dial (neither open nor error) used to hang the
+// whole suite; race open() against this so a stuck edge fails loudly (the-hollow-grid#65).
+const CONNECT_TIMEOUT_MS = Number(process.env.SMOKE_CONNECT_TIMEOUT_MS ?? 15000);
+
 // A self-contained client (its own event buffer), for multi-player checks.
 // Defaults to the primary world; pass a url to talk to another world on the Grid
 // (e.g. the second deployment, Dustfall, in the cross-world federation phase).
@@ -94,10 +98,43 @@ function mkClient(url = URL) {
     sock,
     last: (n) => [...evs].reverse().find((e) => e.name === n),
     raw: () => text,
-    open: () =>
+    open: (timeoutMs = CONNECT_TIMEOUT_MS) =>
       new Promise((res, rej) => {
-        sock.addEventListener("open", res);
-        sock.addEventListener("error", rej);
+        if (sock.readyState === WebSocket.OPEN) {
+          res();
+          return;
+        }
+        if (sock.readyState === WebSocket.CLOSED) {
+          rej(new Error(`connection to ${url} failed (socket closed before open)`));
+          return;
+        }
+        let settled = false;
+        const cleanup = () => {
+          clearTimeout(timer);
+          sock.removeEventListener("open", onOpen);
+          sock.removeEventListener("error", onError);
+        };
+        const finish = (fn, arg) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          fn(arg);
+        };
+        const onOpen = () => finish(res, undefined);
+        const onError = () => finish(rej, new Error(`connection to ${url} failed`));
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          try {
+            sock.close();
+          } catch {
+            /* ignore */
+          }
+          rej(new Error(`connection to ${url} timed out`));
+        }, timeoutMs);
+        sock.addEventListener("open", onOpen);
+        sock.addEventListener("error", onError);
       }),
     send: (c) => sock.send(c),
   };
