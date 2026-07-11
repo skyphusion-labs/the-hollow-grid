@@ -1237,9 +1237,12 @@ await pickRace(GY);
 // gridcast goes into the shared hub; the relay reaches every world's players on
 // the alarm tick (so it round-trips through the federation backend, not locally).
 GX.send("gridcast the wastes are listening");
-await sleep(10000); // ~3 alarm ticks: the relay round-trips through the backend
-// Worker over a service binding, so give it margin for the tick + RPC latency.
-const heard = GY.last("comm.gridcast");
+const heard = await waitFor(
+  GY.last,
+  "comm.gridcast",
+  (d) => d?.from === gxName && /wastes are listening/i.test(d?.text ?? ""),
+  12000,
+);
 check(
   heard?.data.from === gxName && /wastes are listening/i.test(heard?.data.text ?? ""),
   "gridcast crosses the Grid and reaches another player via the hub (comm.gridcast)",
@@ -1309,8 +1312,15 @@ TR.send("trav" + Math.floor(tideAfter)); // any fresh name
 await sleep(600);
 await pickRace(TR);
 TR.send("worlds");
-await sleep(600);
-const wl = TR.last("grid.worlds");
+const wl = await waitFor(
+  TR.last,
+  "grid.worlds",
+  (d) =>
+    Array.isArray(d?.worlds) &&
+    d.worlds.some((w) => w.here && w.id === WORLD_NAME) &&
+    d.worlds.some((w) => /Saltreach/i.test(w.id)),
+  5000,
+);
 check(
   !!wl && wl.data.worlds.some((w) => w.here && w.id === WORLD_NAME),
   `the registry lists this world (${WORLD_NAME}) and marks it as where you are`,
