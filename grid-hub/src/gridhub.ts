@@ -58,6 +58,12 @@ export class GridHub extends DurableObject<Env> {
       // Negative = the Cinder Front ascendant; positive = the free folk rising.
       sql.exec("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v INTEGER NOT NULL)");
       sql.exec("INSERT OR IGNORE INTO meta (k, v) VALUES ('tide', 0)");
+      sql.exec("INSERT OR IGNORE INTO meta (k, v) VALUES ('cast_seq', 0)");
+      const castHead = sql.exec<{ m: number }>("SELECT COALESCE(MAX(id), 0) AS m FROM casts").one().m;
+      const castSeq = sql.exec<{ v: number }>("SELECT v FROM meta WHERE k = 'cast_seq'").one().v;
+      if (castHead > castSeq) {
+        sql.exec("UPDATE meta SET v = ? WHERE k = 'cast_seq'", castHead);
+      }
 
       // Cross-world chat: a shared feed worlds poll and relay to their players.
       sql.exec(`
@@ -294,7 +300,11 @@ export class GridHub extends DurableObject<Env> {
   // --- Cross-world chat ------------------------------------------------------
   gridcast(world: string, sender: string, text: string): void {
     const sql = this.ctx.storage.sql;
-    sql.exec("INSERT INTO casts (world, sender, text, at) VALUES (?, ?, ?, ?)", world, sender, text, Date.now());
+    // Stable monotonic ids: trim deletes rows but the poll cursor must never
+    // see ids reset (worlds advance last_cast to the hub head on cold start).
+    sql.exec("UPDATE meta SET v = v + 1 WHERE k = 'cast_seq'");
+    const id = sql.exec<{ v: number }>("SELECT v FROM meta WHERE k = 'cast_seq'").one().v;
+    sql.exec("INSERT INTO casts (id, world, sender, text, at) VALUES (?, ?, ?, ?, ?)", id, world, sender, text, Date.now());
     sql.exec("DELETE FROM casts WHERE id NOT IN (SELECT id FROM casts ORDER BY id DESC LIMIT 200)");
   }
 
