@@ -642,19 +642,25 @@ await sleep(500);
 await pickRace(OBS);
 
 // A non-admin cannot broadcast.
+const obsWallMark = OBS.raw().length;
 OBS.send("wall I should not be able to do this");
-await sleep(400);
-check(/keeper of the Grid/i.test(OBS.raw()), "a non-admin is refused the wall command");
+check(
+  await waitForRaw(OBS, (t) => /keeper of the Grid/i.test(t), 5000, obsWallMark),
+  "a non-admin is refused the wall command",
+);
 
 // A keeper's announcement reaches every player, wherever they are.
 const beacon = "The Grid stirs in the deep dark.";
+const obsAnnMark = OBS.raw().length;
 ADMIN.send("wall " + beacon);
-await sleep(500);
-check(OBS.raw().includes(beacon), "an admin wall reaches another player anywhere in the world");
-check(/GRID BROADCAST/i.test(OBS.raw()), "the announcement is clearly marked as a server broadcast");
-const ann = OBS.last("server.announce");
 check(
-  ann?.data.text === beacon && ann?.data.from === "skyphusion",
+  await waitForRaw(OBS, (t) => t.includes(beacon), 5000, obsAnnMark),
+  "an admin wall reaches another player anywhere in the world",
+);
+check(/GRID BROADCAST/i.test(OBS.raw().slice(obsAnnMark)), "the announcement is clearly marked as a server broadcast");
+const ann = await waitFor(OBS.last, "server.announce", (e) => e?.data?.text === beacon && e?.data?.from === "skyphusion", 5000);
+check(
+  !!ann && ann.data.text === beacon && ann.data.from === "skyphusion",
   "the announcement is on the structured channel (server.announce)",
 );
 
@@ -832,10 +838,13 @@ await sleep(200);
 MED.send("medchk_" + Math.random().toString(36).slice(2, 6));
 await sleep(400);
 await pickRace(MED);
+await waitFor(MED.last, "room.info", (d) => !!d?.id, 5000);
 const nhmark = MED.raw().length;
 MED.send("treat"); // the start room has no medic
-await sleep(400);
-check(/no medic here/i.test(MED.raw().slice(nhmark)), "the waystation medic treats you only at the waystation, nowhere else");
+check(
+  await waitForRaw(MED, (t) => /no medic here/i.test(t), 5000, nhmark),
+  "the waystation medic treats you only at the waystation, nowhere else",
+);
 MED.sock.close();
 
 // --- The cache: asynchronous mutual aid --------------------------------------
@@ -1308,9 +1317,13 @@ await sleep(200);
 NK.send("nokeeper_" + Math.random().toString(36).slice(2, 7));
 await sleep(400);
 await pickRace(NK);
+await waitFor(NK.last, "room.info", (d) => !!d?.id, 5000);
 NK.send("gridstats");
-await sleep(400);
-check(!NK.last("grid.ledger_stats")?.data?.total && /keeper of the Grid/i.test(NK.raw()), "gridstats is refused to a non-keeper");
+check(
+  !NK.last("grid.ledger_stats")?.data?.total &&
+    (await waitForRaw(NK, (t) => /keeper of the Grid/i.test(t), 5000)),
+  "gridstats is refused to a non-keeper",
+);
 NK.sock.close();
 
 // --- Phase 11c: the rite of remembrance (witness) ----------------------------
@@ -1327,8 +1340,7 @@ VG.send(wname);
 await sleep(400);
 await pickRace(VG);
 VG.send("witness");
-await sleep(500);
-const roll = VG.last("grid.fallen");
+const roll = await waitFor(VG.last, "grid.fallen", (e) => Array.isArray(e?.data?.fallen), 5000);
 check(!!roll && Array.isArray(roll.data.fallen), "witness reads the Grid's memorial roll of the fallen (grid.fallen)");
 const vgSelfMark = VG.raw().length;
 VG.send("witness " + wname); // a vigil for yourself is refused
