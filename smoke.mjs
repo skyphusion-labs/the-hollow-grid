@@ -658,7 +658,7 @@ check(
   "an admin wall reaches another player anywhere in the world",
 );
 check(/GRID BROADCAST/i.test(OBS.raw().slice(obsAnnMark)), "the announcement is clearly marked as a server broadcast");
-const ann = await waitFor(OBS.last, "server.announce", (e) => e?.data?.text === beacon && e?.data?.from === "skyphusion", 5000);
+const ann = await waitFor(OBS.last, "server.announce", (d) => d?.text === beacon && d?.from === "skyphusion", 5000);
 check(
   !!ann && ann.data.text === beacon && ann.data.from === "skyphusion",
   "the announcement is on the structured channel (server.announce)",
@@ -1340,7 +1340,7 @@ VG.send(wname);
 await sleep(400);
 await pickRace(VG);
 VG.send("witness");
-const roll = await waitFor(VG.last, "grid.fallen", (e) => Array.isArray(e?.data?.fallen), 5000);
+const roll = await waitFor(VG.last, "grid.fallen", (d) => Array.isArray(d?.fallen), 5000);
 check(!!roll && Array.isArray(roll.data.fallen), "witness reads the Grid's memorial roll of the fallen (grid.fallen)");
 const vgSelfMark = VG.raw().length;
 VG.send("witness " + wname); // a vigil for yourself is refused
