@@ -6,6 +6,28 @@ features (a new system, command, or content set). The earliest entries are
 reconstructed: versioning was adopted at v0.4.1, so v0.1.0 through v0.4.0 are
 backfilled from git history rather than tagged at the time.
 
+## v0.30.0
+
+Found live by the Sonnet-resident bot experiment (mud-bots#39): character
+creation's race menu existed only in prose, so machine players parsed wording
+and fell back to random picks, dice, not choices, on any port with its own
+voice. The ruling (#63): divergent prose over a convergent protocol; a world's
+menu wording stays its own, the offered options become machine-readable.
+
+### Added
+- **`char.create` event.** The creation race menu (and every re-show after an
+  invalid answer) now also emits `@event char.create {"races": [display names],
+  "prompt": "race"}`. Prose is unspecified by design; the event is the contract.
+- **Conformance assertion.** `smoke.mjs` asserts creation emits `char.create`
+  with a non-empty races list, making machine-readable creation a federation
+  conformance requirement while phrasing never is.
+
+### Code
+- `src/world.ts`: `sendRacePrompt()` emits `char.create`.
+- `docs/protocol.md`: login-flow diagram + event vocabulary + the prose-vs-
+  options rule; `CLAUDE.md` vocabulary list updated.
+- `smoke.mjs`: the two creation-channel checks. Typecheck clean.
+
 ## v0.29.9
 
 Found by mud-bot load testing on hollow and dustfall (combat-stuck JSONL: fights

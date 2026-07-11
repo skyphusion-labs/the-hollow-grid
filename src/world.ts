@@ -823,7 +823,9 @@ export class World extends DurableObject<Env> {
   }
 
   // The character-creation race menu. Race is the axis the Cinder Front judges
-  // you on, so onboarding names it plainly.
+  // you on, so onboarding names it plainly. The offered options also ride the
+  // structured channel (char.create): the prose is a world's own voice, but a
+  // machine player must never have to parse wording to learn what it may choose.
   private sendRacePrompt(ws: WebSocket, name: string): void {
     const lines = [
       "",
@@ -835,6 +837,7 @@ export class World extends DurableObject<Env> {
       "Type a number or a name.",
     ];
     ws.send(lines.join(NL) + NL);
+    this.event(ws, "char.create", { races: RACE_ORDER.map((id) => RACES[id].name), prompt: "race" });
   }
 
   // Second step of onboarding: the player picks a race, which becomes a federated,

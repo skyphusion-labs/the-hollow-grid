@@ -191,7 +191,17 @@ const HTTP_BASE = URL.replace(/^ws/, "http").replace(/\/ws$/, "");
 const name = "smoke_" + Math.random().toString(36).slice(2, 8);
 await sleep(300);
 ws.send(name); // choose a name -> server prompts for a race
-await sleep(500);
+
+// The creation menu must ride the structured channel (char.create): the menu's
+// prose is a world's own voice, the offered options are protocol (#63). This is
+// the conformance assertion a port is held to; its wording never is.
+const cc = await waitFor(last, "char.create", (d) => Array.isArray(d?.races) && d.races.length > 0, 5000);
+check(
+  Array.isArray(cc?.data.races) && cc.data.races.length > 0,
+  `creation emits char.create with a non-empty races list (got ${JSON.stringify(cc?.data.races ?? null)})`,
+);
+check(cc?.data.prompt === "race", `char.create names the prompt "race" (got ${JSON.stringify(cc?.data.prompt)})`);
+
 await pickRace(ws); // pick a race -> server logs us in and shows the start room
 
 // Logging in already emits the start room + vitals via the structured channel.
