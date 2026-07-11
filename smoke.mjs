@@ -1331,14 +1331,18 @@ check(
 );
 const trMark = TR.raw().length;
 TR.send("travel Saltreach");
-await sleep(700);
-const trv = TR.last("grid.travel");
+const trv = await waitFor(
+  TR.last,
+  "grid.travel",
+  (d) => d?.to === "Saltreach" && /saltreach\.example/i.test(d?.url ?? ""),
+  5000,
+);
 check(
   trv?.data.to === "Saltreach" && /saltreach\.example/i.test(trv?.data.url ?? ""),
   "travel routes you to a seeded sibling world and hands you its address (grid.travel)",
 );
 check(
-  /routes you toward Saltreach/i.test(TR.raw().slice(trMark)),
+  await waitForRaw(TR, (t) => /routes you toward Saltreach/i.test(t), 5000, trMark),
   "travel checkpoints you and hands you off across the Grid",
 );
 
