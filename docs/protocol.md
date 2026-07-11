@@ -36,6 +36,7 @@ client connects to /ws
 server  -> the login banner (ANSI) + "By what name are you known, wanderer?"
 client  -> <name>                 (first line sent = the character name)
 server  -> the race menu          (ONLY for a brand-new character; see below)
+        -> @event char.create {"races":["Human",...], "prompt":"race"}
 client  -> <race>                 (a number 1..N or a race name)
 server  -> welcome line + the starting room (prose + @event room.info ...)
 ... play: client sends command lines, server replies with prose + @event ...
@@ -48,6 +49,12 @@ There is no password in the reference build; identity is name-based and federate
 Race is a federated, canonical attribute, chosen once, that follows you across
 worlds; the hub carries it as an opaque string so any world may define its own
 races. (See docs/worlds.md.)
+
+The menu's PROSE is a world's own voice and is deliberately unspecified; the
+OPTIONS are protocol. Whenever the creation menu is shown (or re-shown after an
+invalid answer), the world must also emit `char.create` with the offered race
+display names, so a machine player never parses wording to learn its choices.
+Conformance requires the event, never the phrasing (see the event vocabulary).
 
 ### Health endpoints (plain HTTP)
 
@@ -98,6 +105,7 @@ drift (any new player-affecting state must be emitted here).
 | --- | --- | --- |
 | `room.info` | a room is shown (`sendRoom`) | `id, name, exits[], mobs[], items[], players[]` |
 | `room.actions` | with each room view, and on `sense`/`actions` | `actions[] {verb, label, kind, valence?}` |
+| `char.create` | the creation race menu is (re)shown | `races[]` (offered display names), `prompt` (`"race"`) |
 | `char.vitals` | room view + whenever vitals change | `hp, maxHp, level, xp, gold, room, inCombat, poisoned, position` |
 | `char.affects` | room view + when standing changes | `morality, addiction, faction, resisted, race, ashsworn` |
 | `char.equipment` | on equip/remove/`eq` | `weapon, head, body, hands, feet` |
