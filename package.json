@@ -38,6 +38,6 @@
     "@vitest/coverage-istanbul": "^4.1.9",
     "@vitest/coverage-v8": "^4.1.10",
     "typescript": "^7",
-    "wrangler": "^4.108.0"
+    "wrangler": "^4.110.0"
   }
 }
