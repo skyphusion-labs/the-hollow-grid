@@ -137,6 +137,7 @@ Full design and the five rules a port should keep: `docs/architecture.md`.
 - [`docs/protocol.md`](docs/protocol.md) -- the wire protocol, the `@event` vocabulary, and the federation contract (for ports and clients).
 - [`docs/worlds.md`](docs/worlds.md) -- authoring a world / content packs (`WORLD_MAP`) or joining via a port.
 - [`docs/federation.md`](docs/federation.md) -- the federation design and trust model (three live worlds).
+- [`docs/federation-open-admission.md`](docs/federation-open-admission.md) -- open-admission + hub authority design (not yet built; #62).
 - [`docs/deploy.md`](docs/deploy.md) -- Cloudflare Workers deploy, Rust Choir (Go fleet), CI/CD, health probes.
 - [`CLAUDE.md`](CLAUDE.md) -- conventions and the working method for contributors.
 - [`CHANGELOG.md`](CHANGELOG.md) -- version history.

@@ -224,3 +224,9 @@ same shape as two separate production deployments binding one backend Worker.
 - **Load testing:** LLM agents (`mud-bots`, GHCR `mud-bots-hg`) soak all three
   worlds; findings in `*-bugs.jsonl`. Operational layout:
   `fleet-chezmoi/system/stacks/biafra/mud-bots/README.md`.
+- **Open admission / third-party members:** design only — see
+  [`docs/federation-open-admission.md`](federation-open-admission.md)
+  (the-hollow-grid#62). Conformance is the admission floor; hub authority,
+  home-world character commits, rate/bounds validation, and revoke/quarantine
+  must land before any automated public join path. Do not implement open
+  admission without Conrad's GO.
