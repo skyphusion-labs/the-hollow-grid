@@ -364,6 +364,12 @@ export class GridHub extends DurableObject<Env> {
 
   // --- The world registry: travel destinations -------------------------------
   register(world: string, url: string): void {
+    // An empty URL is an explicit withdrawal. This keeps temporary/test nodes
+    // and intentionally retired worlds from becoming permanent dead routes.
+    if (!url.trim()) {
+      this.ctx.storage.sql.exec("DELETE FROM worlds WHERE id = ?", world);
+      return;
+    }
     this.ctx.storage.sql.exec(
       "INSERT INTO worlds (id, url, last_seen) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET url = excluded.url, last_seen = excluded.last_seen",
       world,

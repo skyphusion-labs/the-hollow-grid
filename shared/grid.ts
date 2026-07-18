@@ -81,7 +81,8 @@ export interface GridHubApi {
   loadCharacter(name: string): Promise<CharSheet>;
   commitCharacter(name: string, p: CharSheet): Promise<CharSheet>;
 
-  // The world registry (travel destinations).
+  // The world registry (travel destinations). Registering an empty URL
+  // explicitly withdraws the world from the registry.
   register(world: string, url: string): Promise<void>;
   listWorlds(): Promise<WorldInfo[]>;
 
