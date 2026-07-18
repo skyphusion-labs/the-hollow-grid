@@ -221,7 +221,7 @@ The methods a world may call on the hub:
 | `gridcast(world, sender, text)` | post cross-world chat |
 | `castsSince(sinceId, limit)` | pull new cross-world chat since an id |
 | `loadCharacter(name)` / `commitCharacter(name, sheet)` | the canonical, federated character |
-| `register(world, url)` / `listWorlds()` | the world registry (travel destinations) |
+| `register(world, url)` / `listWorlds()` | the world registry (travel destinations); an empty URL withdraws the world |
 | `recordFallen(world, name, room, at)` / `recentFallen(limit)` | the memorial roll: record/read the fallen (for `witness`) |
 | `recordRescued(world, name, savedBy, at)` / `recentRescued(limit)` | the rescued roll: record/read the saved (for `saved`) |
 | `reportPresence(world, entries, at)` / `presence(maxAgeMs)` | federated presence: heartbeat a world's roster / read the live cross-world roster (for `who`) |
