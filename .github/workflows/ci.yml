@@ -1,14 +1,18 @@
 name: ci
 
-# Full CI (typecheck + smoke + deploy) on a GitHub-hosted runner.
+# Full CI (typecheck + smoke) on a GitHub-hosted runner on every push/PR; deploy
+# to Cloudflare ONLY on a pushed version tag (v*), NEVER on a bare push to main.
+# An ordinary merge must not redeploy the live worlds. Cut a SemVer tag to ship:
+# git tag -a v0.1.0 -m "..." && git push origin v0.1.0.
 # Mirrors the former Jenkinsfile pipeline: typecheck -> smoke (two wrangler dev
-# servers + smoke suite) -> wrangler deploy on main. This repo is PUBLIC, so a
+# servers + smoke suite) -> wrangler deploy. This repo is PUBLIC, so a
 # self-hosted runner would let fork PRs execute on a build box; GitHub-hosted is
 # fork-safe and removes the single-runner SPOF. typecheck.yml stays as the
 # always-on hosted typecheck path.
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
 
@@ -91,10 +95,26 @@ jobs:
             dev-dustfall.log
           if-no-files-found: ignore
 
-      - name: Deploy (main only)
-        if: github.ref == 'refs/heads/main'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        # npm run deploy chains hub -> hollow -> dustfall in the correct order.
+  # DEPLOY GATE: runs ONLY for a pushed version tag (refs/tags/v*), after ci
+  # passes. A push/merge to main runs `ci` above but never reaches here, so no
+  # merge can redeploy the live worlds.
+  deploy:
+    needs: ci
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      # npm run deploy chains hub -> hollow -> dustfall in the correct order.
+      - name: Deploy
         run: npm run deploy
