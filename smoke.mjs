@@ -454,11 +454,14 @@ check(last("char.vitals")?.data.inCombat === true, "vitals show inCombat=true mi
 // resolves on the world tick, and re-swinging must NOT reset the timer (the
 // footgun an Opus 4.8 session hit -- 40s of zero damage while spamming attack).
 const reatkmark = raw.length;
-events.length = 0;
+const eventsBeforeReatk = events.length;
 ws.send("attack rat");
 await sleep(500);
 check(/already locked/i.test(raw.slice(reatkmark)), "re-attacking the mob you're already fighting is a no-op (no swing-timer reset)");
-check(!last("combat.start"), "a redundant attack does not restart combat (no second combat.start)");
+check(
+  !events.slice(eventsBeforeReatk).some((e) => e.name === "combat.start"),
+  "a redundant attack does not restart combat (no second combat.start)",
+);
 
 // Combat resolves on a ~3s alarm tick; wait for the kill (12 HP / ~5 dmg a round).
 let ended = last("combat.end");

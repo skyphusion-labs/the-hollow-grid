@@ -737,6 +737,25 @@ export class World extends DurableObject<Env> {
 
   // ---- login ---------------------------------------------------------------
 
+  private async mergeHubIdentity(session: Session): Promise<void> {
+    try {
+      const canon = await this.env.GRID.loadCharacter(session.name);
+      session.level = canon.level;
+      session.xp = canon.xp;
+      session.gold = canon.gold;
+      session.faction = canon.faction as Session["faction"];
+      session.morality = canon.morality;
+      session.title = canon.title;
+      session.race = canon.race || session.race;
+      session.ashsworn = canon.ashsworn || session.ashsworn;
+      this.ctx.waitUntil(
+        this.env.GRID.register(this.worldName, this.env.WORLD_URL ?? "ws://localhost:8787/ws").catch(() => {}),
+      );
+    } catch {
+      /* hub unreachable; local sheet stands alone */
+    }
+  }
+
   private async handleLogin(ws: WebSocket, raw: string): Promise<void> {
     const name = raw.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 16);
     if (name.length < 2) {
@@ -748,26 +767,56 @@ export class World extends DurableObject<Env> {
       return;
     }
 
+    const row = this.ctx.storage.sql
+      .exec<{
+        room: string;
+        hp: number;
+        max_hp: number;
+        xp: number;
+        level: number;
+        poisoned: number;
+        gold: number;
+        morality: number;
+        addiction: number;
+        faction: string;
+        resisted: number;
+        title: string;
+        race: string;
+        ashsworn: number;
+        strayed: number;
+        redeemed: number;
+      }>(
+        "SELECT room, hp, max_hp, xp, level, poisoned, gold, morality, addiction, faction, resisted, title, race, ashsworn, strayed, redeemed FROM players WHERE name = ?",
+        name,
+      )
+      .toArray()[0];
+
+    let room = row?.room ?? START_ROOM;
+    if (!this.rooms[room]) room = START_ROOM;
+
     const session: Session = {
       name,
-      room: START_ROOM,
-      hp: BASE_HP,
-      maxHp: BASE_HP,
-      xp: 0,
-      level: 1,
+      room,
+      hp: row?.hp ?? BASE_HP,
+      maxHp: row?.max_hp ?? BASE_HP,
+      xp: row?.xp ?? 0,
+      level: row?.level ?? 1,
       target: null,
-      poisoned: false,
-      gold: 20,
-      morality: 0,
-      addiction: 0,
-      faction: "none",
-      race: "",
-      ashsworn: false,
-      resisted: false,
-      title: "",
-      strayed: false,
-      redeemed: false,
+      poisoned: !!row?.poisoned,
+      gold: row?.gold ?? 20,
+      morality: row?.morality ?? 0,
+      addiction: row?.addiction ?? 0,
+      faction: (row?.faction as Session["faction"]) ?? "none",
+      race: row?.race ?? "",
+      ashsworn: !!row?.ashsworn,
+      resisted: !!row?.resisted,
+      title: row?.title ?? "",
+      strayed: !!row?.strayed,
+      redeemed: !!row?.redeemed,
     };
+    ws.serializeAttachment(session);
+
+    await this.mergeHubIdentity(session);
     ws.serializeAttachment(session);
 
     if (this.isAdmin(name)) {
@@ -805,11 +854,11 @@ export class World extends DurableObject<Env> {
       )
       .toArray()[0];
 
-    if (row?.race) {
+    if (row?.race || session.race) {
       session.loginPhase = "passphrase";
       ws.serializeAttachment(session);
       ws.send(
-        (row.secret_hash
+        (row?.secret_hash
           ? "By what secret phrase do you prove yourself?"
           : "Choose a secret phrase only you will know. The Grid will ask for it when you return.") + NL,
       );
@@ -852,8 +901,45 @@ export class World extends DurableObject<Env> {
       .toArray()[0];
 
     if (!row?.race) {
-      ws.send("The wastes do not recognize that path. Choose what you are first." + NL);
-      this.sendRacePrompt(ws, session.name);
+      if (!session.race) {
+        ws.send("The wastes do not recognize that path. Choose what you are first." + NL);
+        this.sendRacePrompt(ws, session.name);
+        return;
+      }
+      try {
+        const hash = await hashPassphrase(raw);
+        this.persistPlayer(session);
+        this.ctx.storage.sql.exec("UPDATE players SET secret_hash = ? WHERE name = ?", hash, session.name);
+      } catch {
+        ws.send("That phrase will not do. Choose one at least eight characters long." + NL);
+        return;
+      }
+      session.loginPhase = undefined;
+      const fresh = this.ctx.storage.sql
+        .exec<{
+          room: string;
+          hp: number;
+          max_hp: number;
+          xp: number;
+          level: number;
+          poisoned: number;
+          gold: number;
+          morality: number;
+          addiction: number;
+          faction: string;
+          resisted: number;
+          title: string;
+          race: string;
+          ashsworn: number;
+          strayed: number;
+          redeemed: number;
+          secret_hash: string;
+        }>(
+          "SELECT room, hp, max_hp, xp, level, poisoned, gold, morality, addiction, faction, resisted, title, race, ashsworn, strayed, redeemed, secret_hash FROM players WHERE name = ?",
+          session.name,
+        )
+        .toArray()[0];
+      if (fresh) await this.loadSessionFromRow(ws, session, fresh, true);
       return;
     }
 
