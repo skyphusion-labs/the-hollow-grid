@@ -1,3 +1,12 @@
+## v0.30.3
+
+### Security (K3 audit #86)
+
+- Grid Hub: per-world key auth on mutating RPC (`GRID_WORLD_KEYS` / `GRID_WORLD_KEY`).
+- Character commit lease: only the world that claimed the lease at login may `commitCharacter`.
+- Presence writes require authenticated world identity; unknown worlds rejected.
+- Gold delta cap tightened to 10,000 per commit (was 1,000,000).
+
 ## v0.30.2
 
 ### Security (K3 audit #85)

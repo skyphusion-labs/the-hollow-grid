@@ -1,2 +1,4 @@
 # Local dev only: copy to grid-hub/.dev.vars (gitignored) for POST /rpc testing.
 GRID_RPC_TOKEN=dev-grid-rpc-token
+# Optional per-world keys (JSON). When unset, mutating RPC skips world-key checks (dev only).
+# GRID_WORLD_KEYS={"The Hollow Grid":"dev-hollow-key","Dustfall":"dev-dustfall-key"}

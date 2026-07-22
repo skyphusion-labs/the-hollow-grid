@@ -78,12 +78,13 @@ export interface GridHubApi {
   castsSince(sinceId: number, limit: number): Promise<GridCast[]>;
 
   // Canonical identity (the character that follows you across worlds).
-  loadCharacter(name: string): Promise<CharSheet>;
-  commitCharacter(name: string, p: CharSheet): Promise<CharSheet>;
+  loadCharacter(name: string, world: string): Promise<CharSheet>;
+  commitCharacter(name: string, world: string, p: CharSheet, worldKey?: string): Promise<CharSheet>;
+  claimCharacterLease(name: string, world: string, worldKey?: string): Promise<void>;
 
   // The world registry (travel destinations). Registering an empty URL
   // explicitly withdraws the world from the registry.
-  register(world: string, url: string): Promise<void>;
+  register(world: string, url: string, worldKey?: string): Promise<void>;
   listWorlds(): Promise<WorldInfo[]>;
 
   // Maintenance: the ledger's composition by kind, and a bounded purge. A purge
@@ -106,6 +107,11 @@ export interface GridHubApi {
   // Federation-wide presence: a world reports its current roster (replacing its
   // previous one) on a heartbeat; anyone reads the live roster across all worlds.
   // Stale entries (a world that went quiet) age out via the maxAgeMs filter.
-  reportPresence(world: string, entries: Array<{ name: string; regard: string; title: string }>, at: number): Promise<void>;
+  reportPresence(
+    world: string,
+    entries: Array<{ name: string; regard: string; title: string }>,
+    at: number,
+    worldKey?: string,
+  ): Promise<void>;
   presence(maxAgeMs: number): Promise<Presence[]>;
 }
