@@ -45,19 +45,24 @@ const TEST_PASSPHRASE = process.env.TEST_PASSPHRASE ?? "smoke-test-passphrase";
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "ci-test-admin-token";
 
 // K3 audit #85: login may require keeper token (ADMINS names) then secret phrase.
-async function completeAuth(client) {
-  await sleep(400);
-  const tail = () => {
-    const raw = client.raw();
-    return raw.slice(Math.max(0, raw.length - 1200));
-  };
-  if (/keeper'?s token/i.test(tail())) {
-    client.send(ADMIN_TOKEN);
-    await sleep(400);
-  }
-  if (/secret phrase/i.test(tail())) {
-    client.send(TEST_PASSPHRASE);
-    await sleep(400);
+async function completeAuth(client, ms = 6000) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    const tail = client.raw().slice(Math.max(0, client.raw().length - 1600));
+    if (/keeper'?s token/i.test(tail)) {
+      client.send(ADMIN_TOKEN);
+      await sleep(400);
+      continue;
+    }
+    if (/secret phrase/i.test(tail)) {
+      client.send(TEST_PASSPHRASE);
+      await sleep(400);
+      continue;
+    }
+    if (/WHAT you are|choose what you are|char\.create|"id":"nexus"/i.test(tail)) {
+      return;
+    }
+    await sleep(150);
   }
 }
 
