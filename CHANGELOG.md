@@ -4,6 +4,7 @@
 
 - Bcrypt secret-phrase login; legacy characters migrate on next login.
 - Keeper names require `ADMIN_TOKEN` at login (keeper commands gated on `keeperAuthed`).
+- Hub identity merge restored on login so federation resume works across worlds.
 
 ## v0.30.1
 
