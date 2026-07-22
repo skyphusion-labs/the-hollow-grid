@@ -9,6 +9,7 @@ import { bannerFor } from "./banner";
 import { ambientTransmission, listenTransmission, personalize, type Transmission } from "./transmissions";
 import { dreamFor, personalDream } from "./dreams";
 import { signFor, moodForTide } from "./signs";
+import { hashPassphrase, verifyPassphrase, verifyAdminToken } from "./auth/passphrase";
 
 const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 
@@ -224,6 +225,7 @@ export class World extends DurableObject<Env> {
         "ashsworn INTEGER NOT NULL DEFAULT 0",
         "strayed INTEGER NOT NULL DEFAULT 0",
         "redeemed INTEGER NOT NULL DEFAULT 0",
+        "secret_hash TEXT NOT NULL DEFAULT ''",
       ]) {
         try {
           sql.exec(`ALTER TABLE players ADD COLUMN ${col}`);
@@ -452,6 +454,14 @@ export class World extends DurableObject<Env> {
 
     if (!session || !session.name) {
       await this.handleLogin(ws, line);
+      return;
+    }
+    if (session.loginPhase === "admin") {
+      await this.handleAdminLogin(ws, session, line);
+      return;
+    }
+    if (session.loginPhase === "passphrase") {
+      await this.handlePassphraseLogin(ws, session, line);
       return;
     }
     if (!session.race) {
@@ -727,6 +737,25 @@ export class World extends DurableObject<Env> {
 
   // ---- login ---------------------------------------------------------------
 
+  private async mergeHubIdentity(session: Session): Promise<void> {
+    try {
+      const canon = await this.env.GRID.loadCharacter(session.name);
+      session.level = canon.level;
+      session.xp = canon.xp;
+      session.gold = canon.gold;
+      session.faction = canon.faction as Session["faction"];
+      session.morality = canon.morality;
+      session.title = canon.title;
+      session.race = canon.race || session.race;
+      session.ashsworn = canon.ashsworn || session.ashsworn;
+      this.ctx.waitUntil(
+        this.env.GRID.register(this.worldName, this.env.WORLD_URL ?? "ws://localhost:8787/ws").catch(() => {}),
+      );
+    } catch {
+      /* hub unreachable; local sheet stands alone */
+    }
+  }
+
   private async handleLogin(ws: WebSocket, raw: string): Promise<void> {
     const name = raw.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 16);
     if (name.length < 2) {
@@ -774,7 +803,7 @@ export class World extends DurableObject<Env> {
       level: row?.level ?? 1,
       target: null,
       poisoned: !!row?.poisoned,
-      gold: row?.gold ?? 20, // new characters wake with a few coins
+      gold: row?.gold ?? 20,
       morality: row?.morality ?? 0,
       addiction: row?.addiction ?? 0,
       faction: (row?.faction as Session["faction"]) ?? "none",
@@ -785,41 +814,216 @@ export class World extends DurableObject<Env> {
       strayed: !!row?.strayed,
       redeemed: !!row?.redeemed,
     };
+    ws.serializeAttachment(session);
 
-    // Federation phase 3: the canonical identity (progression + standing) lives
-    // in the Grid Hub, so a character is the same person in every world. Load it
-    // over the local shared fields; keep local-only state (room, hp, inventory).
-    // If the hub is down, the local sheet stands -- federation is never required.
+    await this.mergeHubIdentity(session);
+    ws.serializeAttachment(session);
+
+    if (this.isAdmin(name)) {
+      session.loginPhase = "admin";
+      ws.serializeAttachment(session);
+      ws.send("The Grid remembers keepers. Speak the keeper's token:" + NL);
+      return;
+    }
+
+    await this.beginPassphraseOrRace(ws, session);
+  }
+
+  private async handleAdminLogin(ws: WebSocket, session: Session, raw: string): Promise<void> {
+    if (!this.isAdmin(session.name)) {
+      ws.close(1008, "auth failed");
+      return;
+    }
+    const token = this.env.ADMIN_TOKEN ?? "";
+    if (!verifyAdminToken(raw, token)) {
+      ws.send("The Grid does not recognize you as keeper." + NL);
+      ws.close(1008, "auth failed");
+      return;
+    }
+    session.keeperAuthed = true;
+    session.loginPhase = undefined;
+    ws.serializeAttachment(session);
+    await this.beginPassphraseOrRace(ws, session);
+  }
+
+  private async beginPassphraseOrRace(ws: WebSocket, session: Session): Promise<void> {
+    const row = this.ctx.storage.sql
+      .exec<{ race: string; secret_hash: string }>(
+        "SELECT race, secret_hash FROM players WHERE name = ?",
+        session.name,
+      )
+      .toArray()[0];
+
+    if (row?.race || session.race) {
+      session.loginPhase = "passphrase";
+      ws.serializeAttachment(session);
+      ws.send(
+        (row?.secret_hash
+          ? "By what secret phrase do you prove yourself?"
+          : "Choose a secret phrase only you will know. The Grid will ask for it when you return.") + NL,
+      );
+      return;
+    }
+
+    this.sendRacePrompt(ws, session.name);
+  }
+
+  private async handlePassphraseLogin(ws: WebSocket, session: Session, raw: string): Promise<void> {
+    if (this.isAdmin(session.name) && !session.keeperAuthed) {
+      ws.send("The Grid remembers keepers. Speak the keeper's token:" + NL);
+      session.loginPhase = "admin";
+      ws.serializeAttachment(session);
+      return;
+    }
+    const row = this.ctx.storage.sql
+      .exec<{
+        room: string;
+        hp: number;
+        max_hp: number;
+        xp: number;
+        level: number;
+        poisoned: number;
+        gold: number;
+        morality: number;
+        addiction: number;
+        faction: string;
+        resisted: number;
+        title: string;
+        race: string;
+        ashsworn: number;
+        strayed: number;
+        redeemed: number;
+        secret_hash: string;
+      }>(
+        "SELECT room, hp, max_hp, xp, level, poisoned, gold, morality, addiction, faction, resisted, title, race, ashsworn, strayed, redeemed, secret_hash FROM players WHERE name = ?",
+        session.name,
+      )
+      .toArray()[0];
+
+    if (!row?.race) {
+      if (!session.race) {
+        ws.send("The wastes do not recognize that path. Choose what you are first." + NL);
+        this.sendRacePrompt(ws, session.name);
+        return;
+      }
+      try {
+        const hash = await hashPassphrase(raw);
+        this.persistPlayer(session);
+        this.ctx.storage.sql.exec("UPDATE players SET secret_hash = ? WHERE name = ?", hash, session.name);
+      } catch {
+        ws.send("That phrase will not do. Choose one at least eight characters long." + NL);
+        return;
+      }
+      session.loginPhase = undefined;
+      const fresh = this.ctx.storage.sql
+        .exec<{
+          room: string;
+          hp: number;
+          max_hp: number;
+          xp: number;
+          level: number;
+          poisoned: number;
+          gold: number;
+          morality: number;
+          addiction: number;
+          faction: string;
+          resisted: number;
+          title: string;
+          race: string;
+          ashsworn: number;
+          strayed: number;
+          redeemed: number;
+          secret_hash: string;
+        }>(
+          "SELECT room, hp, max_hp, xp, level, poisoned, gold, morality, addiction, faction, resisted, title, race, ashsworn, strayed, redeemed, secret_hash FROM players WHERE name = ?",
+          session.name,
+        )
+        .toArray()[0];
+      if (fresh) await this.loadSessionFromRow(ws, session, fresh, true);
+      return;
+    }
+
+    const storedHash = row.secret_hash ?? "";
+    const isNew = !storedHash;
+    if (!storedHash) {
+      try {
+        const hash = await hashPassphrase(raw);
+        this.ctx.storage.sql.exec("UPDATE players SET secret_hash = ? WHERE name = ?", hash, session.name);
+      } catch {
+        ws.send("That phrase will not do. Choose one at least eight characters long." + NL);
+        return;
+      }
+    } else if (!(await verifyPassphrase(raw, storedHash))) {
+      ws.send("The Grid does not recognize that phrase." + NL);
+      ws.close(1008, "auth failed");
+      return;
+    }
+
+    session.loginPhase = undefined;
+    await this.loadSessionFromRow(ws, session, row, isNew);
+  }
+
+  private async loadSessionFromRow(
+    ws: WebSocket,
+    session: Session,
+    row: {
+      room: string;
+      hp: number;
+      max_hp: number;
+      xp: number;
+      level: number;
+      poisoned: number;
+      gold: number;
+      morality: number;
+      addiction: number;
+      faction: string;
+      resisted: number;
+      title: string;
+      race: string;
+      ashsworn: number;
+      strayed: number;
+      redeemed: number;
+    },
+    isNew: boolean,
+  ): Promise<void> {
+    let room = row.room ?? START_ROOM;
+    if (!this.rooms[room]) room = START_ROOM;
+
+    session.room = room;
+    session.hp = row.hp ?? BASE_HP;
+    session.maxHp = row.max_hp ?? BASE_HP;
+    session.xp = row.xp ?? 0;
+    session.level = row.level ?? 1;
+    session.poisoned = !!row.poisoned;
+    session.gold = row.gold ?? 20;
+    session.morality = row.morality ?? 0;
+    session.addiction = row.addiction ?? 0;
+    session.faction = (row.faction as Session["faction"]) ?? "none";
+    session.race = row.race ?? "";
+    session.ashsworn = !!row.ashsworn;
+    session.resisted = !!row.resisted;
+    session.title = row.title ?? "";
+    session.strayed = !!row.strayed;
+    session.redeemed = !!row.redeemed;
+
     try {
-      const canon = await this.env.GRID.loadCharacter(name);
+      const canon = await this.env.GRID.loadCharacter(session.name);
       session.level = canon.level;
       session.xp = canon.xp;
       session.gold = canon.gold;
       session.faction = canon.faction as Session["faction"];
       session.morality = canon.morality;
       session.title = canon.title;
-      session.race = canon.race || session.race; // the federated, canonical race
-      session.ashsworn = canon.ashsworn || session.ashsworn; // the permanent brand
-      // Advertise this world to the federation registry (keeps its entry live).
-      // waitUntil so the RPC survives this handler returning -- across the service
-      // binding a bare fire-and-forget can be cancelled before it lands.
+      session.race = canon.race || session.race;
+      session.ashsworn = canon.ashsworn || session.ashsworn;
       this.ctx.waitUntil(
         this.env.GRID.register(this.worldName, this.env.WORLD_URL ?? "ws://localhost:8787/ws").catch(() => {}),
       );
     } catch {
-      /* hub unreachable; the local character stands on its own */
+      /* hub unreachable */
     }
 
-    // Brand new to the federation: no race yet. Choose one before entering the
-    // world. The name is set but race is "", so the next line routes here too
-    // (see webSocketMessage / handleRaceChoice).
-    if (!session.race) {
-      ws.serializeAttachment(session);
-      this.sendRacePrompt(ws, name);
-      return;
-    }
-
-    this.finishSpawn(ws, session, !row);
+    this.finishSpawn(ws, session, isNew);
   }
 
   // The character-creation race menu. Race is the axis the Cinder Front judges
@@ -856,7 +1060,11 @@ export class World extends DurableObject<Env> {
     // character that predates the race system keeps what it already had.
     const existing = this.ctx.storage.sql.exec("SELECT 1 FROM players WHERE name = ?", session.name).toArray()[0];
     this.commitIdentity(session); // persist the race to the hub now, so it sticks
-    this.finishSpawn(ws, session, !existing);
+    ws.serializeAttachment(session);
+    this.persistPlayer(session);
+    session.loginPhase = "passphrase";
+    ws.serializeAttachment(session);
+    ws.send("Choose a secret phrase only you will know. The Grid will ask for it when you return." + NL);
   }
 
   // Shared spawn: applies racial max HP, persists, welcomes, and drops the player
@@ -2912,7 +3120,7 @@ export class World extends DurableObject<Env> {
   // `wall <message>`: a server-wide announcement that reaches every player,
   // wherever they are -- for keepers (the ADMINS var) only.
   private wall(ws: WebSocket, s: Session, arg: string): void {
-    if (!this.isAdmin(s.name)) {
+    if (!this.isAdmin(s.name) || !s.keeperAuthed) {
       this.line(ws, "Only a keeper of the Grid can broadcast across the wastes.");
       this.prompt(ws);
       return;
@@ -2940,7 +3148,7 @@ export class World extends DurableObject<Env> {
 
   // `gridstats`: a keeper reads the shared ledger's composition by kind.
   private async gridStats(ws: WebSocket, s: Session): Promise<void> {
-    if (!this.isAdmin(s.name)) {
+    if (!this.isAdmin(s.name) || !s.keeperAuthed) {
       this.line(ws, "Only a keeper of the Grid can read its deep memory.");
       this.prompt(ws);
       return;
@@ -2962,7 +3170,7 @@ export class World extends DurableObject<Env> {
   // after counts. The purgeable set is fixed in code, so even a claimed keeper
   // name cannot use this to erase oaths, deaths, kindnesses, or inscriptions.
   private async gridPrune(ws: WebSocket, s: Session): Promise<void> {
-    if (!this.isAdmin(s.name)) {
+    if (!this.isAdmin(s.name) || !s.keeperAuthed) {
       this.line(ws, "Only a keeper of the Grid can tend its deep memory.");
       this.prompt(ws);
       return;

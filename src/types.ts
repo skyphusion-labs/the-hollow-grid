@@ -12,6 +12,8 @@ export interface Env {
   GRID: GridHubApi;
   /** Comma-separated player names allowed to `wall` (server-wide announcements). */
   ADMINS?: string;
+  /** Required when logging in with a name listed in ADMINS (keeper gate). */
+  ADMIN_TOKEN?: string;
   /** This world's public WebSocket URL, advertised to the federation registry. */
   WORLD_URL?: string;
   /**
@@ -37,6 +39,10 @@ export interface Env {
 export interface Session {
   /** empty string until the player has chosen a name */
   name: string;
+  /** set during login until passphrase or keeper token is verified */
+  loginPhase?: "admin" | "passphrase";
+  /** true after keeper token verified at login (ADMINS names only) */
+  keeperAuthed?: boolean;
   /** room id the player is currently in */
   room: string;
   /** current / maximum hit points */

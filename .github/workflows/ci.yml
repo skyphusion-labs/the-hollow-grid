@@ -67,9 +67,11 @@ jobs:
           # GHA job isolation is the process boundary: both servers die when the
           # job ends, the same guarantee the Jenkinsfile's docker wrapper gave.
           ./node_modules/.bin/wrangler dev -c wrangler.jsonc -c grid-hub/wrangler.jsonc \
-            --var WORLD_URL:ws://localhost:8787/ws > dev-hollow.log 2>&1 &
+            --var WORLD_URL:ws://localhost:8787/ws \
+            --var ADMIN_TOKEN:ci-test-admin-token > dev-hollow.log 2>&1 &
           ./node_modules/.bin/wrangler dev -c worlds/dustfall.jsonc \
-            --var WORLD_URL:ws://localhost:8788/ws > dev-dustfall.log 2>&1 &
+            --var WORLD_URL:ws://localhost:8788/ws \
+            --var ADMIN_TOKEN:ci-test-admin-token > dev-dustfall.log 2>&1 &
 
           # Wait for dustfall (8788) -- once it answers, both are up (same logic
           # as ci-qa.sh, inlined to avoid the docker wrapper).

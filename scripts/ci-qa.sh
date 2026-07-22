@@ -34,9 +34,11 @@ rm -rf .wrangler grid-hub/.wrangler worlds/.wrangler
 # WORLD_URL is forced back to localhost so the registry/travel assertions in the
 # smoke suite hold against the local dev servers.
 ./node_modules/.bin/wrangler dev -c wrangler.jsonc -c grid-hub/wrangler.jsonc \
-  --var WORLD_URL:ws://localhost:8787/ws > dev-hollow.log 2>&1 &
+  --var WORLD_URL:ws://localhost:8787/ws \
+  --var ADMIN_TOKEN:ci-test-admin-token > dev-hollow.log 2>&1 &
 ./node_modules/.bin/wrangler dev -c worlds/dustfall.jsonc \
-  --var WORLD_URL:ws://localhost:8788/ws > dev-dustfall.log 2>&1 &
+  --var WORLD_URL:ws://localhost:8788/ws \
+  --var ADMIN_TOKEN:ci-test-admin-token > dev-dustfall.log 2>&1 &
 
 echo "=== wait for Dustfall's port (up to ~120s) ==="
 # Dustfall (8788) is the later/dependent world; once it answers, both are up.

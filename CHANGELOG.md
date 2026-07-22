@@ -1,3 +1,11 @@
+## v0.30.2
+
+### Security (K3 audit #85)
+
+- Bcrypt secret-phrase login; legacy characters migrate on next login.
+- Keeper names require `ADMIN_TOKEN` at login (keeper commands gated on `keeperAuthed`).
+- Hub identity merge restored on login so federation resume works across worlds.
+
 ## v0.30.1
 
 Release sync bump (2026-07-21). No functional changes in this tag.

@@ -41,6 +41,33 @@ const last = (name) => [...events].reverse().find((e) => e.name === name);
 // developer runs stay fast. waitFor() below is the per-check belt to this braces.
 const SLOW = Math.max(1, Number(process.env.SMOKE_SLOW ?? 1));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms * SLOW));
+const TEST_PASSPHRASE = process.env.TEST_PASSPHRASE ?? "smoke-test-passphrase";
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "ci-test-admin-token";
+
+// K3 audit #85: login may require keeper token (ADMINS names) then secret phrase.
+async function completeAuth(client, ms = 6000) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    const tail = client.raw().slice(Math.max(0, client.raw().length - 1600));
+    if (/keeper'?s token/i.test(tail)) {
+      client.send(ADMIN_TOKEN);
+      await sleep(400);
+      continue;
+    }
+    if (/secret phrase/i.test(tail)) {
+      client.send(TEST_PASSPHRASE);
+      await sleep(400);
+      continue;
+    }
+    if (/@event room\.info|"id":"nexus"/i.test(tail)) {
+      return;
+    }
+    if (/WHAT you are/i.test(tail)) {
+      return;
+    }
+    await sleep(150);
+  }
+}
 
 // Poll until the latest `name` event satisfies `pred`, or time out. A fixed
 // sleep races the server under CI load (two wrangler dev processes + Dustfall on
@@ -147,7 +174,16 @@ function mkClient(url = URL) {
 // processed the name before the race line arrives. Works for the raw `ws` and for
 // mkClient() clients (both expose .send).
 async function pickRace(client, race = "human") {
-  client.send(race);
+  if (typeof client.raw === "function") {
+    await completeAuth(client);
+  }
+  const send = typeof client.send === "function" ? client.send.bind(client) : (c) => client.send(c);
+  send(race);
+  await sleep(400);
+  // Brand-new characters choose a race first, then set a secret phrase (#85).
+  if (typeof client.raw === "function") {
+    await completeAuth(client);
+  }
   await sleep(400);
 }
 
@@ -158,12 +194,23 @@ async function loginWithRace(client, name, race = "human") {
   }
   client.send(name);
   await sleep(500);
+  await completeAuth(client);
   // Resume logins emit room.info immediately; brand-new characters get the race
   // menu first ("WHAT you are" -- not the old "choose what you are" substring).
   if (!client.last("room.info")) {
     await pickRace(client, race);
   }
   await waitFor(client.last, "room.info", (d) => !!d?.id, 5000);
+}
+
+// Returning character: name + keeper token / passphrase only (no race menu).
+async function loginResume(client, name) {
+  if (typeof name !== "string" || name.length < 2) {
+    throw new Error("loginResume requires a character name");
+  }
+  client.send(name);
+  await completeAuth(client);
+  await waitFor(client.last, "room.info", (d) => !!d?.id, 8000);
 }
 
 // `war` does an async hub RPC, so its reply can outlast a fixed wait under CI
@@ -227,7 +274,8 @@ const HTTP_BASE = URL.replace(/^ws/, "http").replace(/\/ws$/, "");
 // character's position -- a test must control its own fixtures.
 const name = "smoke_" + Math.random().toString(36).slice(2, 8);
 await sleep(300);
-ws.send(name); // choose a name -> server prompts for a race
+ws.send(name); // choose a name -> passphrase (if any) then race menu
+await completeAuth({ send: (c) => ws.send(c), raw: () => raw });
 
 // The creation menu must ride the structured channel (char.create): the menu's
 // prose is a world's own voice, the offered options are protocol (#63). This is
@@ -239,7 +287,7 @@ check(
 );
 check(cc?.data.prompt === "race", `char.create names the prompt "race" (got ${JSON.stringify(cc?.data.prompt)})`);
 
-await pickRace(ws); // pick a race -> server logs us in and shows the start room
+await pickRace({ send: (c) => ws.send(c), raw: () => raw }); // pick a race -> server logs us in and shows the start room
 
 // Logging in already emits the start room + vitals via the structured channel.
 // Remote fleet worlds need a poll: WSS latency can exceed a fixed sleep.
@@ -406,11 +454,14 @@ check(last("char.vitals")?.data.inCombat === true, "vitals show inCombat=true mi
 // resolves on the world tick, and re-swinging must NOT reset the timer (the
 // footgun an Opus 4.8 session hit -- 40s of zero damage while spamming attack).
 const reatkmark = raw.length;
-events.length = 0;
+const eventsBeforeReatk = events.length;
 ws.send("attack rat");
 await sleep(500);
 check(/already locked/i.test(raw.slice(reatkmark)), "re-attacking the mob you're already fighting is a no-op (no swing-timer reset)");
-check(!last("combat.start"), "a redundant attack does not restart combat (no second combat.start)");
+check(
+  !events.slice(eventsBeforeReatk).some((e) => e.name === "combat.start"),
+  "a redundant attack does not restart combat (no second combat.start)",
+);
 
 // Combat resolves on a ~3s alarm tick; wait for the kill (12 HP / ~5 dmg a round).
 let ended = last("combat.end");
@@ -420,7 +471,8 @@ for (let i = 0; i < 8 && !ended; i++) {
   const stuck = last("char.vitals")?.data.inCombat === true;
   check(i < 7 || !stuck, "combat resolves within ~20s (inCombat must not stay true after alarm ticks)");
 }
-check(!!last("combat.round"), "combat produced at least one combat.round event");
+const combatRound = await waitFor(last, "combat.round", (d) => !!d, 3000);
+check(!!combatRound, "combat produced at least one combat.round event");
 check(ended?.data.result === "killed", `combat ended in a kill (result=${JSON.stringify(ended?.data.result)})`);
 
 const finalVit = last("char.vitals");
@@ -678,15 +730,11 @@ TV.sock.close();
 const ADMIN = mkClient();
 await ADMIN.open();
 await sleep(300);
-ADMIN.send("skyphusion"); // a keeper, per the ADMINS wrangler var
-await sleep(500);
-await pickRace(ADMIN);
+await loginWithRace(ADMIN, "skyphusion"); // keeper: ADMIN_TOKEN + passphrase + race
 const OBS = mkClient();
 await OBS.open();
 await sleep(300);
-OBS.send("watcher_" + Math.random().toString(36).slice(2, 7));
-await sleep(500);
-await pickRace(OBS);
+await loginWithRace(OBS, "watcher_" + Math.random().toString(36).slice(2, 7));
 
 // A non-admin cannot broadcast.
 const obsWallMark = OBS.raw().length;
@@ -709,6 +757,24 @@ const ann = await waitFor(OBS.last, "server.announce", (d) => d?.text === beacon
 check(
   !!ann && ann.data.text === beacon && ann.data.from === "skyphusion",
   "the announcement is on the structured channel (server.announce)",
+);
+
+// Keeper ledger maintenance while the hub is still warm (gridstats / gridprune).
+ADMIN.send("gridstats");
+const ksEarly = await waitFor(ADMIN.last, "grid.ledger_stats", (d) => typeof d?.total === "number" && Array.isArray(d?.kinds), 12000);
+check(
+  !!ksEarly && typeof ksEarly.data.total === "number" && Array.isArray(ksEarly.data.kinds),
+  "gridstats reports the keeper the ledger composition (grid.ledger_stats)",
+);
+ADMIN.send("gridprune");
+const kpEarly = await waitFor(ADMIN.last, "grid.ledger_pruned", (d) => typeof d?.removed === "number" && d.after <= d.before, 12000);
+check(
+  !!kpEarly && typeof kpEarly.data.removed === "number" && kpEarly.data.after <= kpEarly.data.before,
+  "gridprune flushes ambient traces and reports before/after counts (grid.ledger_pruned)",
+);
+check(
+  !!kpEarly && (kpEarly.data.kinds ?? []).every((r) => !["ghost", "passage", "recall"].includes(r.kind)),
+  "after a prune no ambient kinds (ghost/passage/recall) remain in the ledger",
 );
 
 ADMIN.sock.close();
@@ -1290,12 +1356,12 @@ await sleep(800);
 const GZ = mkClient();
 await GZ.open();
 await sleep(300);
-GZ.send(gxName);
-await sleep(600);
+await loginResume(GZ, gxName);
 GZ.send("whoami");
 await sleep(500);
+const gzId = await waitFor(GZ.last, "char.identity", (d) => d?.faction === "ally", 8000);
 check(
-  GZ.last("char.identity")?.data.faction === "ally",
+  gzId?.data.faction === "ally",
   "the identity persists in the hub and follows the character to a fresh login (one character, many worlds)",
 );
 GZ.sock.close();
@@ -1348,30 +1414,8 @@ check(
 
 GY.sock.close();
 
-// --- Phase 11b: keeper ledger maintenance (gridstats / gridprune) ------------
-// A keeper (the ADMINS var = "skyphusion" in dev) can read the shared ledger's
-// composition and flush the ambient-noise backlog. The purgeable set is fixed
-// in code (ghost/passage/recall), so a keeper cannot erase meaningful traces.
-const K = mkClient();
-await K.open();
-await sleep(200);
-await loginWithRace(K, "skyphusion"); // keeper name (matches the dev ADMINS var)
-K.send("gridstats");
-const ks = await waitFor(K.last, "grid.ledger_stats", (d) => typeof d?.total === "number" && Array.isArray(d?.kinds), 5000);
-check(!!ks && typeof ks.data.total === "number" && Array.isArray(ks.data.kinds), "gridstats reports the keeper the ledger composition (grid.ledger_stats)");
-K.send("gridprune");
-const kp = await waitFor(K.last, "grid.ledger_pruned", (d) => typeof d?.removed === "number" && d.after <= d.before, 6000);
-check(
-  !!kp && typeof kp.data.removed === "number" && kp.data.after <= kp.data.before,
-  "gridprune flushes ambient traces and reports before/after counts (grid.ledger_pruned)",
-);
-check(
-  !!kp && (kp.data.kinds ?? []).every((r) => !["ghost", "passage", "recall"].includes(r.kind)),
-  "after a prune no ambient kinds (ghost/passage/recall) remain in the ledger",
-);
-K.sock.close();
-
-// A non-keeper is refused and gets no maintenance event back.
+// --- Phase 11b: keeper ledger maintenance (non-keeper refusal) ------------
+// gridstats/gridprune happy path runs in phase 3 while the keeper is still live.
 const NK = mkClient();
 await NK.open();
 await sleep(200);
@@ -1567,12 +1611,12 @@ if (!dustfallUp) {
   // Log the SAME canonical character (gxName, committed as an "ally" in phase 10)
   // into the OTHER world. Its standing must arrive from the shared hub, proving
   // one identity spans two separate deployments -- the headline of federation.
-  D.send(gxName);
-  await sleep(800);
+  await loginResume(D, gxName);
   D.send("whoami");
-  await sleep(600);
+  await sleep(500);
+  const dIdentity = await waitFor(D.last, "char.identity", (d) => d?.faction === "ally", 10000);
   check(
-    D.last("char.identity")?.data.faction === "ally",
+    dIdentity?.data.faction === "ally",
     "one character spans two separate worlds: Dustfall loads gxName's canonical standing from the shared hub",
   );
 
