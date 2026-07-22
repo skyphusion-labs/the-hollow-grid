@@ -781,6 +781,10 @@ export class World extends DurableObject<Env> {
   }
 
   private async handleAdminLogin(ws: WebSocket, session: Session, raw: string): Promise<void> {
+    if (!this.isAdmin(session.name)) {
+      ws.close(1008, "auth failed");
+      return;
+    }
     const token = this.env.ADMIN_TOKEN ?? "";
     if (!verifyAdminToken(raw, token)) {
       ws.send("The Grid does not recognize you as keeper." + NL);
@@ -816,6 +820,12 @@ export class World extends DurableObject<Env> {
   }
 
   private async handlePassphraseLogin(ws: WebSocket, session: Session, raw: string): Promise<void> {
+    if (this.isAdmin(session.name) && !session.keeperAuthed) {
+      ws.send("The Grid remembers keepers. Speak the keeper's token:" + NL);
+      session.loginPhase = "admin";
+      ws.serializeAttachment(session);
+      return;
+    }
     const row = this.ctx.storage.sql
       .exec<{
         room: string;
