@@ -41,6 +41,25 @@ const last = (name) => [...events].reverse().find((e) => e.name === name);
 // developer runs stay fast. waitFor() below is the per-check belt to this braces.
 const SLOW = Math.max(1, Number(process.env.SMOKE_SLOW ?? 1));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms * SLOW));
+const TEST_PASSPHRASE = process.env.TEST_PASSPHRASE ?? "smoke-test-passphrase";
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "ci-test-admin-token";
+
+// K3 audit #85: login may require keeper token (ADMINS names) then secret phrase.
+async function completeAuth(client) {
+  await sleep(400);
+  const tail = () => {
+    const raw = client.raw();
+    return raw.slice(Math.max(0, raw.length - 1200));
+  };
+  if (/keeper'?s token/i.test(tail())) {
+    client.send(ADMIN_TOKEN);
+    await sleep(400);
+  }
+  if (/secret phrase/i.test(tail())) {
+    client.send(TEST_PASSPHRASE);
+    await sleep(400);
+  }
+}
 
 // Poll until the latest `name` event satisfies `pred`, or time out. A fixed
 // sleep races the server under CI load (two wrangler dev processes + Dustfall on
@@ -147,6 +166,7 @@ function mkClient(url = URL) {
 // processed the name before the race line arrives. Works for the raw `ws` and for
 // mkClient() clients (both expose .send).
 async function pickRace(client, race = "human") {
+  await completeAuth(client);
   client.send(race);
   await sleep(400);
 }
@@ -158,6 +178,7 @@ async function loginWithRace(client, name, race = "human") {
   }
   client.send(name);
   await sleep(500);
+  await completeAuth(client);
   // Resume logins emit room.info immediately; brand-new characters get the race
   // menu first ("WHAT you are" -- not the old "choose what you are" substring).
   if (!client.last("room.info")) {
@@ -227,7 +248,8 @@ const HTTP_BASE = URL.replace(/^ws/, "http").replace(/\/ws$/, "");
 // character's position -- a test must control its own fixtures.
 const name = "smoke_" + Math.random().toString(36).slice(2, 8);
 await sleep(300);
-ws.send(name); // choose a name -> server prompts for a race
+ws.send(name); // choose a name -> passphrase (if any) then race menu
+await completeAuth({ send: (c) => ws.send(c), raw: () => raw });
 
 // The creation menu must ride the structured channel (char.create): the menu's
 // prose is a world's own voice, the offered options are protocol (#63). This is
@@ -678,15 +700,11 @@ TV.sock.close();
 const ADMIN = mkClient();
 await ADMIN.open();
 await sleep(300);
-ADMIN.send("skyphusion"); // a keeper, per the ADMINS wrangler var
-await sleep(500);
-await pickRace(ADMIN);
+await loginWithRace(ADMIN, "skyphusion"); // keeper: ADMIN_TOKEN + passphrase + race
 const OBS = mkClient();
 await OBS.open();
 await sleep(300);
-OBS.send("watcher_" + Math.random().toString(36).slice(2, 7));
-await sleep(500);
-await pickRace(OBS);
+await loginWithRace(OBS, "watcher_" + Math.random().toString(36).slice(2, 7));
 
 // A non-admin cannot broadcast.
 const obsWallMark = OBS.raw().length;

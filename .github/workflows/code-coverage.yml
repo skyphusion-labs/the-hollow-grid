@@ -33,6 +33,7 @@ jobs:
         run: npm run dev & 
         env:
           WORLD_URL: ws://localhost:8787/ws
+          ADMIN_TOKEN: ci-test-admin-token
 
       # 2. Wait up to 30 seconds for port 8787 to become active before moving forward
       - name: Wait for Dev Servers to be ready
