@@ -1,6 +1,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import type { Env } from "./types";
 import type { GridHubApi, GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued, Presence } from "../../shared/grid";
+import { assertWorldAuth } from "./world-auth";
 
 // The Durable Object class must be exported from the Worker entry module.
 export { GridHub } from "./gridhub";
@@ -42,14 +43,20 @@ export class GridHubService extends WorkerEntrypoint<Env> implements GridHubApi 
     return this.hub().castsSince(sinceId, limit);
   }
 
-  loadCharacter(name: string): Promise<CharSheet> {
-    return this.hub().loadCharacter(name);
+  loadCharacter(name: string, world: string): Promise<CharSheet> {
+    return this.hub().loadCharacter(name, world);
   }
-  commitCharacter(name: string, p: CharSheet): Promise<CharSheet> {
-    return this.hub().commitCharacter(name, p);
+  async commitCharacter(name: string, world: string, p: CharSheet, worldKey?: string): Promise<CharSheet> {
+    assertWorldAuth(this.env, world, worldKey);
+    return this.hub().commitCharacter(name, world, p);
+  }
+  async claimCharacterLease(name: string, world: string, worldKey?: string): Promise<void> {
+    assertWorldAuth(this.env, world, worldKey);
+    await this.hub().claimCharacterLease(name, world);
   }
 
-  async register(world: string, url: string): Promise<void> {
+  async register(world: string, url: string, worldKey?: string): Promise<void> {
+    assertWorldAuth(this.env, world, worldKey);
     await this.hub().register(world, url);
   }
   listWorlds(): Promise<WorldInfo[]> {
@@ -77,7 +84,13 @@ export class GridHubService extends WorkerEntrypoint<Env> implements GridHubApi 
     return this.hub().recentRescued(limit);
   }
 
-  async reportPresence(world: string, entries: Array<{ name: string; regard: string; title: string }>, at: number): Promise<void> {
+  async reportPresence(
+    world: string,
+    entries: Array<{ name: string; regard: string; title: string }>,
+    at: number,
+    worldKey?: string,
+  ): Promise<void> {
+    assertWorldAuth(this.env, world, worldKey);
     await this.hub().reportPresence(world, entries, at);
   }
   presence(maxAgeMs: number): Promise<Presence[]> {

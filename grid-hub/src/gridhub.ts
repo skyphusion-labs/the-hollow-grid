@@ -15,6 +15,10 @@ import type { GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued, Presen
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+// Per-commit caps on progression deltas (K3 #86: spam +1M gold minting).
+const MAX_GOLD_DELTA = 10_000;
+const MAX_LEVEL_DELTA = 5;
+
 // Notional sibling worlds, so the federation feels populated before others
 // actually connect. (A real world overwrites its entry when it registers.)
 const SEED_WORLDS: { id: string; url: string }[] = [
@@ -80,12 +84,19 @@ export class GridHub extends DurableObject<Env> {
           gold INTEGER NOT NULL DEFAULT 20,
           faction TEXT NOT NULL DEFAULT 'none',
           morality INTEGER NOT NULL DEFAULT 0,
-          title TEXT NOT NULL DEFAULT ''
+          title TEXT NOT NULL DEFAULT '',
+          home_world TEXT NOT NULL DEFAULT '',
+          lease_world TEXT NOT NULL DEFAULT ''
         )
       `);
       // race: an opaque, federated label (the hub never gatekeeps it, so any world
       // can define races). ashsworn: the permanent kapo brand (write-once true).
-      for (const col of ["race TEXT NOT NULL DEFAULT ''", "ashsworn INTEGER NOT NULL DEFAULT 0"]) {
+      for (const col of [
+        "race TEXT NOT NULL DEFAULT ''",
+        "ashsworn INTEGER NOT NULL DEFAULT 0",
+        "home_world TEXT NOT NULL DEFAULT ''",
+        "lease_world TEXT NOT NULL DEFAULT ''",
+      ]) {
         try {
           sql.exec(`ALTER TABLE characters ADD COLUMN ${col}`);
         } catch {
@@ -198,12 +209,45 @@ export class GridHub extends DurableObject<Env> {
   }
 
   // A world heartbeat: replace this world's whole roster (so disconnects clear).
+  // Caller must authenticate as that world when GRID_WORLD_KEYS is configured.
   reportPresence(world: string, entries: Array<{ name: string; regard: string; title: string }>, at: number): void {
+    this.assertRegisteredWorld(world);
     const sql = this.ctx.storage.sql;
     sql.exec("DELETE FROM presence WHERE world = ?", world);
     for (const e of entries) {
       sql.exec("INSERT OR REPLACE INTO presence (world, name, regard, title, at) VALUES (?, ?, ?, ?, ?)", world, e.name, e.regard, e.title, at);
     }
+  }
+
+  private assertRegisteredWorld(world: string): void {
+    const row = this.ctx.storage.sql
+      .exec<{ c: number }>("SELECT COUNT(*) AS c FROM worlds WHERE id = ?", world)
+      .one();
+    if (!row.c) throw new Error(`unknown world: ${world}`);
+  }
+
+  private assertCharacterLease(name: string, world: string): void {
+    const sql = this.ctx.storage.sql;
+    const row = sql.exec<{ lease_world: string }>("SELECT lease_world FROM characters WHERE name = ?", name).toArray()[0];
+    const lease = row?.lease_world?.trim() ?? "";
+    if (!lease) {
+      sql.exec("UPDATE characters SET lease_world = ? WHERE name = ?", world, name);
+      return;
+    }
+    if (lease !== world) throw new Error(`character ${name} is leased to ${lease}, not ${world}`);
+  }
+
+  // Called by a world after local login auth succeeds; grants that world the commit lease.
+  claimCharacterLease(name: string, world: string): void {
+    this.assertRegisteredWorld(world);
+    const sql = this.ctx.storage.sql;
+    sql.exec(
+      "INSERT OR IGNORE INTO characters (name, level, xp, gold, faction, morality, title, race, ashsworn, home_world, lease_world) VALUES (?, 1, 0, 20, 'none', 0, '', '', 0, ?, ?)",
+      name,
+      world,
+      world,
+    );
+    sql.exec("UPDATE characters SET lease_world = ? WHERE name = ?", world, name);
   }
 
   // The live roster across all worlds, dropping rows older than maxAgeMs (a world
@@ -306,7 +350,7 @@ export class GridHub extends DurableObject<Env> {
   }
 
   // --- Canonical identity: the character that follows you --------------------
-  loadCharacter(name: string): CharSheet {
+  loadCharacter(name: string, world: string): CharSheet {
     const row = this.ctx.storage.sql
       .exec<{
         level: number;
@@ -317,12 +361,14 @@ export class GridHub extends DurableObject<Env> {
         title: string;
         race: string;
         ashsworn: number;
-      }>("SELECT level, xp, gold, faction, morality, title, race, ashsworn FROM characters WHERE name = ?", name)
+        home_world: string;
+      }>("SELECT level, xp, gold, faction, morality, title, race, ashsworn, home_world FROM characters WHERE name = ?", name)
       .toArray()[0];
     if (row) return { ...row, ashsworn: !!row.ashsworn };
     this.ctx.storage.sql.exec(
-      "INSERT OR IGNORE INTO characters (name, level, xp, gold, faction, morality, title, race, ashsworn) VALUES (?, 1, 0, 20, 'none', 0, '', '', 0)",
+      "INSERT OR IGNORE INTO characters (name, level, xp, gold, faction, morality, title, race, ashsworn, home_world, lease_world) VALUES (?, 1, 0, 20, 'none', 0, '', '', 0, ?, '')",
       name,
+      world,
     );
     return { level: 1, xp: 0, gold: 20, faction: "none", morality: 0, title: "", race: "", ashsworn: false };
   }
@@ -331,12 +377,14 @@ export class GridHub extends DurableObject<Env> {
   // commits the result. This is the trust boundary: honest worlds pass, a cheaty
   // world's absurd deltas get clamped (no de-leveling, no implausible jumps, no
   // minting gold). Returns the committed (possibly clamped) sheet.
-  commitCharacter(name: string, p: CharSheet): CharSheet {
-    const cur = this.loadCharacter(name);
+  commitCharacter(name: string, world: string, p: CharSheet): CharSheet {
+    this.assertRegisteredWorld(world);
+    const cur = this.loadCharacter(name, world);
+    this.assertCharacterLease(name, world);
     const next: CharSheet = {
-      level: clamp(Math.floor(p.level), cur.level, cur.level + 5), // never de-level; no big jumps
+      level: clamp(Math.floor(p.level), cur.level, cur.level + MAX_LEVEL_DELTA), // never de-level; no big jumps
       xp: Math.max(0, Math.floor(p.xp)),
-      gold: clamp(Math.floor(p.gold), 0, cur.gold + 1_000_000), // no minting absurd gold
+      gold: clamp(Math.floor(p.gold), 0, cur.gold + MAX_GOLD_DELTA), // bounded per commit
       faction: ["none", "front", "ally"].includes(p.faction) ? p.faction : cur.faction,
       morality: clamp(Math.floor(p.morality), -1000, 1000),
       title: String(p.title ?? "").replace(/[\r\n]/g, "").slice(0, 40),
@@ -376,6 +424,7 @@ export class GridHub extends DurableObject<Env> {
       url,
       Date.now(),
     );
+    // Seed worlds from bootstrapping have last_seen=0; registering marks them live.
   }
 
   listWorlds(): WorldInfo[] {

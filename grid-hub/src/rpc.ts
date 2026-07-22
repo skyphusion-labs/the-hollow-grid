@@ -1,7 +1,24 @@
 import type { Env } from "./types";
 import type { GridHub } from "./gridhub";
+import { assertWorldAuth } from "./world-auth";
 
 type HubStub = DurableObjectStub<GridHub>;
+
+const AUTH_METHODS = new Set(["commitCharacter", "reportPresence", "register", "claimCharacterLease"]);
+
+function worldFromParams(method: string, params: unknown[]): string {
+  switch (method) {
+    case "commitCharacter":
+      return String(params[1] ?? "");
+    case "claimCharacterLease":
+      return String(params[1] ?? "");
+    case "reportPresence":
+    case "register":
+      return String(params[0] ?? "");
+    default:
+      return "";
+  }
+}
 
 // HTTP JSON-RPC ingress for external world nodes (fleet Go worlds, etc.) that
 // cannot reach the hub over a Cloudflare service binding. Auth is a shared
@@ -27,9 +44,27 @@ export async function handleRPC(req: Request, env: Env): Promise<Response> {
   }
   const params = Array.isArray(body.params) ? body.params : [];
 
+  if (AUTH_METHODS.has(method)) {
+    const world = worldFromParams(method, params).trim();
+    const headerWorld = (req.headers.get("X-Grid-World") ?? "").trim();
+    const worldKey = req.headers.get("X-Grid-World-Key") ?? undefined;
+    if (!world) {
+      return Response.json({ ok: false, error: "world param required" }, { status: 400 });
+    }
+    if (headerWorld && headerWorld !== world) {
+      return Response.json({ ok: false, error: "X-Grid-World mismatch" }, { status: 403 });
+    }
+    try {
+      assertWorldAuth(env, world, worldKey);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return Response.json({ ok: false, error: msg }, { status: 403 });
+    }
+  }
+
   const hub = env.GRIDHUB.getByName("grid");
   try {
-    const result = await dispatch(hub, method, params);
+    const result = await dispatch(hub, method, params, req);
     return Response.json({ ok: true, result });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -37,7 +72,7 @@ export async function handleRPC(req: Request, env: Env): Promise<Response> {
   }
 }
 
-async function dispatch(hub: HubStub, method: string, params: unknown[]): Promise<unknown> {
+async function dispatch(hub: HubStub, method: string, params: unknown[], req: Request): Promise<unknown> {
   switch (method) {
     case "record":
       return hub.record(String(params[0]), String(params[1]), String(params[2]), String(params[3]), Number(params[4]));
@@ -53,10 +88,15 @@ async function dispatch(hub: HubStub, method: string, params: unknown[]): Promis
       return hub.gridcast(String(params[0]), String(params[1]), String(params[2]));
     case "castsSince":
       return hub.castsSince(Number(params[0]), Number(params[1]));
-    case "loadCharacter":
-      return hub.loadCharacter(String(params[0]));
+    case "loadCharacter": {
+      const world = String(params[1] ?? req.headers.get("X-Grid-World") ?? "");
+      if (!world) throw new Error("world required for loadCharacter");
+      return hub.loadCharacter(String(params[0]), world);
+    }
     case "commitCharacter":
-      return hub.commitCharacter(String(params[0]), params[1] as never);
+      return hub.commitCharacter(String(params[0]), String(params[1]), params[2] as never);
+    case "claimCharacterLease":
+      return hub.claimCharacterLease(String(params[0]), String(params[1]));
     case "register":
       return hub.register(String(params[0]), String(params[1]));
     case "listWorlds":

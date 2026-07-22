@@ -22,6 +22,8 @@ export interface Env {
    * each registering under its own name. (See world.ts worldName.)
    */
   WORLD_NAME?: string;
+  /** Per-world key for mutating Grid Hub RPC (must match hub GRID_WORLD_KEYS). */
+  GRID_WORLD_KEY?: string;
   /**
    * Which room map this deployment serves (e.g. "dustfall"); unset = the Hollow
    * Grid. Lets one codebase present as different places. (See rooms.ts mapFor.)

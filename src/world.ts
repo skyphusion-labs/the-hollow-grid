@@ -737,9 +737,24 @@ export class World extends DurableObject<Env> {
 
   // ---- login ---------------------------------------------------------------
 
+  private claimHubLease(name: string): void {
+    try {
+      this.ctx.waitUntil(
+        this.env.GRID.claimCharacterLease(name, this.worldName, this.env.GRID_WORLD_KEY).catch(() => {}),
+      );
+    } catch {
+      /* hub unavailable */
+    }
+  }
+
   private async mergeHubIdentity(session: Session): Promise<void> {
     try {
-      const canon = await this.env.GRID.loadCharacter(session.name);
+      this.ctx.waitUntil(
+        this.env.GRID
+          .register(this.worldName, this.env.WORLD_URL ?? "ws://localhost:8787/ws", this.env.GRID_WORLD_KEY)
+          .catch(() => {}),
+      );
+      const canon = await this.env.GRID.loadCharacter(session.name, this.worldName);
       session.level = canon.level;
       session.xp = canon.xp;
       session.gold = canon.gold;
@@ -748,9 +763,6 @@ export class World extends DurableObject<Env> {
       session.title = canon.title;
       session.race = canon.race || session.race;
       session.ashsworn = canon.ashsworn || session.ashsworn;
-      this.ctx.waitUntil(
-        this.env.GRID.register(this.worldName, this.env.WORLD_URL ?? "ws://localhost:8787/ws").catch(() => {}),
-      );
     } catch {
       /* hub unreachable; local sheet stands alone */
     }
@@ -1007,7 +1019,12 @@ export class World extends DurableObject<Env> {
     session.redeemed = !!row.redeemed;
 
     try {
-      const canon = await this.env.GRID.loadCharacter(session.name);
+      this.ctx.waitUntil(
+        this.env.GRID
+          .register(this.worldName, this.env.WORLD_URL ?? "ws://localhost:8787/ws", this.env.GRID_WORLD_KEY)
+          .catch(() => {}),
+      );
+      const canon = await this.env.GRID.loadCharacter(session.name, this.worldName);
       session.level = canon.level;
       session.xp = canon.xp;
       session.gold = canon.gold;
@@ -1016,13 +1033,11 @@ export class World extends DurableObject<Env> {
       session.title = canon.title;
       session.race = canon.race || session.race;
       session.ashsworn = canon.ashsworn || session.ashsworn;
-      this.ctx.waitUntil(
-        this.env.GRID.register(this.worldName, this.env.WORLD_URL ?? "ws://localhost:8787/ws").catch(() => {}),
-      );
     } catch {
       /* hub unreachable */
     }
 
+    this.claimHubLease(session.name);
     this.finishSpawn(ws, session, isNew);
   }
 
@@ -2773,16 +2788,21 @@ export class World extends DurableObject<Env> {
     try {
       this.ctx.waitUntil(
         this.env.GRID
-          .commitCharacter(s.name, {
-            level: s.level,
-            xp: s.xp,
-            gold: s.gold,
-            faction: s.faction,
-            morality: s.morality,
-            title: s.title ?? "",
-            race: s.race ?? "",
-            ashsworn: !!s.ashsworn,
-          })
+          .commitCharacter(
+            s.name,
+            this.worldName,
+            {
+              level: s.level,
+              xp: s.xp,
+              gold: s.gold,
+              faction: s.faction,
+              morality: s.morality,
+              title: s.title ?? "",
+              race: s.race ?? "",
+              ashsworn: !!s.ashsworn,
+            },
+            this.env.GRID_WORLD_KEY,
+          )
           .catch(() => {}),
       );
     } catch {
@@ -2794,7 +2814,7 @@ export class World extends DurableObject<Env> {
   private async whoami(ws: WebSocket, s: Session): Promise<void> {
     let sheet: CharSheet;
     try {
-      sheet = await this.env.GRID.loadCharacter(s.name);
+      sheet = await this.env.GRID.loadCharacter(s.name, this.worldName);
     } catch {
       sheet = {
         level: s.level,
@@ -3381,7 +3401,9 @@ export class World extends DurableObject<Env> {
   private reportPresence(): void {
     try {
       const entries = this.sessions().map((o) => ({ name: o.name, regard: this.regard(o), title: o.title ?? "" }));
-      this.ctx.waitUntil(this.env.GRID.reportPresence(this.worldName, entries, Date.now()).catch(() => {}));
+      this.ctx.waitUntil(
+        this.env.GRID.reportPresence(this.worldName, entries, Date.now(), this.env.GRID_WORLD_KEY).catch(() => {}),
+      );
     } catch {
       /* hub unavailable; local presence is unaffected */
     }
