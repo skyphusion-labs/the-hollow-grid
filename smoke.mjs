@@ -59,7 +59,10 @@ async function completeAuth(client, ms = 6000) {
       await sleep(400);
       continue;
     }
-    if (/WHAT you are|choose what you are|char\.create|"id":"nexus"/i.test(tail)) {
+    if (/@event room\.info|"id":"nexus"/i.test(tail)) {
+      return;
+    }
+    if (/WHAT you are/i.test(tail)) {
       return;
     }
     await sleep(150);
@@ -198,6 +201,16 @@ async function loginWithRace(client, name, race = "human") {
     await pickRace(client, race);
   }
   await waitFor(client.last, "room.info", (d) => !!d?.id, 5000);
+}
+
+// Returning character: name + keeper token / passphrase only (no race menu).
+async function loginResume(client, name) {
+  if (typeof name !== "string" || name.length < 2) {
+    throw new Error("loginResume requires a character name");
+  }
+  client.send(name);
+  await completeAuth(client);
+  await waitFor(client.last, "room.info", (d) => !!d?.id, 8000);
 }
 
 // `war` does an async hub RPC, so its reply can outlast a fixed wait under CI
@@ -1321,8 +1334,7 @@ await sleep(800);
 const GZ = mkClient();
 await GZ.open();
 await sleep(300);
-GZ.send(gxName);
-await sleep(600);
+await loginResume(GZ, gxName);
 GZ.send("whoami");
 await sleep(500);
 check(
@@ -1598,8 +1610,7 @@ if (!dustfallUp) {
   // Log the SAME canonical character (gxName, committed as an "ally" in phase 10)
   // into the OTHER world. Its standing must arrive from the shared hub, proving
   // one identity spans two separate deployments -- the headline of federation.
-  D.send(gxName);
-  await sleep(800);
+  await loginResume(D, gxName);
   D.send("whoami");
   await sleep(600);
   check(
