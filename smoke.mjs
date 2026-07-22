@@ -166,8 +166,11 @@ function mkClient(url = URL) {
 // processed the name before the race line arrives. Works for the raw `ws` and for
 // mkClient() clients (both expose .send).
 async function pickRace(client, race = "human") {
-  await completeAuth(client);
-  client.send(race);
+  if (typeof client.raw === "function") {
+    await completeAuth(client);
+  }
+  const send = typeof client.send === "function" ? client.send.bind(client) : (c) => client.send(c);
+  send(race);
   await sleep(400);
 }
 
@@ -261,7 +264,7 @@ check(
 );
 check(cc?.data.prompt === "race", `char.create names the prompt "race" (got ${JSON.stringify(cc?.data.prompt)})`);
 
-await pickRace(ws); // pick a race -> server logs us in and shows the start room
+await pickRace({ send: (c) => ws.send(c), raw: () => raw }); // pick a race -> server logs us in and shows the start room
 
 // Logging in already emits the start room + vitals via the structured channel.
 // Remote fleet worlds need a poll: WSS latency can exceed a fixed sleep.
