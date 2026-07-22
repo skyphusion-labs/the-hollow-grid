@@ -177,6 +177,11 @@ async function pickRace(client, race = "human") {
   const send = typeof client.send === "function" ? client.send.bind(client) : (c) => client.send(c);
   send(race);
   await sleep(400);
+  // Brand-new characters choose a race first, then set a secret phrase (#85).
+  if (typeof client.raw === "function") {
+    await completeAuth(client);
+  }
+  await sleep(400);
 }
 
 // Name login that handles resume (keeper names like skyphusion skip the race menu).
