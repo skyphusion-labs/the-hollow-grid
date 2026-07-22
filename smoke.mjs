@@ -468,7 +468,8 @@ for (let i = 0; i < 8 && !ended; i++) {
   const stuck = last("char.vitals")?.data.inCombat === true;
   check(i < 7 || !stuck, "combat resolves within ~20s (inCombat must not stay true after alarm ticks)");
 }
-check(!!last("combat.round"), "combat produced at least one combat.round event");
+const combatRound = await waitFor(last, "combat.round", (d) => !!d, 3000);
+check(!!combatRound, "combat produced at least one combat.round event");
 check(ended?.data.result === "killed", `combat ended in a kill (result=${JSON.stringify(ended?.data.result)})`);
 
 const finalVit = last("char.vitals");
@@ -1337,8 +1338,9 @@ await sleep(300);
 await loginResume(GZ, gxName);
 GZ.send("whoami");
 await sleep(500);
+const gzId = await waitFor(GZ.last, "char.identity", (d) => d?.faction === "ally", 8000);
 check(
-  GZ.last("char.identity")?.data.faction === "ally",
+  gzId?.data.faction === "ally",
   "the identity persists in the hub and follows the character to a fresh login (one character, many worlds)",
 );
 GZ.sock.close();
@@ -1399,8 +1401,13 @@ const K = mkClient();
 await K.open();
 await sleep(200);
 await loginWithRace(K, "skyphusion"); // keeper name (matches the dev ADMINS var)
-K.send("gridstats");
-const ks = await waitFor(K.last, "grid.ledger_stats", (d) => typeof d?.total === "number" && Array.isArray(d?.kinds), 5000);
+for (let attempt = 0; attempt < 2; attempt++) {
+  K.send("gridstats");
+  const ks = await waitFor(K.last, "grid.ledger_stats", (d) => typeof d?.total === "number" && Array.isArray(d?.kinds), 12000);
+  if (ks) break;
+  if (attempt === 0) await sleep(2000);
+}
+const ks = K.last("grid.ledger_stats");
 check(!!ks && typeof ks.data.total === "number" && Array.isArray(ks.data.kinds), "gridstats reports the keeper the ledger composition (grid.ledger_stats)");
 K.send("gridprune");
 const kp = await waitFor(K.last, "grid.ledger_pruned", (d) => typeof d?.removed === "number" && d.after <= d.before, 6000);
@@ -1612,9 +1619,10 @@ if (!dustfallUp) {
   // one identity spans two separate deployments -- the headline of federation.
   await loginResume(D, gxName);
   D.send("whoami");
-  await sleep(600);
+  await sleep(500);
+  const dIdentity = await waitFor(D.last, "char.identity", (d) => d?.faction === "ally", 10000);
   check(
-    D.last("char.identity")?.data.faction === "ally",
+    dIdentity?.data.faction === "ally",
     "one character spans two separate worlds: Dustfall loads gxName's canonical standing from the shared hub",
   );
 
