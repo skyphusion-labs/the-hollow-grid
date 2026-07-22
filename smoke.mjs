@@ -759,6 +759,24 @@ check(
   "the announcement is on the structured channel (server.announce)",
 );
 
+// Keeper ledger maintenance while the hub is still warm (gridstats / gridprune).
+ADMIN.send("gridstats");
+const ksEarly = await waitFor(ADMIN.last, "grid.ledger_stats", (d) => typeof d?.total === "number" && Array.isArray(d?.kinds), 12000);
+check(
+  !!ksEarly && typeof ksEarly.data.total === "number" && Array.isArray(ksEarly.data.kinds),
+  "gridstats reports the keeper the ledger composition (grid.ledger_stats)",
+);
+ADMIN.send("gridprune");
+const kpEarly = await waitFor(ADMIN.last, "grid.ledger_pruned", (d) => typeof d?.removed === "number" && d.after <= d.before, 12000);
+check(
+  !!kpEarly && typeof kpEarly.data.removed === "number" && kpEarly.data.after <= kpEarly.data.before,
+  "gridprune flushes ambient traces and reports before/after counts (grid.ledger_pruned)",
+);
+check(
+  !!kpEarly && (kpEarly.data.kinds ?? []).every((r) => !["ghost", "passage", "recall"].includes(r.kind)),
+  "after a prune no ambient kinds (ghost/passage/recall) remain in the ledger",
+);
+
 ADMIN.sock.close();
 OBS.sock.close();
 
@@ -1396,35 +1414,8 @@ check(
 
 GY.sock.close();
 
-// --- Phase 11b: keeper ledger maintenance (gridstats / gridprune) ------------
-// A keeper (the ADMINS var = "skyphusion" in dev) can read the shared ledger's
-// composition and flush the ambient-noise backlog. The purgeable set is fixed
-// in code (ghost/passage/recall), so a keeper cannot erase meaningful traces.
-const K = mkClient();
-await K.open();
-await sleep(200);
-await loginWithRace(K, "skyphusion"); // keeper name (matches the dev ADMINS var)
-for (let attempt = 0; attempt < 2; attempt++) {
-  K.send("gridstats");
-  const ks = await waitFor(K.last, "grid.ledger_stats", (d) => typeof d?.total === "number" && Array.isArray(d?.kinds), 12000);
-  if (ks) break;
-  if (attempt === 0) await sleep(2000);
-}
-const ks = K.last("grid.ledger_stats");
-check(!!ks && typeof ks.data.total === "number" && Array.isArray(ks.data.kinds), "gridstats reports the keeper the ledger composition (grid.ledger_stats)");
-K.send("gridprune");
-const kp = await waitFor(K.last, "grid.ledger_pruned", (d) => typeof d?.removed === "number" && d.after <= d.before, 6000);
-check(
-  !!kp && typeof kp.data.removed === "number" && kp.data.after <= kp.data.before,
-  "gridprune flushes ambient traces and reports before/after counts (grid.ledger_pruned)",
-);
-check(
-  !!kp && (kp.data.kinds ?? []).every((r) => !["ghost", "passage", "recall"].includes(r.kind)),
-  "after a prune no ambient kinds (ghost/passage/recall) remain in the ledger",
-);
-K.sock.close();
-
-// A non-keeper is refused and gets no maintenance event back.
+// --- Phase 11b: keeper ledger maintenance (non-keeper refusal) ------------
+// gridstats/gridprune happy path runs in phase 3 while the keeper is still live.
 const NK = mkClient();
 await NK.open();
 await sleep(200);
