@@ -17,6 +17,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 
 // Per-commit caps on progression deltas (K3 #86: spam +1M gold minting).
 const MAX_GOLD_DELTA = 10_000;
+const MAX_XP_DELTA = 10_000;
 const MAX_LEVEL_DELTA = 5;
 
 // Notional sibling worlds, so the federation feels populated before others
@@ -242,12 +243,11 @@ export class GridHub extends DurableObject<Env> {
     this.assertRegisteredWorld(world);
     const sql = this.ctx.storage.sql;
     sql.exec(
-      "INSERT OR IGNORE INTO characters (name, level, xp, gold, faction, morality, title, race, ashsworn, home_world, lease_world) VALUES (?, 1, 0, 20, 'none', 0, '', '', 0, ?, ?)",
+      "INSERT OR IGNORE INTO characters (name, level, xp, gold, faction, morality, title, race, ashsworn, home_world, lease_world) VALUES (?, 1, 0, 20, 'none', 0, '', '', 0, ?, '')",
       name,
       world,
-      world,
     );
-    sql.exec("UPDATE characters SET lease_world = ? WHERE name = ?", world, name);
+    this.assertCharacterLease(name, world);
   }
 
   // The live roster across all worlds, dropping rows older than maxAgeMs (a world
@@ -383,7 +383,7 @@ export class GridHub extends DurableObject<Env> {
     this.assertCharacterLease(name, world);
     const next: CharSheet = {
       level: clamp(Math.floor(p.level), cur.level, cur.level + MAX_LEVEL_DELTA), // never de-level; no big jumps
-      xp: Math.max(0, Math.floor(p.xp)),
+      xp: clamp(Math.floor(p.xp), cur.xp, cur.xp + MAX_XP_DELTA),
       gold: clamp(Math.floor(p.gold), 0, cur.gold + MAX_GOLD_DELTA), // bounded per commit
       faction: ["none", "front", "ally"].includes(p.faction) ? p.faction : cur.faction,
       morality: clamp(Math.floor(p.morality), -1000, 1000),
