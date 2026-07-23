@@ -1,3 +1,9 @@
+## v0.30.11
+
+- fix(grid-hub): generic RPC error responses (no internal lease/world leakage) (#984 K3 wave 10).
+- fix(grid-hub): require world key on `loadCharacter`/`presence` reads when keys configured.
+- fix(grid-hub): sanitize presence name/regard and memorial/rescued roll fields.
+
 ## v0.30.10
 
 - fix(grid-hub): fail closed when `GRID_RPC_TOKEN` is set without `GRID_WORLD_KEYS` (#984 K3 wave 9).

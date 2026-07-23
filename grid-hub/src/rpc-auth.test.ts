@@ -53,6 +53,15 @@ describe("verifyRpcWorldAuth", () => {
     expect(res?.status).toBe(400);
   });
 
+  it("requires world key for loadCharacter when keys are configured", () => {
+    const keys = JSON.stringify({ "Rust Choir": "good-key" });
+    const res = verifyRpcWorldAuth(env(keys), "loadCharacter", ["Mara", "Rust Choir"], {
+      world: "Rust Choir",
+      worldKey: "bad-key",
+    });
+    expect(res?.status).toBe(403);
+  });
+
   it("fail-closes when GRID_WORLD_KEYS JSON is invalid", () => {
     const res = verifyRpcWorldAuth(env("{not-json"), "shiftTide", [1], {
       world: "Rust Choir",

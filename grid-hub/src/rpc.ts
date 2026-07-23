@@ -39,9 +39,8 @@ export async function handleRPC(req: Request, env: Env): Promise<Response> {
   try {
     const result = await dispatch(hub, method, params, req);
     return Response.json({ ok: true, result });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return Response.json({ ok: false, error: msg }, { status: 400 });
+  } catch {
+    return Response.json({ ok: false, error: "request failed" }, { status: 400 });
   }
 }
 

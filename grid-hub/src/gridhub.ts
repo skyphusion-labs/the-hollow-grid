@@ -195,7 +195,13 @@ export class GridHub extends DurableObject<Env> {
   // the most recent fallen (newest first) so a world can list whom to remember.
   recordFallen(world: string, name: string, room: string, at: number): void {
     const sql = this.ctx.storage.sql;
-    sql.exec("INSERT INTO fallen (world, name, room, at) VALUES (?, ?, ?, ?)", world, name, room, at);
+    sql.exec(
+      "INSERT INTO fallen (world, name, room, at) VALUES (?, ?, ?, ?)",
+      world,
+      sanitizePlayerText(name, 32),
+      sanitizePlayerText(room, 80),
+      at,
+    );
     // Keep the roll long but bounded; the dead are many on a dead network.
     sql.exec("DELETE FROM fallen WHERE id NOT IN (SELECT id FROM fallen ORDER BY id DESC LIMIT 500)");
   }
@@ -210,7 +216,13 @@ export class GridHub extends DurableObject<Env> {
   // freed), and read the most recent rescued (newest first).
   recordRescued(world: string, name: string, savedBy: string, at: number): void {
     const sql = this.ctx.storage.sql;
-    sql.exec("INSERT INTO rescued (world, name, saved_by, at) VALUES (?, ?, ?, ?)", world, name, savedBy, at);
+    sql.exec(
+      "INSERT INTO rescued (world, name, saved_by, at) VALUES (?, ?, ?, ?)",
+      world,
+      sanitizePlayerText(name, 32),
+      sanitizePlayerText(savedBy, 32),
+      at,
+    );
     sql.exec("DELETE FROM rescued WHERE id NOT IN (SELECT id FROM rescued ORDER BY id DESC LIMIT 500)");
   }
 
@@ -233,8 +245,8 @@ export class GridHub extends DurableObject<Env> {
       sql.exec(
         "INSERT OR REPLACE INTO presence (world, name, regard, title, at) VALUES (?, ?, ?, ?, ?)",
         world,
-        e.name,
-        e.regard,
+        sanitizePlayerText(e.name, 32),
+        sanitizePlayerText(e.regard, 24),
         sanitizePlayerText(e.title, 40),
         at,
       );
