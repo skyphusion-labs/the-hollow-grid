@@ -1,3 +1,9 @@
+## v0.30.17
+
+- fix(grid-hub): tighten commit delta caps to +500 gold/xp and +1 level per commit (#984 K3 wave 16).
+- fix(grid-hub): reduce commit rate window to 10/min per character (#984 K3 wave 16).
+- fix(world): cache full `/health/deep` response for 30s including World DO probe (#984 K3 wave 16).
+
 ## v0.30.16
 
 - fix(grid-hub): pin `home_world` at authenticated `claimCharacterLease` so lease-expiry races cannot cross-world takeover (#984 K3 wave 15).

@@ -29,9 +29,10 @@ interface HealthCheckResult {
   error?: string;
 }
 
-/** Cache grid hub deep-health probes to limit DO wake amplification (K3 wave 15). */
-const GRID_HUB_HEALTH_CACHE_MS = 30_000;
+/** Cache deep-health probes to limit DO wake amplification (K3 wave 15/16). */
+const DEEP_HEALTH_CACHE_MS = 30_000;
 let gridHubHealthCache: { ok: boolean; latency_ms: number; at: number } | null = null;
+let deepHealthCache: { body: Record<string, unknown>; status: number; at: number } | null = null;
 
 function json(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -44,6 +45,11 @@ function json(body: unknown, init?: ResponseInit): Response {
 }
 
 async function handleHealthDeep(env: Env): Promise<Response> {
+  const cached = deepHealthCache;
+  if (cached && Date.now() - cached.at < DEEP_HEALTH_CACHE_MS) {
+    return json(cached.body, { status: cached.status });
+  }
+
   const checks: Record<string, HealthCheckResult> = {};
 
   // World DO: the single shared instance must be awake and its SQLite must
@@ -67,7 +73,7 @@ async function handleHealthDeep(env: Env): Promise<Response> {
   // standalone deploy with no federation).
   if (env.GRID) {
     const cached = gridHubHealthCache;
-    if (cached && Date.now() - cached.at < GRID_HUB_HEALTH_CACHE_MS) {
+    if (cached && Date.now() - cached.at < DEEP_HEALTH_CACHE_MS) {
       checks.grid_hub = { ok: cached.ok, latency_ms: cached.latency_ms, critical: false, ...(cached.ok ? {} : { error: "health check failed" }) };
     } else {
       const t0 = Date.now();
@@ -87,10 +93,10 @@ async function handleHealthDeep(env: Env): Promise<Response> {
   // A failed non-critical check is degraded, not down: only critical failures
   // flip the overall status to 503.
   const allOk = Object.values(checks).every((c) => c.ok || !c.critical);
-  return json(
-    { ok: allOk, ts: Date.now(), world: env.WORLD_NAME ?? "The Hollow Grid", checks },
-    { status: allOk ? 200 : 503 },
-  );
+  const body = { ok: allOk, ts: Date.now(), world: env.WORLD_NAME ?? "The Hollow Grid", checks };
+  const status = allOk ? 200 : 503;
+  deepHealthCache = { body, status, at: Date.now() };
+  return json(body, { status });
 }
 
 export default {
