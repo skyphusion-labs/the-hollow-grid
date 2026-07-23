@@ -16,8 +16,16 @@ export const WORLD_AUTH_METHODS = new Set([
   "pruneLedgerKinds",
 ]);
 
+/** Read methods that require world attribution when GRID_WORLD_KEYS is configured. */
+export const READ_AUTH_METHODS = new Set(["loadCharacter", "presence"]);
+
 /** Methods whose world comes from X-Grid-World when not in params. */
-const HEADER_WORLD_METHODS = new Set(["shiftTide", "pruneLedgerKinds"]);
+const HEADER_WORLD_METHODS = new Set(["shiftTide", "pruneLedgerKinds", "presence"]);
+
+function methodNeedsWorldAuth(env: Env, method: string): boolean {
+  if (WORLD_AUTH_METHODS.has(method)) return true;
+  return worldAuthRequired(env) && READ_AUTH_METHODS.has(method);
+}
 
 export function worldFromRpcParams(method: string, params: unknown[], headerWorld: string): string {
   switch (method) {
@@ -26,6 +34,8 @@ export function worldFromRpcParams(method: string, params: unknown[], headerWorl
     case "claimCharacterLease":
     case "releaseCharacterLease":
       return String(params[1] ?? "");
+    case "loadCharacter":
+      return String(params[1] ?? headerWorld);
     case "reportPresence":
     case "register":
     case "record":
@@ -35,6 +45,7 @@ export function worldFromRpcParams(method: string, params: unknown[], headerWorl
       return String(params[0] ?? "");
     case "shiftTide":
     case "pruneLedgerKinds":
+    case "presence":
       return headerWorld;
     default:
       return "";
@@ -47,7 +58,7 @@ export function verifyRpcWorldAuth(
   params: unknown[],
   headers: { world: string; worldKey: string | undefined },
 ): Response | null {
-  if (!WORLD_AUTH_METHODS.has(method)) return null;
+  if (!methodNeedsWorldAuth(env, method)) return null;
 
   const headerWorld = headers.world.trim();
   const world = worldFromRpcParams(method, params, headerWorld).trim();
