@@ -238,8 +238,8 @@ when keys and edge controls are live (fc#1007):
 | `GRID_WORLD_KEYS` unset | Binding auth no-ops (local dev) | Keys provisioned via fleet-chezmoi secrets on `grid-hub` |
 | Hub auth fail-closed in CI | Repo wrangler omits secrets by design | **Prod FP:** keys live on hub Worker; binding + `/rpc` enforce per-world keys when `GRID_RPC_TOKEN` is set (fc#1007) |
 | `register()` wss host allowlist | `wss://*.skyphusion.org` only (+ `ws://localhost` dev) | Blocks travel-handoff phishing to arbitrary hosts (wave 23) |
-| `shiftTide` / commit rate windows | Were gated on keys (fixed wave 22: tide always rate-limited) | Same code path with keys + RPC bearer |
-| RPC / login brute force | No in-worker throttle | `grid-hub.skyphusion.org/rpc` behind Cloudflare edge; keeper/passphrase bcrypt cost |
+| `shiftTide` / commit rate windows | Were gated on keys (fixed wave 22: tide always rate-limited) | Non-zero `shiftTide` requires world identity (wave 25); rate window per world |
+| Login bcrypt brute force | No in-worker lockout; per-IP WS cap limits parallel attempts | **Mitigated:** 16/IP cap + 90s pre-auth idle; keeper/passphrase bcrypt cost; CF edge on public `/ws` |
 | `/ws` connection volume | 512 global + 16/IP (wave 24); 90s pre-auth idle close | Same caps; Origin check (wave 20) blocks CSWSH |
 | `register()` withdrawal | Empty URL deletes registry row without keys (dev) | **Prod FP:** `GRID_WORLD_KEYS` on hub; only authenticated worlds mutate registry (fc#1007) |
 | `loadCharacter` cross-world read | Returns canonical sheet to any authenticated world | **Closed federation FP:** read-only snapshot; commits require lease + home match (§9) |

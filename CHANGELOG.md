@@ -1,3 +1,9 @@
+## v0.30.25
+
+- fix(world): schedule alarm for pre-auth sockets so 90s idle login timeout fires (#984 K3 wave 25).
+- fix(grid-hub): require world identity on non-zero `shiftTide` (closes rate-limit bypass) (#984 K3 wave 25).
+- docs(federation): triage login bcrypt brute force as mitigated by per-IP cap (#984 K3 wave 25).
+
 ## v0.30.24
 
 - fix(world): per-IP WebSocket cap (16) and 90s pre-auth idle close on shared World DO (#984 K3 wave 24).
