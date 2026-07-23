@@ -1,3 +1,10 @@
+## v0.30.4
+
+### Security (K3 re-pass #90, #91)
+
+- `claimCharacterLease` uses assert path (no cross-world lease overwrite hijack).
+- Per-commit XP delta capped (`MAX_XP_DELTA`, same class as gold cap).
+
 ## v0.30.3
 
 ### Security (K3 audit #86)
