@@ -29,6 +29,10 @@ interface HealthCheckResult {
   error?: string;
 }
 
+/** Cache grid hub deep-health probes to limit DO wake amplification (K3 wave 15). */
+const GRID_HUB_HEALTH_CACHE_MS = 30_000;
+let gridHubHealthCache: { ok: boolean; latency_ms: number; at: number } | null = null;
+
 function json(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
     ...init,
@@ -62,12 +66,21 @@ async function handleHealthDeep(env: Env): Promise<Response> {
   // reported but does not 503 the probe. Skipped when GRID is unbound (a
   // standalone deploy with no federation).
   if (env.GRID) {
-    const t0 = Date.now();
-    try {
-      await env.GRID.tide();
-      checks.grid_hub = { ok: true, latency_ms: Date.now() - t0, critical: false };
-    } catch {
-      checks.grid_hub = { ok: false, latency_ms: Date.now() - t0, critical: false, error: "health check failed" };
+    const cached = gridHubHealthCache;
+    if (cached && Date.now() - cached.at < GRID_HUB_HEALTH_CACHE_MS) {
+      checks.grid_hub = { ok: cached.ok, latency_ms: cached.latency_ms, critical: false, ...(cached.ok ? {} : { error: "health check failed" }) };
+    } else {
+      const t0 = Date.now();
+      try {
+        await env.GRID.tide();
+        const latency_ms = Date.now() - t0;
+        gridHubHealthCache = { ok: true, latency_ms, at: Date.now() };
+        checks.grid_hub = { ok: true, latency_ms, critical: false };
+      } catch {
+        const latency_ms = Date.now() - t0;
+        gridHubHealthCache = { ok: false, latency_ms, at: Date.now() };
+        checks.grid_hub = { ok: false, latency_ms, critical: false, error: "health check failed" };
+      }
     }
   }
 

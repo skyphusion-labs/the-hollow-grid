@@ -1,3 +1,11 @@
+## v0.30.16
+
+- fix(grid-hub): pin `home_world` at authenticated `claimCharacterLease` so lease-expiry races cannot cross-world takeover (#984 K3 wave 15).
+- fix(grid-hub): ignore caller-supplied ledger/presence/memorial `at`; hub stamps `Date.now()` server-side (#984 K3 wave 15).
+- fix(grid-hub): rolling commit rate window (20/min per character) blocks repeated gold/XP minting (#984 K3 wave 15).
+- fix(grid-hub): clamp `presence(maxAgeMs)` minimum to 60s so zero cannot wipe roster (#984 K3 wave 15).
+- fix(world): cache `/health/deep` grid-hub probe for 30s to limit DO wake amplification (#984 K3 wave 15).
+
 ## v0.30.15
 
 - fix(grid-hub): enforce world key auth on binding-path `loadCharacter` and `presence` reads when `GRID_WORLD_KEYS` configured (#984 K3 wave 14).
