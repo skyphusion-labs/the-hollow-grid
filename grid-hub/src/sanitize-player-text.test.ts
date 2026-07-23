@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sanitizePlayerText } from "./sanitize-player-text";
+import { sanitizePlayerText } from "../../shared/sanitize-player-text";
 
 describe("sanitizePlayerText", () => {
   it("strips ANSI escape sequences", () => {

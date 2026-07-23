@@ -1,3 +1,9 @@
+## v0.30.12
+
+- fix(world): sanitize player names in transmission `{name}` substitution (#984 K3 wave 11).
+- refactor: move `sanitizePlayerText` to `shared/` for hub + world reuse.
+- fix(scripts): render-map imports `rooms.ts` via Node strip-types instead of `eval()` (#984 K3 wave 11).
+
 ## v0.30.11
 
 - fix(grid-hub): generic RPC error responses (no internal lease/world leakage) (#984 K3 wave 10).
