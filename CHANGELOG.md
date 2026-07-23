@@ -1,3 +1,10 @@
+## v0.30.22
+
+- fix(world): cap concurrent WebSocket connections at 512 on shared World DO (#984 K3 wave 22).
+- fix(grid-hub): enforce shiftTide rate window even when hub keys unset (#984 K3 wave 22).
+- fix(smoke): refuse non-localhost MUD_URL unless `ALLOW_PROD_SMOKE=1` (#984 K3 wave 22).
+- docs(federation): K3 audit triage table for prod vs repo snapshot (#984 K3 wave 22).
+
 ## v0.30.21
 
 - fix(ci): generate ephemeral `ADMIN_TOKEN` per run instead of hardcoded smoke fallback (#984 K3 wave 21).

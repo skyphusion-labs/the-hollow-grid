@@ -11,6 +11,12 @@ const URL = process.env.MUD_URL ?? "ws://localhost:8787/ws";
 // Derive the world name from env or the /health probe so the suite works against
 // fleet Go worlds (Rust Choir) as well as the TS reference world.
 const HTTP_BASE_FOR_NAME = URL.replace(/^ws/, "http").replace(/\/ws$/, "");
+{
+  const smokeHost = HTTP_BASE_FOR_NAME.replace(/^https?:\/\//, "").split(":")[0];
+  if (smokeHost !== "localhost" && smokeHost !== "127.0.0.1" && !process.env.ALLOW_PROD_SMOKE) {
+    throw new Error(`Refusing smoke against ${smokeHost} without ALLOW_PROD_SMOKE=1`);
+  }
+}
 const WORLD_NAME =
   process.env.WORLD_NAME ??
   (await fetch(`${HTTP_BASE_FOR_NAME}/health`)
@@ -1342,11 +1348,12 @@ await sleep(500);
 GX.send("defend"); // side with the free folk -> contributes +10 to the GLOBAL tide
 await sleep(1200);
 const tideAfter = (await readWarTide(GX)) ?? 0;
-// With headroom guaranteed (tideBefore <= 90), the +10 lands exactly: proof the
-// shared needle actually moved by the contribution, not that it was already maxed.
+const tideDelta = tideAfter - tideBefore;
+// Rate window may cap a +10 contribution if earlier join/defend calls in this run
+// already spent the per-world budget (K3 wave 22: limit always enforced).
 check(
-  tideAfter === tideBefore + 10,
-  `siding with the free folk moved the GLOBAL tide by exactly +10 (${tideBefore} -> ${tideAfter})`,
+  tideDelta > 0 && tideDelta <= 10,
+  `siding with the free folk moved the GLOBAL tide toward the free folk (${tideBefore} -> ${tideAfter}, delta ${tideDelta})`,
 );
 
 // Federation phase 3: the canonical identity lives in the hub and follows you.
