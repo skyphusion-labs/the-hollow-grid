@@ -467,6 +467,8 @@ export class World extends DurableObject<Env> {
       [...this.banner, "", "By what name are you known, wanderer?"].join(NL) + NL,
     );
 
+    await this.scheduleNextTick();
+
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
 
@@ -614,6 +616,14 @@ export class World extends DurableObject<Env> {
       return !!s && s.name.length > 0;
     });
     if (anyoneOnline) next = Math.min(next, now + ROUND_MS);
+
+    // Keep alarm ticking while pre-auth sockets exist so idle login timeouts fire
+    // even when no player has completed login yet (K3 wave 25).
+    const preauthPending = this.ctx.getWebSockets().some((ws) => {
+      const s = ws.deserializeAttachment() as Session | null;
+      return !!s && !s.name;
+    });
+    if (preauthPending) next = Math.min(next, now + ROUND_MS);
 
     const soonest = this.ctx.storage.sql
       .exec<{ t: number | null }>("SELECT MIN(respawn_at) AS t FROM mobs WHERE state = 'dead'")

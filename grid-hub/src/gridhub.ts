@@ -473,13 +473,12 @@ export class GridHub extends DurableObject<Env> {
 
   shiftTide(delta: number, world?: string): number {
     const sql = this.ctx.storage.sql;
-    if (world) {
-      world = clampRpcString(world, LIMIT_WORLD_ID);
-      this.assertRegisteredWorld(world);
-    }
     if (!Number.isFinite(delta)) return this.tide();
     let bounded = clamp(Math.floor(delta), -MAX_TIDE_SHIFT, MAX_TIDE_SHIFT);
-    if (world && bounded !== 0) {
+    if (bounded !== 0) {
+      if (!world) throw new Error("world required for shiftTide");
+      world = clampRpcString(world, LIMIT_WORLD_ID);
+      this.assertRegisteredWorld(world);
       const now = Date.now();
       const row = sql
         .exec<{ window_at: number; window_pos: number; window_neg: number }>(
