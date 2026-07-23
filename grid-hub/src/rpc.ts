@@ -2,7 +2,7 @@ import type { Env } from "./types";
 import type { GridHub } from "./gridhub";
 import { verifyRpcWorldAuth } from "./rpc-auth";
 import { verifyRpcBearer } from "./world-auth";
-import { clampRpcString, LIMIT_CHARACTER_NAME, LIMIT_LEDGER_KIND, LIMIT_WORLD_ID } from "./rpc-limits";
+import { clampRpcString, LIMIT_CHARACTER_NAME, LIMIT_LEDGER_KIND, LIMIT_WORLD_ID, requireRpcString } from "./rpc-limits";
 
 type HubStub = DurableObjectStub<GridHub>;
 
@@ -75,22 +75,22 @@ async function dispatch(hub: HubStub, method: string, params: unknown[], req: Re
     case "loadCharacter": {
       const world = clampRpcString(params[1] ?? headerWorld, LIMIT_WORLD_ID);
       if (!world) throw new Error("world required for loadCharacter");
-      return hub.loadCharacter(clampRpcString(params[0], LIMIT_CHARACTER_NAME), world);
+      return hub.loadCharacter(requireRpcString(params[0], LIMIT_CHARACTER_NAME, "character name"), world);
     }
     case "commitCharacter":
       return hub.commitCharacter(
-        clampRpcString(params[0], LIMIT_CHARACTER_NAME),
+        requireRpcString(params[0], LIMIT_CHARACTER_NAME, "character name"),
         clampRpcString(params[1], LIMIT_WORLD_ID),
         params[2] as never,
       );
     case "claimCharacterLease":
       return hub.claimCharacterLease(
-        clampRpcString(params[0], LIMIT_CHARACTER_NAME),
+        requireRpcString(params[0], LIMIT_CHARACTER_NAME, "character name"),
         clampRpcString(params[1], LIMIT_WORLD_ID),
       );
     case "releaseCharacterLease":
       return hub.releaseCharacterLease(
-        clampRpcString(params[0], LIMIT_CHARACTER_NAME),
+        requireRpcString(params[0], LIMIT_CHARACTER_NAME, "character name"),
         clampRpcString(params[1], LIMIT_WORLD_ID),
       );
     case "register":
@@ -104,7 +104,7 @@ async function dispatch(hub: HubStub, method: string, params: unknown[], req: Re
     case "recordFallen":
       return hub.recordFallen(
         clampRpcString(params[0], LIMIT_WORLD_ID),
-        clampRpcString(params[1], LIMIT_CHARACTER_NAME),
+        requireRpcString(params[1], LIMIT_CHARACTER_NAME, "character name"),
         String(params[2]),
         Number(params[3]),
       );
@@ -113,8 +113,8 @@ async function dispatch(hub: HubStub, method: string, params: unknown[], req: Re
     case "recordRescued":
       return hub.recordRescued(
         clampRpcString(params[0], LIMIT_WORLD_ID),
-        clampRpcString(params[1], LIMIT_CHARACTER_NAME),
-        clampRpcString(params[2], LIMIT_CHARACTER_NAME),
+        requireRpcString(params[1], LIMIT_CHARACTER_NAME, "character name"),
+        requireRpcString(params[2], LIMIT_CHARACTER_NAME, "character name"),
         Number(params[3]),
       );
     case "recentRescued":

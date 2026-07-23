@@ -1,3 +1,7 @@
+## v0.30.18
+
+- fix(grid-hub): reject oversized character names at RPC boundary instead of truncating (prevents prefix collision) (#984 K3 wave 17).
+
 ## v0.30.17
 
 - fix(grid-hub): tighten commit delta caps to +500 gold/xp and +1 level per commit (#984 K3 wave 16).
