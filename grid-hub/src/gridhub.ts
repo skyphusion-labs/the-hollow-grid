@@ -4,6 +4,7 @@ import type { GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued, Presen
 import { assertRegisterUrl } from "./register-url";
 import { sanitizePlayerText } from "../../shared/sanitize-player-text";
 import { worldAuthRequired } from "./world-auth";
+import { finiteInt } from "./numeric";
 
 // The Grid Hub: the federation's shared state, as a single global Durable Object
 // (getByName("grid")). It holds the dead network's COLLECTIVE memory -- traces,
@@ -402,6 +403,7 @@ export class GridHub extends DurableObject<Env> {
   }
 
   shiftTide(delta: number): number {
+    if (!Number.isFinite(delta)) return this.tide();
     const bounded = clamp(Math.floor(delta), -MAX_TIDE_SHIFT, MAX_TIDE_SHIFT);
     const next = Math.max(-100, Math.min(100, this.tide() + bounded));
     this.ctx.storage.sql.exec("UPDATE meta SET v = ? WHERE k = 'tide'", next);
@@ -452,11 +454,11 @@ export class GridHub extends DurableObject<Env> {
     this.assertCharacterLease(name, world);
     const cur = this.loadCharacter(name, world);
     const next: CharSheet = {
-      level: clamp(Math.floor(p.level), cur.level, cur.level + MAX_LEVEL_DELTA), // never de-level; no big jumps
-      xp: clamp(Math.floor(p.xp), cur.xp, cur.xp + MAX_XP_DELTA),
-      gold: clamp(Math.floor(p.gold), 0, cur.gold + MAX_GOLD_DELTA), // bounded per commit
+      level: clamp(finiteInt(p.level, cur.level), cur.level, cur.level + MAX_LEVEL_DELTA), // never de-level; no big jumps
+      xp: clamp(finiteInt(p.xp, cur.xp), cur.xp, cur.xp + MAX_XP_DELTA),
+      gold: clamp(finiteInt(p.gold, cur.gold), 0, cur.gold + MAX_GOLD_DELTA), // bounded per commit
       faction: ["none", "front", "ally"].includes(p.faction) ? p.faction : cur.faction,
-      morality: clamp(Math.floor(p.morality), -1000, 1000),
+      morality: clamp(finiteInt(p.morality, cur.morality), -1000, 1000),
       title: sanitizePlayerText(String(p.title ?? ""), 40),
       // race: an opaque label, sanitized but not validated against any list (any
       // world may define races); set once, then sticky (a character cannot reroll
