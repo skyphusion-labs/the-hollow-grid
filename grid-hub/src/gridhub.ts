@@ -338,7 +338,7 @@ export class GridHub extends DurableObject<Env> {
   // home_world pins at authenticated claim so a lease-expiry race cannot let another
   // world commit first and steal the character (K3 wave 15).
   claimCharacterLease(name: string, world: string): void {
-    name = requireRpcString(name, LIMIT_CHARACTER_NAME, "character name");
+    name = sanitizePlayerText(requireRpcString(name, LIMIT_CHARACTER_NAME, "character name"), LIMIT_CHARACTER_NAME);
     world = clampRpcString(world, LIMIT_WORLD_ID);
     this.assertRegisteredWorld(world);
     this.expireStaleLeases();
@@ -534,7 +534,7 @@ export class GridHub extends DurableObject<Env> {
 
   // --- Canonical identity: the character that follows you --------------------
   loadCharacter(name: string, _world: string): CharSheet {
-    name = requireRpcString(name, LIMIT_CHARACTER_NAME, "character name");
+    name = sanitizePlayerText(requireRpcString(name, LIMIT_CHARACTER_NAME, "character name"), LIMIT_CHARACTER_NAME);
     const row = this.ctx.storage.sql
       .exec<{
         level: number;

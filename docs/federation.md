@@ -243,7 +243,8 @@ when keys and edge controls are live (fc#1007):
 | `/ws` connection volume | 512 global + 16/IP (wave 24); 90s pre-auth idle close | Same caps; Origin check (wave 20) blocks CSWSH |
 | `register()` withdrawal | Empty URL deletes registry row without keys (dev) | **Prod FP:** `GRID_WORLD_KEYS` on hub; only authenticated worlds mutate registry (fc#1007) |
 | `loadCharacter` cross-world read | Returns canonical sheet to any authenticated world | **Closed federation FP:** read-only snapshot; commits require lease + home match (§9) |
-| Seed placeholder worlds | `SEED_WORLDS` with `last_seen=0` until real register | Intentional bootstrap so travel UI is alive before sibling worlds connect |
+| `claimCharacterLease` without keys | Unauthenticated lease/squat in dev configs | **Prod FP:** per-world keys on hub; binding + `/rpc` enforce auth when `GRID_RPC_TOKEN` set (fc#1007) |
+| Seed world registry | Placeholder rows (`last_seen=0`) until real register | Intentional bootstrap; live worlds overwrite on authenticated register |
 
 Do not point `npm run smoke` at production hosts unless `ALLOW_PROD_SMOKE=1`.
 
