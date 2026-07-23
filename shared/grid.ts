@@ -78,7 +78,7 @@ export interface GridHubApi {
   castsSince(sinceId: number, limit: number): Promise<GridCast[]>;
 
   // Canonical identity (the character that follows you across worlds).
-  loadCharacter(name: string, world: string): Promise<CharSheet>;
+  loadCharacter(name: string, world: string, worldKey?: string): Promise<CharSheet>;
   commitCharacter(name: string, world: string, p: CharSheet, worldKey?: string): Promise<CharSheet>;
   claimCharacterLease(name: string, world: string, worldKey?: string): Promise<void>;
   releaseCharacterLease(name: string, world: string, worldKey?: string): Promise<void>;
@@ -114,5 +114,5 @@ export interface GridHubApi {
     at: number,
     worldKey?: string,
   ): Promise<void>;
-  presence(maxAgeMs: number): Promise<Presence[]>;
+  presence(maxAgeMs: number, world?: string, worldKey?: string): Promise<Presence[]>;
 }

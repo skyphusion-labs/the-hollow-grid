@@ -2,6 +2,7 @@ import type { Env } from "./types";
 import type { GridHub } from "./gridhub";
 import { verifyRpcWorldAuth } from "./rpc-auth";
 import { verifyRpcBearer } from "./world-auth";
+import { clampRpcString, LIMIT_CHARACTER_NAME, LIMIT_LEDGER_KIND, LIMIT_WORLD_ID } from "./rpc-limits";
 
 type HubStub = DurableObjectStub<GridHub>;
 
@@ -45,34 +46,55 @@ export async function handleRPC(req: Request, env: Env): Promise<Response> {
 }
 
 async function dispatch(hub: HubStub, method: string, params: unknown[], req: Request): Promise<unknown> {
+  const headerWorld = req.headers.get("X-Grid-World") ?? "";
   switch (method) {
     case "record":
-      return hub.record(String(params[0]), String(params[1]), String(params[2]), String(params[3]), Number(params[4]));
+      return hub.record(
+        clampRpcString(params[0], LIMIT_WORLD_ID),
+        String(params[1]),
+        clampRpcString(params[2], LIMIT_LEDGER_KIND),
+        String(params[3]),
+        Number(params[4]),
+      );
     case "recent":
       return hub.recent(Number(params[0]));
     case "recentAcross":
-      return hub.recentAcross(String(params[0]), Number(params[1]));
+      return hub.recentAcross(clampRpcString(params[0], LIMIT_WORLD_ID), Number(params[1]));
     case "tide":
       return hub.tide();
     case "shiftTide":
-      return hub.shiftTide(Number(params[0]));
+      return hub.shiftTide(Number(params[0]), headerWorld || undefined);
     case "gridcast":
-      return hub.gridcast(String(params[0]), String(params[1]), String(params[2]));
+      return hub.gridcast(
+        clampRpcString(params[0], LIMIT_WORLD_ID),
+        String(params[1]),
+        String(params[2]),
+      );
     case "castsSince":
       return hub.castsSince(Number(params[0]), Number(params[1]));
     case "loadCharacter": {
-      const world = String(params[1] ?? req.headers.get("X-Grid-World") ?? "");
+      const world = clampRpcString(params[1] ?? headerWorld, LIMIT_WORLD_ID);
       if (!world) throw new Error("world required for loadCharacter");
-      return hub.loadCharacter(String(params[0]), world);
+      return hub.loadCharacter(clampRpcString(params[0], LIMIT_CHARACTER_NAME), world);
     }
     case "commitCharacter":
-      return hub.commitCharacter(String(params[0]), String(params[1]), params[2] as never);
+      return hub.commitCharacter(
+        clampRpcString(params[0], LIMIT_CHARACTER_NAME),
+        clampRpcString(params[1], LIMIT_WORLD_ID),
+        params[2] as never,
+      );
     case "claimCharacterLease":
-      return hub.claimCharacterLease(String(params[0]), String(params[1]));
+      return hub.claimCharacterLease(
+        clampRpcString(params[0], LIMIT_CHARACTER_NAME),
+        clampRpcString(params[1], LIMIT_WORLD_ID),
+      );
     case "releaseCharacterLease":
-      return hub.releaseCharacterLease(String(params[0]), String(params[1]));
+      return hub.releaseCharacterLease(
+        clampRpcString(params[0], LIMIT_CHARACTER_NAME),
+        clampRpcString(params[1], LIMIT_WORLD_ID),
+      );
     case "register":
-      return hub.register(String(params[0]), String(params[1]));
+      return hub.register(clampRpcString(params[0], LIMIT_WORLD_ID), String(params[1]));
     case "listWorlds":
       return hub.listWorlds();
     case "ledgerStats":
@@ -80,15 +102,25 @@ async function dispatch(hub: HubStub, method: string, params: unknown[], req: Re
     case "pruneLedgerKinds":
       return hub.pruneLedgerKinds(params[0] as string[]);
     case "recordFallen":
-      return hub.recordFallen(String(params[0]), String(params[1]), String(params[2]), Number(params[3]));
+      return hub.recordFallen(
+        clampRpcString(params[0], LIMIT_WORLD_ID),
+        clampRpcString(params[1], LIMIT_CHARACTER_NAME),
+        String(params[2]),
+        Number(params[3]),
+      );
     case "recentFallen":
       return hub.recentFallen(Number(params[0]));
     case "recordRescued":
-      return hub.recordRescued(String(params[0]), String(params[1]), String(params[2]), Number(params[3]));
+      return hub.recordRescued(
+        clampRpcString(params[0], LIMIT_WORLD_ID),
+        clampRpcString(params[1], LIMIT_CHARACTER_NAME),
+        clampRpcString(params[2], LIMIT_CHARACTER_NAME),
+        Number(params[3]),
+      );
     case "recentRescued":
       return hub.recentRescued(Number(params[0]));
     case "reportPresence":
-      return hub.reportPresence(String(params[0]), params[1] as never, Number(params[2]));
+      return hub.reportPresence(clampRpcString(params[0], LIMIT_WORLD_ID), params[1] as never, Number(params[2]));
     case "presence":
       return hub.presence(Number(params[0]));
     default:

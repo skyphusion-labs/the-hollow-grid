@@ -45,11 +45,17 @@ export function assertWorldAuth(env: Env, world: string, key: string | undefined
   }
 }
 
-/** Constant-time compare for bearer tokens and world keys. */
+/** Constant-time compare; does not short-circuit on length mismatch (K3 wave 14). */
 export function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let out = 0;
-  for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  const lenA = a.length;
+  const lenB = b.length;
+  const max = Math.max(lenA, lenB);
+  let out = lenA ^ lenB;
+  for (let i = 0; i < max; i++) {
+    const ca = i < lenA ? a.charCodeAt(i) : 0;
+    const cb = i < lenB ? b.charCodeAt(i) : 0;
+    out |= ca ^ cb;
+  }
   return out === 0;
 }
 
@@ -57,7 +63,6 @@ export function verifyRpcBearer(authHeader: string, token: string): boolean {
   const prefix = "Bearer ";
   if (!authHeader.startsWith(prefix)) return false;
   const got = authHeader.slice(prefix.length);
-  if (got.length !== token.length) return false;
   return timingSafeEqual(got, token);
 }
 

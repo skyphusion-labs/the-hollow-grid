@@ -25,4 +25,10 @@ describe("requireBindingWorldAuth", () => {
     expect(worldAuthRequired(env)).toBe(true);
     expect(() => assertWorldAuth(env, "Dustfall", "any")).toThrow(/GRID_WORLD_KEYS required/);
   });
+
+  it("requires world key on binding read path when keys configured", () => {
+    const env = { GRID_WORLD_KEYS: JSON.stringify({ Dustfall: "dust-key" }) } as Env;
+    expect(() => requireBindingWorldAuth(env, "Dustfall", "wrong")).toThrow(/world auth denied/);
+    expect(() => requireBindingWorldAuth(env, "Dustfall", "dust-key")).not.toThrow();
+  });
 });

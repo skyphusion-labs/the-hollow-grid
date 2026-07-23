@@ -765,7 +765,7 @@ export class World extends DurableObject<Env> {
           .register(this.worldName, this.env.WORLD_URL ?? "ws://localhost:8787/ws", this.env.GRID_WORLD_KEY)
           .catch(() => {}),
       );
-      const canon = await this.env.GRID.loadCharacter(session.name, this.worldName);
+      const canon = await this.env.GRID.loadCharacter(session.name, this.worldName, this.env.GRID_WORLD_KEY);
       session.level = canon.level;
       session.xp = canon.xp;
       session.gold = canon.gold;
@@ -1035,7 +1035,7 @@ export class World extends DurableObject<Env> {
           .register(this.worldName, this.env.WORLD_URL ?? "ws://localhost:8787/ws", this.env.GRID_WORLD_KEY)
           .catch(() => {}),
       );
-      const canon = await this.env.GRID.loadCharacter(session.name, this.worldName);
+      const canon = await this.env.GRID.loadCharacter(session.name, this.worldName, this.env.GRID_WORLD_KEY);
       session.level = canon.level;
       session.xp = canon.xp;
       session.gold = canon.gold;
@@ -2827,7 +2827,7 @@ export class World extends DurableObject<Env> {
   private async whoami(ws: WebSocket, s: Session): Promise<void> {
     let sheet: CharSheet;
     try {
-      sheet = await this.env.GRID.loadCharacter(s.name, this.worldName);
+      sheet = await this.env.GRID.loadCharacter(s.name, this.worldName, this.env.GRID_WORLD_KEY);
     } catch {
       sheet = {
         level: s.level,
@@ -3432,7 +3432,7 @@ export class World extends DurableObject<Env> {
   private async who(ws: WebSocket, s: Session): Promise<void> {
     let roster: Presence[] | null = null;
     try {
-      roster = await this.env.GRID.presence(PRESENCE_TTL_MS);
+      roster = await this.env.GRID.presence(PRESENCE_TTL_MS, this.worldName, this.env.GRID_WORLD_KEY);
     } catch {
       roster = null;
     }

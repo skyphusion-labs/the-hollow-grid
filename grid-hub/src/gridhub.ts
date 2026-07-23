@@ -6,6 +6,7 @@ import { sanitizePlayerText } from "../../shared/sanitize-player-text";
 import { worldAuthRequired } from "./world-auth";
 import { finiteInt } from "./numeric";
 import { leaseExpiryCutoff } from "./character-lease";
+import { clampRpcString, LIMIT_CHARACTER_NAME, LIMIT_LEDGER_KIND, LIMIT_WORLD_ID } from "./rpc-limits";
 
 // The Grid Hub: the federation's shared state, as a single global Durable Object
 // (getByName("grid")). It holds the dead network's COLLECTIVE memory -- traces,
@@ -169,10 +170,13 @@ export class GridHub extends DurableObject<Env> {
 
   // A world reports a notable event into the shared Grid memory. RPC-callable.
   record(world: string, node: string, kind: string, text: string, at: number): void {
+    world = clampRpcString(world, LIMIT_WORLD_ID);
+    this.assertRegisteredWorld(world);
     const sql = this.ctx.storage.sql;
     const safeNode = sanitizePlayerText(node, 80);
+    const safeKind = sanitizePlayerText(kind, LIMIT_LEDGER_KIND);
     const safeText = sanitizePlayerText(text, 500);
-    sql.exec("INSERT INTO ledger (world, node, kind, text, at) VALUES (?, ?, ?, ?, ?)", world, safeNode, kind, safeText, at);
+    sql.exec("INSERT INTO ledger (world, node, kind, text, at) VALUES (?, ?, ?, ?, ?)", world, safeNode, safeKind, safeText, at);
     // Keep the collective memory long but bounded.
     sql.exec("DELETE FROM ledger WHERE id NOT IN (SELECT id FROM ledger ORDER BY id DESC LIMIT 1000)");
   }
@@ -197,6 +201,8 @@ export class GridHub extends DurableObject<Env> {
   // The memorial roll: record one of the fallen (best-effort on death), and read
   // the most recent fallen (newest first) so a world can list whom to remember.
   recordFallen(world: string, name: string, room: string, at: number): void {
+    world = clampRpcString(world, LIMIT_WORLD_ID);
+    this.assertRegisteredWorld(world);
     const sql = this.ctx.storage.sql;
     sql.exec(
       "INSERT INTO fallen (world, name, room, at) VALUES (?, ?, ?, ?)",
@@ -218,6 +224,8 @@ export class GridHub extends DurableObject<Env> {
   // The rescued roll: record one of the saved (best-effort when cages are
   // freed), and read the most recent rescued (newest first).
   recordRescued(world: string, name: string, savedBy: string, at: number): void {
+    world = clampRpcString(world, LIMIT_WORLD_ID);
+    this.assertRegisteredWorld(world);
     const sql = this.ctx.storage.sql;
     sql.exec(
       "INSERT INTO rescued (world, name, saved_by, at) VALUES (?, ?, ?, ?)",
@@ -303,6 +311,8 @@ export class GridHub extends DurableObject<Env> {
   // Called by a world after local login auth succeeds; grants that world the commit lease.
   // home_world is assigned on first commitCharacter, not here (blocks cross-world name squat).
   claimCharacterLease(name: string, world: string): void {
+    name = clampRpcString(name, LIMIT_CHARACTER_NAME);
+    world = clampRpcString(world, LIMIT_WORLD_ID);
     this.assertRegisteredWorld(world);
     this.expireStaleLeases();
     const sql = this.ctx.storage.sql;
@@ -433,7 +443,11 @@ export class GridHub extends DurableObject<Env> {
     return this.ctx.storage.sql.exec<{ v: number }>("SELECT v FROM meta WHERE k = 'tide'").one().v;
   }
 
-  shiftTide(delta: number): number {
+  shiftTide(delta: number, world?: string): number {
+    if (world) {
+      world = clampRpcString(world, LIMIT_WORLD_ID);
+      this.assertRegisteredWorld(world);
+    }
     if (!Number.isFinite(delta)) return this.tide();
     const bounded = clamp(Math.floor(delta), -MAX_TIDE_SHIFT, MAX_TIDE_SHIFT);
     const next = Math.max(-100, Math.min(100, this.tide() + bounded));
@@ -443,6 +457,8 @@ export class GridHub extends DurableObject<Env> {
 
   // --- Cross-world chat ------------------------------------------------------
   gridcast(world: string, sender: string, text: string): void {
+    world = clampRpcString(world, LIMIT_WORLD_ID);
+    this.assertRegisteredWorld(world);
     const sql = this.ctx.storage.sql;
     const safeSender = sanitizePlayerText(sender, 32);
     const safeText = sanitizePlayerText(text, 500);
@@ -459,6 +475,7 @@ export class GridHub extends DurableObject<Env> {
 
   // --- Canonical identity: the character that follows you --------------------
   loadCharacter(name: string, _world: string): CharSheet {
+    name = clampRpcString(name, LIMIT_CHARACTER_NAME);
     const row = this.ctx.storage.sql
       .exec<{
         level: number;
@@ -524,6 +541,7 @@ export class GridHub extends DurableObject<Env> {
 
   // --- The world registry: travel destinations -------------------------------
   register(world: string, url: string): void {
+    world = clampRpcString(world, LIMIT_WORLD_ID);
     // An empty URL is an explicit withdrawal. This keeps temporary/test nodes
     // and intentionally retired worlds from becoming permanent dead routes.
     if (!url.trim()) {

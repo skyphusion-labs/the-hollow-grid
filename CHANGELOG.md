@@ -1,3 +1,11 @@
+## v0.30.15
+
+- fix(grid-hub): enforce world key auth on binding-path `loadCharacter` and `presence` reads when `GRID_WORLD_KEYS` configured (#984 K3 wave 14).
+- fix(grid-hub): require registered world on `record`, `gridcast`, `shiftTide`, `recordFallen`, and `recordRescued` mutators (#984 K3 wave 14).
+- fix(grid-hub): clamp hub RPC string fields (name/world/kind) at HTTP ingress and DO boundary (#984 K3 wave 14).
+- fix(grid-hub): length-independent constant-time compare for bearer and world keys (#984 K3 wave 14).
+- fix(grid-hub): sanitize ledger `kind` at insert (#984 K3 wave 14).
+
 ## v0.30.14
 
 - fix(grid-hub): character lease TTL (30m) and legacy lease_at=0 expiry so crash/disconnect cannot lock names forever (#984 K3 wave 13).
