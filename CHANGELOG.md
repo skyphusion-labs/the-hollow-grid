@@ -1,3 +1,10 @@
+## v0.30.10
+
+- fix(grid-hub): fail closed when `GRID_RPC_TOKEN` is set without `GRID_WORLD_KEYS` (#984 K3 wave 9).
+- fix(grid-hub): clamp `shiftTide` delta to ±10 per call; cap `reportPresence` at 256 entries.
+- fix(grid-hub): constant-time RPC bearer compare; `ws://` register URLs limited to localhost.
+- fix(webclient): escape `WORLD_NAME` in served HTML.
+
 ## v0.30.9
 
 - fix(grid-hub): `releaseCharacterLease` on disconnect so dead worlds do not lock characters forever (#984 K3 wave 8).

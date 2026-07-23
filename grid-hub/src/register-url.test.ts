@@ -18,6 +18,10 @@ describe("assertRegisterUrl", () => {
     expect(() => assertRegisterUrl("javascript:alert(1)")).toThrow(/ws: or wss:/);
   });
 
+  it("rejects remote ws handoff URLs", () => {
+    expect(() => assertRegisterUrl("ws://evil.example/ws")).toThrow(/localhost/);
+  });
+
   it("rejects https handoff URLs", () => {
     expect(() => assertRegisterUrl("https://evil.example/ws")).toThrow(/ws: or wss:/);
   });

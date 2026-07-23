@@ -13,4 +13,10 @@ export function assertRegisterUrl(url: string): void {
   if (!ALLOWED_REGISTER_SCHEMES.has(parsed.protocol)) {
     throw new Error("register url must use ws: or wss:");
   }
+  if (parsed.protocol === "ws:") {
+    const host = parsed.hostname.toLowerCase();
+    if (host !== "localhost" && host !== "127.0.0.1") {
+      throw new Error("ws: register urls are limited to localhost");
+    }
+  }
 }
