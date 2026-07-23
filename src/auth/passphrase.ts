@@ -17,10 +17,16 @@ export async function verifyPassphrase(phrase: string, storedHash: string): Prom
   return bcrypt.compare(trimmed, storedHash);
 }
 
+function bytesTimingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
+}
+
 export function verifyAdminToken(token: string, expected: string): boolean {
   if (!expected) return false;
   const a = new TextEncoder().encode(token.trim());
   const b = new TextEncoder().encode(expected);
-  if (a.length !== b.length) return false;
-  return crypto.subtle.timingSafeEqual(a, b);
+  return bytesTimingSafeEqual(a, b);
 }
