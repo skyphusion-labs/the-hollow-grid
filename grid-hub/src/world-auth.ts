@@ -1,6 +1,7 @@
 import type { Env } from "./types";
 
 let parsedKeys: Record<string, string> | null | undefined;
+let keysParseError = false;
 
 function worldKeys(env: Env): Record<string, string> | null {
   if (parsedKeys !== undefined) return parsedKeys;
@@ -18,23 +19,32 @@ function worldKeys(env: Env): Record<string, string> | null {
     parsedKeys = out;
     return parsedKeys;
   } catch {
-    parsedKeys = null;
+    keysParseError = true;
+    parsedKeys = {};
     return parsedKeys;
   }
 }
 
 export function worldAuthRequired(env: Env): boolean {
   const keys = worldKeys(env);
+  if (keysParseError) return true;
   return !!keys && Object.keys(keys).length > 0;
 }
 
 export function assertWorldAuth(env: Env, world: string, key: string | undefined): void {
+  if (keysParseError) throw new Error("GRID_WORLD_KEYS invalid");
   const keys = worldKeys(env);
   if (!keys || Object.keys(keys).length === 0) return;
   const expected = keys[world];
   if (!expected || !timingSafeEqual(String(key ?? ""), expected)) {
     throw new Error(`world auth denied for ${world}`);
   }
+}
+
+/** Test helper: reset module cache between cases. */
+export function resetWorldAuthCache(): void {
+  parsedKeys = undefined;
+  keysParseError = false;
 }
 
 function timingSafeEqual(a: string, b: string): boolean {

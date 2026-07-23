@@ -1,3 +1,8 @@
+## v0.30.6
+
+- fix(grid-hub): require per-world key auth on HTTP `/rpc` mutations (`shiftTide`, `gridcast`, `record*`, `pruneLedgerKinds`) (#984 K3 wave 5).
+- fix(grid-hub): invalid `GRID_WORLD_KEYS` JSON fails closed instead of disabling auth.
+
 ## v0.30.5
 
 - fix(auth): constant-time `verifyAdminToken` compare so keeper login fails closed (#984 K3).

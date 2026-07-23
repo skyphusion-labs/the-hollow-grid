@@ -1,24 +1,8 @@
 import type { Env } from "./types";
 import type { GridHub } from "./gridhub";
-import { assertWorldAuth } from "./world-auth";
+import { verifyRpcWorldAuth } from "./rpc-auth";
 
 type HubStub = DurableObjectStub<GridHub>;
-
-const AUTH_METHODS = new Set(["commitCharacter", "reportPresence", "register", "claimCharacterLease"]);
-
-function worldFromParams(method: string, params: unknown[]): string {
-  switch (method) {
-    case "commitCharacter":
-      return String(params[1] ?? "");
-    case "claimCharacterLease":
-      return String(params[1] ?? "");
-    case "reportPresence":
-    case "register":
-      return String(params[0] ?? "");
-    default:
-      return "";
-  }
-}
 
 // HTTP JSON-RPC ingress for external world nodes (fleet Go worlds, etc.) that
 // cannot reach the hub over a Cloudflare service binding. Auth is a shared
@@ -44,23 +28,11 @@ export async function handleRPC(req: Request, env: Env): Promise<Response> {
   }
   const params = Array.isArray(body.params) ? body.params : [];
 
-  if (AUTH_METHODS.has(method)) {
-    const world = worldFromParams(method, params).trim();
-    const headerWorld = (req.headers.get("X-Grid-World") ?? "").trim();
-    const worldKey = req.headers.get("X-Grid-World-Key") ?? undefined;
-    if (!world) {
-      return Response.json({ ok: false, error: "world param required" }, { status: 400 });
-    }
-    if (headerWorld && headerWorld !== world) {
-      return Response.json({ ok: false, error: "X-Grid-World mismatch" }, { status: 403 });
-    }
-    try {
-      assertWorldAuth(env, world, worldKey);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return Response.json({ ok: false, error: msg }, { status: 403 });
-    }
-  }
+  const authErr = verifyRpcWorldAuth(env, method, params, {
+    world: req.headers.get("X-Grid-World") ?? "",
+    worldKey: req.headers.get("X-Grid-World-Key") ?? undefined,
+  });
+  if (authErr) return authErr;
 
   const hub = env.GRIDHUB.getByName("grid");
   try {
