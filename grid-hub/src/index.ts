@@ -57,6 +57,10 @@ export class GridHubService extends WorkerEntrypoint<Env> implements GridHubApi 
     requireBindingWorldAuth(this.env, world, worldKey);
     await this.hub().claimCharacterLease(name, world);
   }
+  async releaseCharacterLease(name: string, world: string, worldKey?: string): Promise<void> {
+    requireBindingWorldAuth(this.env, world, worldKey);
+    await this.hub().releaseCharacterLease(name, world);
+  }
 
   async register(world: string, url: string, worldKey?: string): Promise<void> {
     requireBindingWorldAuth(this.env, world, worldKey);

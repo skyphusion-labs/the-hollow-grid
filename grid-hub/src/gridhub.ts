@@ -164,7 +164,9 @@ export class GridHub extends DurableObject<Env> {
   // A world reports a notable event into the shared Grid memory. RPC-callable.
   record(world: string, node: string, kind: string, text: string, at: number): void {
     const sql = this.ctx.storage.sql;
-    sql.exec("INSERT INTO ledger (world, node, kind, text, at) VALUES (?, ?, ?, ?, ?)", world, node, kind, text, at);
+    const safeNode = sanitizePlayerText(node, 80);
+    const safeText = sanitizePlayerText(text, 500);
+    sql.exec("INSERT INTO ledger (world, node, kind, text, at) VALUES (?, ?, ?, ?, ?)", world, safeNode, kind, safeText, at);
     // Keep the collective memory long but bounded.
     sql.exec("DELETE FROM ledger WHERE id NOT IN (SELECT id FROM ledger ORDER BY id DESC LIMIT 1000)");
   }
@@ -285,6 +287,21 @@ export class GridHub extends DurableObject<Env> {
     this.assertCharacterLease(name, world);
   }
 
+  // Drop this world's commit lease on logout/disconnect so another world can claim.
+  releaseCharacterLease(name: string, world: string): void {
+    this.assertRegisteredWorld(world);
+    const sql = this.ctx.storage.sql;
+    const row = sql
+      .exec<{ lease_world: string }>("SELECT lease_world FROM characters WHERE name = ?", name)
+      .toArray()[0];
+    if (!row) return;
+    const lease = row.lease_world?.trim() ?? "";
+    if (lease && lease !== world) {
+      throw new Error(`character ${name} is leased to ${lease}, not ${world}`);
+    }
+    sql.exec("UPDATE characters SET lease_world = '' WHERE name = ? AND lease_world = ?", name, world);
+  }
+
   // The live roster across all worlds, dropping rows older than maxAgeMs (a world
   // that stopped sending heartbeats). Also opportunistically prunes the stale.
   presence(maxAgeMs: number): Presence[] {
@@ -375,7 +392,9 @@ export class GridHub extends DurableObject<Env> {
   // --- Cross-world chat ------------------------------------------------------
   gridcast(world: string, sender: string, text: string): void {
     const sql = this.ctx.storage.sql;
-    sql.exec("INSERT INTO casts (world, sender, text, at) VALUES (?, ?, ?, ?)", world, sender, text, Date.now());
+    const safeSender = sanitizePlayerText(sender, 32);
+    const safeText = sanitizePlayerText(text, 500);
+    sql.exec("INSERT INTO casts (world, sender, text, at) VALUES (?, ?, ?, ?)", world, safeSender, safeText, Date.now());
     sql.exec("DELETE FROM casts WHERE id NOT IN (SELECT id FROM casts ORDER BY id DESC LIMIT 200)");
   }
 
