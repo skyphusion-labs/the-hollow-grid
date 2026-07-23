@@ -1,3 +1,10 @@
+## v0.30.8
+
+- fix(grid-hub): sanitize federated character/presence titles (strip ANSI and control bytes) (#984 K3 wave 7).
+- fix(grid-hub): block legacy characters with empty `home_world`; migrate lease→home on boot (#984 K3 wave 7).
+- fix(grid-hub): refuse live world URL re-point over register when `GRID_WORLD_KEYS` is unset (#984 K3 wave 7).
+- fix(grid-hub): read `GRID_WORLD_KEYS` from env on each auth check (key rotation without redeploy).
+
 ## v0.30.7
 
 - fix(grid-hub): require per-world key auth on service-binding mutators (`record`, `shiftTide`, `gridcast`, `record*`, `pruneLedgerKinds`) (#984 K3 wave 6).
