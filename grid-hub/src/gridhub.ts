@@ -5,7 +5,7 @@ import { assertRegisterUrl } from "./register-url";
 import { sanitizePlayerText } from "../../shared/sanitize-player-text";
 import { worldAuthRequired } from "./world-auth";
 import { finiteInt } from "./numeric";
-import { leaseExpiryCutoff } from "./character-lease";
+import { assertClaimCharacterLeaseAllowed, leaseExpiryCutoff, requireActiveCharacterLease } from "./character-lease";
 import { nextCommitWindow, commitGainAllowed } from "./commit-rate-limit";
 import { nextTideShift } from "./tide-rate-limit";
 import { effectivePresenceMaxAge } from "./presence-age";
@@ -326,16 +326,11 @@ export class GridHub extends DurableObject<Env> {
     if (!row) {
       throw new Error(`character ${name} not found; claimCharacterLease first`);
     }
-    const lease = row.lease_world?.trim() ?? "";
     const home = row.home_world?.trim() ?? "";
-    if (lease === world) return;
-    if (lease) {
-      throw new Error(`character ${name} is leased to ${lease}, not ${world}`);
-    }
     if (home && home !== world) {
-      throw new Error(`character ${name} home world is ${home}, cannot lease from ${world}`);
+      throw new Error(`character ${name} home world is ${home}, cannot commit from ${world}`);
     }
-    sql.exec("UPDATE characters SET lease_world = ?, lease_at = ? WHERE name = ?", world, Date.now(), name);
+    requireActiveCharacterLease(name, row.lease_world ?? "", world);
   }
 
   // Called by a world after local login auth succeeds; grants that world the commit lease.
@@ -364,14 +359,7 @@ export class GridHub extends DurableObject<Env> {
       );
       return;
     }
-    const home = row.home_world?.trim() ?? "";
-    const lease = row.lease_world?.trim() ?? "";
-    if (home && home !== world) {
-      throw new Error(`character ${name} home world is ${home}, cannot claim from ${world}`);
-    }
-    if (lease && lease !== world) {
-      throw new Error(`character ${name} is leased to ${lease}, not ${world}`);
-    }
+    assertClaimCharacterLeaseAllowed(name, row.lease_world ?? "", row.home_world ?? "", world);
     sql.exec(
       "UPDATE characters SET lease_world = ?, lease_at = ?, home_world = CASE WHEN home_world = '' THEN ? ELSE home_world END WHERE name = ?",
       world,
@@ -590,9 +578,6 @@ export class GridHub extends DurableObject<Env> {
     if (home && home !== world) {
       throw new Error(`character ${name} home world is ${home}, cannot commit from ${world}`);
     }
-    if (!home) {
-      sql.exec("UPDATE characters SET home_world = ? WHERE name = ? AND home_world = ''", world, name);
-    }
     const rate = nextCommitWindow(meta?.commit_window_at ?? 0, meta?.commit_window_count ?? 0, now);
     if (!rate.ok) throw new Error(`character ${name} commit rate limit exceeded`);
     const cur = this.loadCharacter(name, world);
@@ -636,7 +621,7 @@ export class GridHub extends DurableObject<Env> {
       ashsworn: cur.ashsworn || !!p.ashsworn,
     };
     this.ctx.storage.sql.exec(
-      "UPDATE characters SET level = ?, xp = ?, gold = ?, faction = ?, morality = ?, title = ?, race = ?, ashsworn = ? WHERE name = ?",
+      "UPDATE characters SET level = ?, xp = ?, gold = ?, faction = ?, morality = ?, title = ?, race = ?, ashsworn = ? WHERE name = ? AND lease_world = ?",
       next.level,
       next.xp,
       next.gold,
@@ -646,6 +631,7 @@ export class GridHub extends DurableObject<Env> {
       next.race,
       next.ashsworn ? 1 : 0,
       name,
+      world,
     );
     return next;
   }

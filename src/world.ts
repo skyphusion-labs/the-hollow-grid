@@ -22,6 +22,8 @@ const DEFAULT_WORLD_NAME = "The Hollow Grid";
 const ROUND_MS = 3_000; // combat + poison resolve one tick every 3 seconds
 /** Cap concurrent sockets on the shared World DO (K3 wave 22). */
 const MAX_WS_CONNECTIONS = 512;
+/** Reject oversized client frames before decode (K3 wave 23). */
+const MAX_WS_MESSAGE_BYTES = 8192;
 const GRIDCAST_POLL_MS = 2_000; // cap hub RPC wait so a hung federation call cannot freeze combat
 const BASE_HP = 30;
 const POISON_DMG = 1; // hp lost per tick while poisoned
@@ -455,6 +457,16 @@ export class World extends DurableObject<Env> {
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    const byteLen =
+      typeof message === "string" ? new TextEncoder().encode(message).byteLength : message.byteLength;
+    if (byteLen > MAX_WS_MESSAGE_BYTES) {
+      try {
+        ws.close(1009, "message too large");
+      } catch {
+        // already closing
+      }
+      return;
+    }
     const line = (typeof message === "string" ? message : new TextDecoder().decode(message)).trim();
     const session = ws.deserializeAttachment() as Session | null;
 
