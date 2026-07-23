@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { verifyRpcWorldAuth, worldFromRpcParams } from "./rpc-auth";
 import { resetWorldAuthCache } from "./world-auth";
+import { LIMIT_WORLD_ID } from "./rpc-limits";
 import type { Env } from "./types";
 
 function env(keys?: string): Env {
@@ -68,5 +69,15 @@ describe("verifyRpcWorldAuth", () => {
       worldKey: "anything",
     });
     expect(res?.status).toBe(403);
+  });
+
+  it("rejects oversized world id before auth", () => {
+    const keys = JSON.stringify({ "Rust Choir": "good-key" });
+    const longWorld = "x".repeat(LIMIT_WORLD_ID + 1);
+    const res = verifyRpcWorldAuth(env(keys), "gridcast", [longWorld, "Mara", "hi"], {
+      world: "",
+      worldKey: "good-key",
+    });
+    expect(res?.status).toBe(400);
   });
 });

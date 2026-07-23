@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { COMMIT_WINDOW_MS, MAX_COMMITS_PER_WINDOW, nextCommitWindow } from "./commit-rate-limit";
+import { COMMIT_WINDOW_MS, MAX_COMMITS_PER_WINDOW, commitGainAllowed, nextCommitWindow } from "./commit-rate-limit";
 
 describe("commit rate limit", () => {
   it("allows commits within the window", () => {
@@ -25,5 +25,14 @@ describe("commit rate limit", () => {
     expect(blocked.ok).toBe(false);
     const reset = nextCommitWindow(start, MAX_COMMITS_PER_WINDOW, start + COMMIT_WINDOW_MS + 1);
     expect(reset.ok).toBe(true);
+  });
+
+  it("caps total gold/xp gain per window", () => {
+    const now = 1_700_000_000_000;
+    const first = commitGainAllowed(0, 0, 0, 400, 400, now);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const second = commitGainAllowed(first.windowAt, first.windowGoldGain, first.windowXpGain, 200, 200, now + 1);
+    expect(second.ok).toBe(false);
   });
 });

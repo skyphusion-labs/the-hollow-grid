@@ -1,5 +1,6 @@
 import type { Env } from "./types";
 import { assertWorldAuth, worldAuthRequired } from "./world-auth";
+import { LIMIT_WORLD_ID, requireRpcString } from "./rpc-limits";
 
 /** RPC methods that mutate federation state and require world attribution. */
 export const WORLD_AUTH_METHODS = new Set([
@@ -63,6 +64,16 @@ export function verifyRpcWorldAuth(
   const headerWorld = headers.world.trim();
   const world = worldFromRpcParams(method, params, headerWorld).trim();
   const keysRequired = worldAuthRequired(env);
+
+  for (const candidate of [world, headerWorld]) {
+    if (!candidate) continue;
+    try {
+      requireRpcString(candidate, LIMIT_WORLD_ID, "world id");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return Response.json({ ok: false, error: msg }, { status: 400 });
+    }
+  }
 
   if (!world) {
     if (keysRequired || !HEADER_WORLD_METHODS.has(method)) {
