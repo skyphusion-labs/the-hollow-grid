@@ -1,6 +1,6 @@
 {
   "name": "the-hollow-grid",
-  "version": "0.30.21",
+  "version": "0.30.22",
   "private": true,
   "description": "A federated post-apocalyptic MUD on Cloudflare Workers and Durable Objects",
   "license": "AGPL-3.0-only",

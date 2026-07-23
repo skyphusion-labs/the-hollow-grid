@@ -20,6 +20,8 @@ const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 const DEFAULT_WORLD_NAME = "The Hollow Grid";
 
 const ROUND_MS = 3_000; // combat + poison resolve one tick every 3 seconds
+/** Cap concurrent sockets on the shared World DO (K3 wave 22). */
+const MAX_WS_CONNECTIONS = 512;
 const GRIDCAST_POLL_MS = 2_000; // cap hub RPC wait so a hung federation call cannot freeze combat
 const BASE_HP = 30;
 const POISON_DMG = 1; // hp lost per tick while poisoned
@@ -414,6 +416,10 @@ export class World extends DurableObject<Env> {
       return new Response("This endpoint speaks WebSocket. Try `wscat -c <url>/ws`.", {
         status: 426,
       });
+    }
+
+    if (this.ctx.getWebSockets().length >= MAX_WS_CONNECTIONS) {
+      return new Response("Server full", { status: 503 });
     }
 
     const pair = new WebSocketPair();

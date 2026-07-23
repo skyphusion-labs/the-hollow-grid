@@ -227,6 +227,21 @@ admission:
 Rotation: update `GRID_RPC_TOKEN` and `GRID_WORLD_KEYS` together via
 fleet-chezmoi (fc#1007); announce on `skyphusion-idp` per IdP rotation policy.
 
+## 9c. K3 audit triage (prod vs repo snapshot)
+
+The adversarial repo audit runs against **committed wrangler configs**, which
+intentionally omit production secrets. Treat these as **documented prod FPs**
+when keys and edge controls are live (fc#1007):
+
+| Finding class | Repo default | Production |
+|---|---|---|
+| `GRID_WORLD_KEYS` unset | Binding auth no-ops (local dev) | Keys provisioned via fleet-chezmoi secrets on `grid-hub` |
+| `shiftTide` / commit rate windows | Were gated on keys (fixed wave 22: tide always rate-limited) | Same code path with keys + RPC bearer |
+| RPC / login brute force | No in-worker throttle | `grid-hub.skyphusion.org/rpc` behind Cloudflare edge; keeper/passphrase bcrypt cost |
+| `/ws` connection volume | Capped at 512 concurrent (wave 22); no pre-auth | Same cap; Origin check (wave 20) blocks CSWSH |
+
+Do not point `npm run smoke` at production hosts unless `ALLOW_PROD_SMOKE=1`.
+
 ## 10. The honest caveats
 
 - This turns *a game* into *a platform for games.* That's a real commitment, a

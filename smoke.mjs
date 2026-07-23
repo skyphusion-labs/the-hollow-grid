@@ -11,6 +11,12 @@ const URL = process.env.MUD_URL ?? "ws://localhost:8787/ws";
 // Derive the world name from env or the /health probe so the suite works against
 // fleet Go worlds (Rust Choir) as well as the TS reference world.
 const HTTP_BASE_FOR_NAME = URL.replace(/^ws/, "http").replace(/\/ws$/, "");
+{
+  const host = new URL(HTTP_BASE_FOR_NAME).hostname;
+  if (host !== "localhost" && host !== "127.0.0.1" && !process.env.ALLOW_PROD_SMOKE) {
+    throw new Error(`Refusing smoke against ${host} without ALLOW_PROD_SMOKE=1`);
+  }
+}
 const WORLD_NAME =
   process.env.WORLD_NAME ??
   (await fetch(`${HTTP_BASE_FOR_NAME}/health`)
