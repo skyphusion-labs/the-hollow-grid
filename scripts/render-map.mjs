@@ -1,29 +1,20 @@
 // Render a graphical SVG map of the world from src/rooms.ts (the single source of
-// truth for rooms + exits). Dependency-free: parses the ROOMS object literal,
-// lays rooms out on a grid by walking compass exits from START_ROOM (with
-// collision nudging for the non-Euclidean vertical shafts), and emits a styled,
-// zone-coloured SVG suitable for a website. Regenerate after adding rooms:
+// truth for rooms + exits). Dependency-free layout: transpiles rooms.ts with the
+// repo TypeScript compiler (no eval), lays rooms out on a grid by walking compass
+// exits from START_ROOM (with collision nudging for the non-Euclidean vertical
+// shafts), and emits a styled, zone-coloured SVG suitable for a website.
+// Regenerate after adding rooms:
 //   node scripts/render-map.mjs > docs/map.svg
 //
 // The topology is shared across the federation (Dustfall relabels the same rooms
 // via WORLD_MAP), so this map's shape holds for every world; the labels are the
 // primary world's (The Hollow Grid).
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 
 const ROOT = new URL("..", import.meta.url).pathname;
-const src = readFileSync(ROOT + "src/rooms.ts", "utf8");
-
-// --- pull the ROOMS object literal out of the TS source and eval it ----------
-const startTok = "export const ROOMS";
-const open = src.indexOf("{", src.indexOf(startTok));
-let depth = 0, end = -1;
-for (let i = open; i < src.length; i++) {
-  if (src[i] === "{") depth++;
-  else if (src[i] === "}" && --depth === 0) { end = i; break; }
-}
-const ROOMS = eval("(" + src.slice(open, end + 1) + ")");
-const START = (src.match(/START_ROOM\s*=\s*"([^"]+)"/) || [])[1] || Object.keys(ROOMS)[0];
+const { ROOMS, START_ROOM } = await import(new URL("../src/rooms.ts", import.meta.url).href);
+const START = START_ROOM || Object.keys(ROOMS)[0];
 
 // --- zones (for colour); a room not listed falls back to "town" --------------
 const ZONES = {

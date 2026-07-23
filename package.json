@@ -1,6 +1,6 @@
 {
   "name": "the-hollow-grid",
-  "version": "0.30.11",
+  "version": "0.30.12",
   "private": true,
   "description": "A federated post-apocalyptic MUD on Cloudflare Workers and Durable Objects",
   "license": "AGPL-3.0-only",
@@ -30,7 +30,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p grid-hub/tsconfig.json",
     "smoke": "node smoke.mjs",
     "connect": "node scripts/connect.mjs",
-    "map": "node scripts/render-map.mjs",
+    "map": "node --experimental-strip-types scripts/render-map.mjs",
     "cf-typegen": "wrangler types"
   },
   "devDependencies": {

@@ -65,6 +65,9 @@ export function listenTransmission(): Transmission {
   return pick(byKind(kind));
 }
 
+import { sanitizePlayerText } from "../shared/sanitize-player-text";
+
 export function personalize(text: string, name: string): string {
-  return text.replace(/\{name\}/g, name);
+  const safeName = sanitizePlayerText(name, 32);
+  return text.replace(/\{name\}/g, safeName);
 }

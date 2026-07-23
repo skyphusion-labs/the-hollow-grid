@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./types";
 import type { GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued, Presence } from "../../shared/grid";
 import { assertRegisterUrl } from "./register-url";
-import { sanitizePlayerText } from "./sanitize-player-text";
+import { sanitizePlayerText } from "../../shared/sanitize-player-text";
 import { worldAuthRequired } from "./world-auth";
 
 // The Grid Hub: the federation's shared state, as a single global Durable Object
