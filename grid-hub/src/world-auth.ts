@@ -22,6 +22,9 @@ function rpcRequiresWorldKeys(env: Env): boolean {
   return !!env.GRID_RPC_TOKEN?.trim();
 }
 
+// Production hub secrets (GRID_WORLD_KEYS) are provisioned out-of-band (fleet-chezmoi fc#1007).
+// When both GRID_WORLD_KEYS and GRID_RPC_TOKEN are unset, binding auth intentionally no-ops for local dev.
+
 export function worldAuthRequired(env: Env): boolean {
   const { keys, parseError } = worldKeys(env);
   if (parseError) return true;

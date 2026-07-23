@@ -14,6 +14,11 @@
 #     -v "$PWD":/app -w /app node:24 bash scripts/ci-qa.sh
 set -euo pipefail
 
+cleanup() {
+  for pid in $(jobs -p); do kill "$pid" 2>/dev/null || true; done
+}
+trap cleanup EXIT INT TERM
+
 export CI=true WRANGLER_SEND_METRICS=false
 : "${HOME:=/tmp}"; export HOME
 
