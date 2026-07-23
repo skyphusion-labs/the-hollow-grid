@@ -65,16 +65,16 @@ export type Presence = { world: string; name: string; regard: string; title: str
 // DO RPC, now crossing a deployment boundary.
 export interface GridHubApi {
   // Shared Grid memory (the federation feed).
-  record(world: string, node: string, kind: string, text: string, at: number): Promise<void>;
+  record(world: string, node: string, kind: string, text: string, at: number, worldKey?: string): Promise<void>;
   recent(limit: number): Promise<GridTrace[]>;
   recentAcross(world: string, limit: number): Promise<GridTrace[]>;
 
   // The global faction tide (one needle the whole federation moves).
   tide(): Promise<number>;
-  shiftTide(delta: number): Promise<number>;
+  shiftTide(delta: number, world?: string, worldKey?: string): Promise<number>;
 
   // Cross-world chat.
-  gridcast(world: string, sender: string, text: string): Promise<void>;
+  gridcast(world: string, sender: string, text: string, worldKey?: string): Promise<void>;
   castsSince(sinceId: number, limit: number): Promise<GridCast[]>;
 
   // Canonical identity (the character that follows you across worlds).
@@ -91,17 +91,17 @@ export interface GridHubApi {
   // only ever removes the kinds it is asked for; callers (the keeper command)
   // restrict that to ambient noise so meaningful traces can never be deleted.
   ledgerStats(): Promise<Array<{ kind: string; count: number }>>;
-  pruneLedgerKinds(kinds: string[]): Promise<{ removed: number }>;
+  pruneLedgerKinds(kinds: string[], world?: string, worldKey?: string): Promise<{ removed: number }>;
 
   // The memorial roll: the fallen across the whole Grid, so any world can let the
   // living hold a vigil for them (`witness`). Recording is best-effort on death;
   // reading returns the most recent fallen, newest first.
-  recordFallen(world: string, name: string, room: string, at: number): Promise<void>;
+  recordFallen(world: string, name: string, room: string, at: number, worldKey?: string): Promise<void>;
   recentFallen(limit: number): Promise<Fallen[]>;
 
   // The rescued roll: the living pulled out of the Front's cages, and who pulled
   // them. The hopeful mirror of the memorial roll; read it with `saved`.
-  recordRescued(world: string, name: string, savedBy: string, at: number): Promise<void>;
+  recordRescued(world: string, name: string, savedBy: string, at: number, worldKey?: string): Promise<void>;
   recentRescued(limit: number): Promise<Rescued[]>;
 
   // Federation-wide presence: a world reports its current roster (replacing its

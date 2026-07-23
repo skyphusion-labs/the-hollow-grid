@@ -2759,7 +2759,9 @@ export class World extends DurableObject<Env> {
       // waitUntil keeps this best-effort mirror alive past the current handler
       // without blocking play; across the service binding an un-tracked promise
       // can be cancelled before the trace reaches the hub.
-      this.ctx.waitUntil(this.env.GRID.record(this.worldName, node, kind, text, Date.now()).catch(() => {}));
+      this.ctx.waitUntil(
+        this.env.GRID.record(this.worldName, node, kind, text, Date.now(), this.env.GRID_WORLD_KEY).catch(() => {}),
+      );
     } catch {
       /* hub binding unavailable; local play is unaffected */
     }
@@ -2771,7 +2773,7 @@ export class World extends DurableObject<Env> {
   private contributeTide(delta: number): void {
     try {
       this.ctx.waitUntil(
-        this.env.GRID.shiftTide(delta)
+        this.env.GRID.shiftTide(delta, this.worldName, this.env.GRID_WORLD_KEY)
           .then((t) => {
             this.lastTide = t; // keep the living world's "signs" current
           })
@@ -2986,7 +2988,7 @@ export class World extends DurableObject<Env> {
       // returns -- so the cast must land before we move on, or the relay never
       // sees it. (As an in-Worker DO call this raced by; across the boundary it
       // doesn't.)
-      await this.env.GRID.gridcast(this.worldName, s.name, msg);
+      await this.env.GRID.gridcast(this.worldName, s.name, msg, this.env.GRID_WORLD_KEY);
     } catch {
       this.line(ws, "The Grid swallows your words; the network is unreachable.");
       this.prompt(ws);
@@ -3198,7 +3200,11 @@ export class World extends DurableObject<Env> {
     try {
       const before = await this.env.GRID.ledgerStats();
       const beforeTotal = before.reduce((n, r) => n + r.count, 0);
-      const { removed } = await this.env.GRID.pruneLedgerKinds(World.AMBIENT_KINDS);
+      const { removed } = await this.env.GRID.pruneLedgerKinds(
+        World.AMBIENT_KINDS,
+        this.worldName,
+        this.env.GRID_WORLD_KEY,
+      );
       const after = await this.env.GRID.ledgerStats();
       const afterTotal = after.reduce((n, r) => n + r.count, 0);
       this.line(ws, `Pruned ${removed} ambient trace(s) (${World.AMBIENT_KINDS.join(", ")}).`);
@@ -3885,7 +3891,9 @@ export class World extends DurableObject<Env> {
   // still stands locally and the roll just misses this one name.
   private rememberFallen(name: string, room: string): void {
     try {
-      this.ctx.waitUntil(this.env.GRID.recordFallen(this.worldName, name, room, Date.now()).catch(() => {}));
+      this.ctx.waitUntil(
+        this.env.GRID.recordFallen(this.worldName, name, room, Date.now(), this.env.GRID_WORLD_KEY).catch(() => {}),
+      );
     } catch {
       /* hub unavailable; local play is unaffected */
     }
@@ -3895,7 +3903,11 @@ export class World extends DurableObject<Env> {
   // hopeful mirror of rememberFallen.
   private rememberRescued(name: string, savedBy: string): void {
     try {
-      this.ctx.waitUntil(this.env.GRID.recordRescued(this.worldName, name, savedBy, Date.now()).catch(() => {}));
+      this.ctx.waitUntil(
+        this.env.GRID.recordRescued(this.worldName, name, savedBy, Date.now(), this.env.GRID_WORLD_KEY).catch(
+          () => {},
+        ),
+      );
     } catch {
       /* hub unavailable; local play is unaffected */
     }
