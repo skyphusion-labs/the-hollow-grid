@@ -10,6 +10,13 @@ import { ambientTransmission, listenTransmission, personalize, type Transmission
 import { dreamFor, personalDream } from "./dreams";
 import { signFor, moodForTide } from "./signs";
 import { hashPassphrase, verifyPassphrase, verifyAdminToken } from "./auth/passphrase";
+import {
+  MAX_WS_CONNECTIONS,
+  MAX_WS_CONNECTIONS_PER_IP,
+  countIpFromSessions,
+  shouldClosePreauth,
+  wsClientIp,
+} from "./ws-connection-limit";
 
 const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 
@@ -20,8 +27,6 @@ const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 const DEFAULT_WORLD_NAME = "The Hollow Grid";
 
 const ROUND_MS = 3_000; // combat + poison resolve one tick every 3 seconds
-/** Cap concurrent sockets on the shared World DO (K3 wave 22). */
-const MAX_WS_CONNECTIONS = 512;
 /** Reject oversized client frames before decode (K3 wave 23). */
 const MAX_WS_MESSAGE_BYTES = 8192;
 const GRIDCAST_POLL_MS = 2_000; // cap hub RPC wait so a hung federation call cannot freeze combat
@@ -420,8 +425,15 @@ export class World extends DurableObject<Env> {
       });
     }
 
-    if (this.ctx.getWebSockets().length >= MAX_WS_CONNECTIONS) {
+    const sockets = this.ctx.getWebSockets();
+    if (sockets.length >= MAX_WS_CONNECTIONS) {
       return new Response("Server full", { status: 503 });
+    }
+
+    const clientIp = wsClientIp(request);
+    const sessions = sockets.map((ws) => ws.deserializeAttachment() as Session | null);
+    if (countIpFromSessions(sessions, clientIp) >= MAX_WS_CONNECTIONS_PER_IP) {
+      return new Response("Too many connections from your address", { status: 429 });
     }
 
     const pair = new WebSocketPair();
@@ -430,6 +442,8 @@ export class World extends DurableObject<Env> {
 
     const session: Session = {
       name: "",
+      clientIp,
+      connectedAt: Date.now(),
       room: "",
       hp: BASE_HP,
       maxHp: BASE_HP,
@@ -513,6 +527,17 @@ export class World extends DurableObject<Env> {
   async alarm(): Promise<void> {
     try {
       const now = Date.now();
+
+      // 0) Drop pre-auth sockets that never log in (K3 wave 24).
+      for (const ws of this.ctx.getWebSockets()) {
+        const s = ws.deserializeAttachment() as Session | null;
+        if (!shouldClosePreauth(s, now)) continue;
+        try {
+          ws.close(1008, "login timeout");
+        } catch {
+          // already closing
+        }
+      }
 
       // 1) Respawn due mobs.
       const due = this.ctx.storage.sql

@@ -269,6 +269,7 @@ export class GridHub extends DurableObject<Env> {
   // A world heartbeat: replace this world's whole roster (so disconnects clear).
   // Caller must authenticate as that world when GRID_WORLD_KEYS is configured.
   reportPresence(world: string, entries: Array<{ name: string; regard: string; title: string }>, _at: number): void {
+    world = clampRpcString(world, LIMIT_WORLD_ID);
     this.assertRegisteredWorld(world);
     if (entries.length > MAX_PRESENCE_ENTRIES) {
       throw new Error(`presence entries capped at ${MAX_PRESENCE_ENTRIES}`);
