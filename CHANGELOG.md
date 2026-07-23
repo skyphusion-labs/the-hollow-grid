@@ -1,3 +1,8 @@
+## v0.30.13
+
+- fix(grid-hub): reject non-finite `shiftTide` delta (NaN no longer poisons faction tide) (#984 K3 wave 12).
+- fix(grid-hub): `commitCharacter` ignores NaN level/xp/gold/morality from attacker JSON (#984 K3 wave 12).
+
 ## v0.30.12
 
 - fix(world): sanitize player names in transmission `{name}` substitution (#984 K3 wave 11).
