@@ -168,9 +168,17 @@ export class GridHub extends DurableObject<Env> {
         CREATE TABLE IF NOT EXISTS tide_rate (
           world TEXT PRIMARY KEY,
           window_at INTEGER NOT NULL DEFAULT 0,
-          window_delta INTEGER NOT NULL DEFAULT 0
+          window_pos INTEGER NOT NULL DEFAULT 0,
+          window_neg INTEGER NOT NULL DEFAULT 0
         )
       `);
+      for (const col of ["window_pos INTEGER NOT NULL DEFAULT 0", "window_neg INTEGER NOT NULL DEFAULT 0"]) {
+        try {
+          sql.exec(`ALTER TABLE tide_rate ADD COLUMN ${col}`);
+        } catch {
+          // column already exists
+        }
+      }
       const worldCount = sql.exec<{ c: number }>("SELECT COUNT(*) AS c FROM worlds").one().c;
       if (worldCount === 0) {
         for (const w of SEED_WORLDS) {
@@ -272,7 +280,9 @@ export class GridHub extends DurableObject<Env> {
       const leased = sql
         .exec<{ lease_world: string }>("SELECT lease_world FROM characters WHERE name = ?", name)
         .toArray()[0];
-      if (!leased || leased.lease_world !== world) continue;
+      if (!leased) continue;
+      const lw = leased.lease_world?.trim() ?? "";
+      if (lw !== world && lw !== "") continue;
       sql.exec(
         "INSERT OR REPLACE INTO presence (world, name, regard, title, at) VALUES (?, ?, ?, ?, ?)",
         world,
@@ -483,18 +493,19 @@ export class GridHub extends DurableObject<Env> {
     if (world && bounded !== 0) {
       const now = Date.now();
       const row = sql
-        .exec<{ window_at: number; window_delta: number }>(
-          "SELECT window_at, window_delta FROM tide_rate WHERE world = ?",
+        .exec<{ window_at: number; window_pos: number; window_neg: number }>(
+          "SELECT window_at, window_pos, window_neg FROM tide_rate WHERE world = ?",
           world,
         )
         .toArray()[0];
-      const rate = nextTideShift(row?.window_at ?? 0, row?.window_delta ?? 0, bounded, now);
+      const rate = nextTideShift(row?.window_at ?? 0, row?.window_pos ?? 0, row?.window_neg ?? 0, bounded, now);
       if (!rate.ok) throw new Error(`tide shift rate limit exceeded for ${world}`);
       sql.exec(
-        "INSERT OR REPLACE INTO tide_rate (world, window_at, window_delta) VALUES (?, ?, ?)",
+        "INSERT OR REPLACE INTO tide_rate (world, window_at, window_pos, window_neg) VALUES (?, ?, ?, ?)",
         world,
         rate.windowAt,
-        rate.windowDelta,
+        rate.windowPos,
+        rate.windowNeg,
       );
       bounded = rate.applied;
     }
