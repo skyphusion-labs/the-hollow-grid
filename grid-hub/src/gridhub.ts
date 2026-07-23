@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./types";
 import type { GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued, Presence } from "../../shared/grid";
+import { assertRegisterUrl } from "./register-url";
 
 // The Grid Hub: the federation's shared state, as a single global Durable Object
 // (getByName("grid")). It holds the dead network's COLLECTIVE memory -- traces,
@@ -235,9 +236,12 @@ export class GridHub extends DurableObject<Env> {
         name,
       )
       .toArray()[0];
-    const lease = row?.lease_world?.trim() ?? "";
+    if (!row) {
+      throw new Error(`character ${name} not found; claimCharacterLease first`);
+    }
+    const lease = row.lease_world?.trim() ?? "";
     if (!lease) {
-      const home = row?.home_world?.trim() ?? "";
+      const home = row.home_world?.trim() ?? "";
       if (home && home !== world) {
         throw new Error(`character ${name} home world is ${home}, cannot lease from ${world}`);
       }
@@ -361,7 +365,7 @@ export class GridHub extends DurableObject<Env> {
   }
 
   // --- Canonical identity: the character that follows you --------------------
-  loadCharacter(name: string, world: string): CharSheet {
+  loadCharacter(name: string, _world: string): CharSheet {
     const row = this.ctx.storage.sql
       .exec<{
         level: number;
@@ -372,15 +376,10 @@ export class GridHub extends DurableObject<Env> {
         title: string;
         race: string;
         ashsworn: number;
-        home_world: string;
-      }>("SELECT level, xp, gold, faction, morality, title, race, ashsworn, home_world FROM characters WHERE name = ?", name)
+      }>("SELECT level, xp, gold, faction, morality, title, race, ashsworn FROM characters WHERE name = ?", name)
       .toArray()[0];
     if (row) return { ...row, ashsworn: !!row.ashsworn };
-    this.ctx.storage.sql.exec(
-      "INSERT OR IGNORE INTO characters (name, level, xp, gold, faction, morality, title, race, ashsworn, home_world, lease_world) VALUES (?, 1, 0, 20, 'none', 0, '', '', 0, ?, '')",
-      name,
-      world,
-    );
+    // Read-only: row creation belongs to claimCharacterLease (authenticated).
     return { level: 1, xp: 0, gold: 20, faction: "none", morality: 0, title: "", race: "", ashsworn: false };
   }
 
@@ -390,8 +389,8 @@ export class GridHub extends DurableObject<Env> {
   // minting gold). Returns the committed (possibly clamped) sheet.
   commitCharacter(name: string, world: string, p: CharSheet): CharSheet {
     this.assertRegisteredWorld(world);
-    const cur = this.loadCharacter(name, world);
     this.assertCharacterLease(name, world);
+    const cur = this.loadCharacter(name, world);
     const next: CharSheet = {
       level: clamp(Math.floor(p.level), cur.level, cur.level + MAX_LEVEL_DELTA), // never de-level; no big jumps
       xp: clamp(Math.floor(p.xp), cur.xp, cur.xp + MAX_XP_DELTA),
@@ -429,6 +428,7 @@ export class GridHub extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DELETE FROM worlds WHERE id = ?", world);
       return;
     }
+    assertRegisterUrl(url);
     this.ctx.storage.sql.exec(
       "INSERT INTO worlds (id, url, last_seen) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET url = excluded.url, last_seen = excluded.last_seen",
       world,

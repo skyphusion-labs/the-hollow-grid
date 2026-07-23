@@ -1,3 +1,9 @@
+## v0.30.7
+
+- fix(grid-hub): require per-world key auth on service-binding mutators (`record`, `shiftTide`, `gridcast`, `record*`, `pruneLedgerKinds`) (#984 K3 wave 6).
+- fix(grid-hub): validate `register()` URLs to `ws:` / `wss:` only (blocks registry poisoning).
+- fix(grid-hub): `loadCharacter` is read-only; row creation requires authenticated `claimCharacterLease`; `commitCharacter` requires existing lease row.
+
 ## v0.30.6
 
 - fix(grid-hub): require per-world key auth on HTTP `/rpc` mutations (`shiftTide`, `gridcast`, `record*`, `pruneLedgerKinds`) (#984 K3 wave 5).

@@ -1,7 +1,7 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import type { Env } from "./types";
 import type { GridHubApi, GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued, Presence } from "../../shared/grid";
-import { assertWorldAuth } from "./world-auth";
+import { requireBindingWorldAuth } from "./binding-auth";
 
 // The Durable Object class must be exported from the Worker entry module.
 export { GridHub } from "./gridhub";
@@ -19,7 +19,8 @@ export class GridHubService extends WorkerEntrypoint<Env> implements GridHubApi 
     return this.env.GRIDHUB.getByName("grid");
   }
 
-  async record(world: string, node: string, kind: string, text: string, at: number): Promise<void> {
+  async record(world: string, node: string, kind: string, text: string, at: number, worldKey?: string): Promise<void> {
+    requireBindingWorldAuth(this.env, world, worldKey);
     await this.hub().record(world, node, kind, text, at);
   }
   recent(limit: number): Promise<GridTrace[]> {
@@ -32,11 +33,13 @@ export class GridHubService extends WorkerEntrypoint<Env> implements GridHubApi 
   tide(): Promise<number> {
     return this.hub().tide();
   }
-  shiftTide(delta: number): Promise<number> {
+  async shiftTide(delta: number, world?: string, worldKey?: string): Promise<number> {
+    requireBindingWorldAuth(this.env, world, worldKey);
     return this.hub().shiftTide(delta);
   }
 
-  async gridcast(world: string, sender: string, text: string): Promise<void> {
+  async gridcast(world: string, sender: string, text: string, worldKey?: string): Promise<void> {
+    requireBindingWorldAuth(this.env, world, worldKey);
     await this.hub().gridcast(world, sender, text);
   }
   castsSince(sinceId: number, limit: number): Promise<GridCast[]> {
@@ -47,16 +50,16 @@ export class GridHubService extends WorkerEntrypoint<Env> implements GridHubApi 
     return this.hub().loadCharacter(name, world);
   }
   async commitCharacter(name: string, world: string, p: CharSheet, worldKey?: string): Promise<CharSheet> {
-    assertWorldAuth(this.env, world, worldKey);
+    requireBindingWorldAuth(this.env, world, worldKey);
     return this.hub().commitCharacter(name, world, p);
   }
   async claimCharacterLease(name: string, world: string, worldKey?: string): Promise<void> {
-    assertWorldAuth(this.env, world, worldKey);
+    requireBindingWorldAuth(this.env, world, worldKey);
     await this.hub().claimCharacterLease(name, world);
   }
 
   async register(world: string, url: string, worldKey?: string): Promise<void> {
-    assertWorldAuth(this.env, world, worldKey);
+    requireBindingWorldAuth(this.env, world, worldKey);
     await this.hub().register(world, url);
   }
   listWorlds(): Promise<WorldInfo[]> {
@@ -66,18 +69,21 @@ export class GridHubService extends WorkerEntrypoint<Env> implements GridHubApi 
   ledgerStats(): Promise<Array<{ kind: string; count: number }>> {
     return this.hub().ledgerStats();
   }
-  pruneLedgerKinds(kinds: string[]): Promise<{ removed: number }> {
+  async pruneLedgerKinds(kinds: string[], world?: string, worldKey?: string): Promise<{ removed: number }> {
+    requireBindingWorldAuth(this.env, world, worldKey);
     return this.hub().pruneLedgerKinds(kinds);
   }
 
-  async recordFallen(world: string, name: string, room: string, at: number): Promise<void> {
+  async recordFallen(world: string, name: string, room: string, at: number, worldKey?: string): Promise<void> {
+    requireBindingWorldAuth(this.env, world, worldKey);
     await this.hub().recordFallen(world, name, room, at);
   }
   recentFallen(limit: number): Promise<Fallen[]> {
     return this.hub().recentFallen(limit);
   }
 
-  async recordRescued(world: string, name: string, savedBy: string, at: number): Promise<void> {
+  async recordRescued(world: string, name: string, savedBy: string, at: number, worldKey?: string): Promise<void> {
+    requireBindingWorldAuth(this.env, world, worldKey);
     await this.hub().recordRescued(world, name, savedBy, at);
   }
   recentRescued(limit: number): Promise<Rescued[]> {
@@ -90,7 +96,7 @@ export class GridHubService extends WorkerEntrypoint<Env> implements GridHubApi 
     at: number,
     worldKey?: string,
   ): Promise<void> {
-    assertWorldAuth(this.env, world, worldKey);
+    requireBindingWorldAuth(this.env, world, worldKey);
     await this.hub().reportPresence(world, entries, at);
   }
   presence(maxAgeMs: number): Promise<Presence[]> {
