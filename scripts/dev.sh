@@ -16,13 +16,15 @@ set -euo pipefail
 # WORLD_URL in the configs is the PRODUCTION (wss://...skyphusion.org) address;
 # override it back to the local dev ports here so the registry/travel handoff
 # points at the running dev servers (and smoke's localhost assertions hold).
+ADMIN_TOKEN="${ADMIN_TOKEN:-$(openssl rand -hex 16)}"
+export ADMIN_TOKEN
 wrangler dev -c wrangler.jsonc -c grid-hub/wrangler.jsonc \
   --var WORLD_URL:ws://localhost:8787/ws \
-  --var ADMIN_TOKEN:ci-test-admin-token &
+  --var "ADMIN_TOKEN:${ADMIN_TOKEN}" &
 P1=$!
 wrangler dev -c worlds/dustfall.jsonc \
   --var WORLD_URL:ws://localhost:8788/ws \
-  --var ADMIN_TOKEN:ci-test-admin-token &
+  --var "ADMIN_TOKEN:${ADMIN_TOKEN}" &
 P2=$!
 
 # Kill ONLY our two child processes on exit -- never `kill 0`, which signals the

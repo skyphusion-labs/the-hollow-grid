@@ -28,12 +28,14 @@ jobs:
       - name: Start Local MUD Dev Servers
         run: |
           rm -rf .wrangler grid-hub/.wrangler worlds/.wrangler
+          ADMIN_TOKEN="$(openssl rand -hex 16)"
+          echo "ADMIN_TOKEN=${ADMIN_TOKEN}" >> "$GITHUB_ENV"
           ./node_modules/.bin/wrangler dev -c wrangler.jsonc -c grid-hub/wrangler.jsonc \
             --var WORLD_URL:ws://localhost:8787/ws \
-            --var ADMIN_TOKEN:ci-test-admin-token > dev-hollow.log 2>&1 &
+            --var "ADMIN_TOKEN:${ADMIN_TOKEN}" > dev-hollow.log 2>&1 &
           ./node_modules/.bin/wrangler dev -c worlds/dustfall.jsonc \
             --var WORLD_URL:ws://localhost:8788/ws \
-            --var ADMIN_TOKEN:ci-test-admin-token > dev-dustfall.log 2>&1 &
+            --var "ADMIN_TOKEN:${ADMIN_TOKEN}" > dev-dustfall.log 2>&1 &
           node -e '
             const net = require("net");
             const up = () => new Promise((res) => {
@@ -59,7 +61,6 @@ jobs:
         run: npx vitest run --coverage.enabled=true --coverage.provider=istanbul --coverage.reporter=cobertura --teardownTimeout=1
         env:
           SMOKE_SLOW: "2"
-          ADMIN_TOKEN: ci-test-admin-token
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4

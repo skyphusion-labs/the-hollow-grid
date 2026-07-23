@@ -1,3 +1,10 @@
+## v0.30.21
+
+- fix(ci): generate ephemeral `ADMIN_TOKEN` per run instead of hardcoded smoke fallback (#984 K3 wave 21).
+- fix(auth): constant-time admin token compare without length short-circuit (#984 K3 wave 21).
+- fix(auth): reject passphrases over bcrypt 72-byte limit (#984 K3 wave 21).
+- docs(world): document intentional `/health/deep` 503 cache staleness (#984 K3 wave 21).
+
 ## v0.30.20
 
 - fix(world): reject cross-site WebSocket upgrades via Origin/Host check on `/ws` (#984 K3 wave 20).

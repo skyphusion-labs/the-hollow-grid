@@ -30,7 +30,10 @@ interface HealthCheckResult {
   error?: string;
 }
 
-/** Cache deep-health probes to limit DO wake amplification (K3 wave 15/16). */
+/** Cache deep-health probes to limit DO wake amplification (K3 wave 15/16).
+ * Intentionally caches 503 as well as 200: probes poll /health for liveness;
+ * /health/deep is a slower dependency check where 30s staleness is acceptable
+ * vs hammering the World DO on every scrape (K3 wave 21 triage). */
 const DEEP_HEALTH_CACHE_MS = 30_000;
 let gridHubHealthCache: { ok: boolean; latency_ms: number; at: number } | null = null;
 let deepHealthCache: { body: Record<string, unknown>; status: number; at: number } | null = null;

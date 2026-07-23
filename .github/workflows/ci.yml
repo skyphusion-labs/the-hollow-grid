@@ -63,15 +63,18 @@ jobs:
           # Clear per-world dev state so each CI run starts from a clean Grid.
           rm -rf .wrangler grid-hub/.wrangler worlds/.wrangler
 
+          ADMIN_TOKEN="$(openssl rand -hex 16)"
+          export ADMIN_TOKEN
+
           # Start hollow + hub (port 8787) and dustfall (port 8788) in background.
           # GHA job isolation is the process boundary: both servers die when the
           # job ends, the same guarantee the Jenkinsfile's docker wrapper gave.
           ./node_modules/.bin/wrangler dev -c wrangler.jsonc -c grid-hub/wrangler.jsonc \
             --var WORLD_URL:ws://localhost:8787/ws \
-            --var ADMIN_TOKEN:ci-test-admin-token > dev-hollow.log 2>&1 &
+            --var "ADMIN_TOKEN:${ADMIN_TOKEN}" > dev-hollow.log 2>&1 &
           ./node_modules/.bin/wrangler dev -c worlds/dustfall.jsonc \
             --var WORLD_URL:ws://localhost:8788/ws \
-            --var ADMIN_TOKEN:ci-test-admin-token > dev-dustfall.log 2>&1 &
+            --var "ADMIN_TOKEN:${ADMIN_TOKEN}" > dev-dustfall.log 2>&1 &
 
           # Wait for dustfall (8788) -- once it answers, both are up (same logic
           # as ci-qa.sh, inlined to avoid the docker wrapper).
