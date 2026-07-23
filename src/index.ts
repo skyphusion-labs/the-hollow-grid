@@ -1,6 +1,7 @@
 import type { Env } from "./types";
 import { playPage } from "./webclient";
 import { MAP_SVG } from "./map-svg";
+import { assertAllowedWsOrigin } from "./ws-origin";
 
 // The Durable Object class must be exported from the Worker entry module.
 // (The Grid Hub is no longer here -- it lives in its own backend Worker,
@@ -125,6 +126,11 @@ export default {
     }
 
     if (url.pathname === "/ws") {
+      try {
+        assertAllowedWsOrigin(request);
+      } catch {
+        return new Response("Forbidden", { status: 403 });
+      }
       // One shared world instance. Everyone routes to the same DO.
       const stub = env.WORLD.getByName("world");
       return stub.fetch(request);

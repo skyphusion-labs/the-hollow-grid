@@ -13,4 +13,10 @@ describe("sanitizePlayerText", () => {
   it("enforces max length", () => {
     expect(sanitizePlayerText("a".repeat(100), 40)).toHaveLength(40);
   });
+
+  it("strips bidi and zero-width format chars", () => {
+    expect(sanitizePlayerText("\u202eMara\u202c")).toBe("Mara");
+    expect(sanitizePlayerText("M\u200ba\u200bra")).toBe("Mara");
+    expect(sanitizePlayerText("\uFEFFtest")).toBe("test");
+  });
 });

@@ -663,8 +663,11 @@ export class GridHub extends DurableObject<Env> {
     const existing = this.ctx.storage.sql
       .exec<{ last_seen: number }>("SELECT last_seen FROM worlds WHERE id = ?", world)
       .toArray()[0];
+    // URL repoint policy (K3 wave 20): unauthenticated dev hubs block live-world
+    // URL changes so open bindings cannot hijack travel; prod hubs gate updates
+    // via per-world keys in requireBindingWorldAuth before this method runs.
     if (existing && existing.last_seen > 0 && !worldAuthRequired(this.env)) {
-      throw new Error("register URL update requires GRID_WORLD_KEYS");
+      throw new Error("register URL update blocked without GRID_WORLD_KEYS");
     }
     this.ctx.storage.sql.exec(
       "INSERT INTO worlds (id, url, last_seen) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET url = excluded.url, last_seen = excluded.last_seen",

@@ -2,6 +2,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import type { Env } from "./types";
 import type { GridHubApi, GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued, Presence } from "../../shared/grid";
 import { requireBindingWorldAuth } from "./binding-auth";
+import { hubCall } from "./hub-call";
 
 // The Durable Object class must be exported from the Worker entry module.
 export { GridHub } from "./gridhub";
@@ -20,79 +21,101 @@ export class GridHubService extends WorkerEntrypoint<Env> implements GridHubApi 
   }
 
   async record(world: string, node: string, kind: string, text: string, at: number, worldKey?: string): Promise<void> {
-    requireBindingWorldAuth(this.env, world, worldKey);
-    await this.hub().record(world, node, kind, text, at);
+    return hubCall(async () => {
+      requireBindingWorldAuth(this.env, world, worldKey);
+      await this.hub().record(world, node, kind, text, at);
+    });
   }
   recent(limit: number): Promise<GridTrace[]> {
-    return this.hub().recent(limit);
+    return hubCall(() => this.hub().recent(limit));
   }
   recentAcross(world: string, limit: number): Promise<GridTrace[]> {
-    return this.hub().recentAcross(world, limit);
+    return hubCall(() => this.hub().recentAcross(world, limit));
   }
 
   tide(): Promise<number> {
-    return this.hub().tide();
+    return hubCall(() => this.hub().tide());
   }
   async shiftTide(delta: number, world?: string, worldKey?: string): Promise<number> {
-    requireBindingWorldAuth(this.env, world, worldKey);
-    return this.hub().shiftTide(delta, world);
+    return hubCall(async () => {
+      requireBindingWorldAuth(this.env, world, worldKey);
+      return this.hub().shiftTide(delta, world);
+    });
   }
 
   async gridcast(world: string, sender: string, text: string, worldKey?: string): Promise<void> {
-    requireBindingWorldAuth(this.env, world, worldKey);
-    await this.hub().gridcast(world, sender, text);
+    return hubCall(async () => {
+      requireBindingWorldAuth(this.env, world, worldKey);
+      await this.hub().gridcast(world, sender, text);
+    });
   }
   castsSince(sinceId: number, limit: number): Promise<GridCast[]> {
-    return this.hub().castsSince(sinceId, limit);
+    return hubCall(() => this.hub().castsSince(sinceId, limit));
   }
 
   loadCharacter(name: string, world: string, worldKey?: string): Promise<CharSheet> {
-    requireBindingWorldAuth(this.env, world, worldKey);
-    return this.hub().loadCharacter(name, world);
+    return hubCall(() => {
+      requireBindingWorldAuth(this.env, world, worldKey);
+      return this.hub().loadCharacter(name, world);
+    });
   }
   async commitCharacter(name: string, world: string, p: CharSheet, worldKey?: string): Promise<CharSheet> {
-    requireBindingWorldAuth(this.env, world, worldKey);
-    return this.hub().commitCharacter(name, world, p);
+    return hubCall(async () => {
+      requireBindingWorldAuth(this.env, world, worldKey);
+      return this.hub().commitCharacter(name, world, p);
+    });
   }
   async claimCharacterLease(name: string, world: string, worldKey?: string): Promise<void> {
-    requireBindingWorldAuth(this.env, world, worldKey);
-    await this.hub().claimCharacterLease(name, world);
+    return hubCall(async () => {
+      requireBindingWorldAuth(this.env, world, worldKey);
+      await this.hub().claimCharacterLease(name, world);
+    });
   }
   async releaseCharacterLease(name: string, world: string, worldKey?: string): Promise<void> {
-    requireBindingWorldAuth(this.env, world, worldKey);
-    await this.hub().releaseCharacterLease(name, world);
+    return hubCall(async () => {
+      requireBindingWorldAuth(this.env, world, worldKey);
+      await this.hub().releaseCharacterLease(name, world);
+    });
   }
 
   async register(world: string, url: string, worldKey?: string): Promise<void> {
-    requireBindingWorldAuth(this.env, world, worldKey);
-    await this.hub().register(world, url);
+    return hubCall(async () => {
+      requireBindingWorldAuth(this.env, world, worldKey);
+      await this.hub().register(world, url);
+    });
   }
   listWorlds(): Promise<WorldInfo[]> {
-    return this.hub().listWorlds();
+    return hubCall(() => this.hub().listWorlds());
   }
 
   ledgerStats(): Promise<Array<{ kind: string; count: number }>> {
-    return this.hub().ledgerStats();
+    return hubCall(() => this.hub().ledgerStats());
   }
   async pruneLedgerKinds(kinds: string[], world?: string, worldKey?: string): Promise<{ removed: number }> {
-    requireBindingWorldAuth(this.env, world, worldKey);
-    return this.hub().pruneLedgerKinds(kinds);
+    return hubCall(async () => {
+      requireBindingWorldAuth(this.env, world, worldKey);
+      return this.hub().pruneLedgerKinds(kinds);
+    });
   }
 
   async recordFallen(world: string, name: string, room: string, at: number, worldKey?: string): Promise<void> {
-    requireBindingWorldAuth(this.env, world, worldKey);
-    await this.hub().recordFallen(world, name, room, at);
+    return hubCall(async () => {
+      requireBindingWorldAuth(this.env, world, worldKey);
+      await this.hub().recordFallen(world, name, room, at);
+    });
   }
   recentFallen(limit: number): Promise<Fallen[]> {
-    return this.hub().recentFallen(limit);
+    return hubCall(() => this.hub().recentFallen(limit));
   }
 
   async recordRescued(world: string, name: string, savedBy: string, at: number, worldKey?: string): Promise<void> {
-    requireBindingWorldAuth(this.env, world, worldKey);
-    await this.hub().recordRescued(world, name, savedBy, at);
+    return hubCall(async () => {
+      requireBindingWorldAuth(this.env, world, worldKey);
+      await this.hub().recordRescued(world, name, savedBy, at);
+    });
   }
   recentRescued(limit: number): Promise<Rescued[]> {
-    return this.hub().recentRescued(limit);
+    return hubCall(() => this.hub().recentRescued(limit));
   }
 
   async reportPresence(
@@ -101,12 +124,16 @@ export class GridHubService extends WorkerEntrypoint<Env> implements GridHubApi 
     at: number,
     worldKey?: string,
   ): Promise<void> {
-    requireBindingWorldAuth(this.env, world, worldKey);
-    await this.hub().reportPresence(world, entries, at);
+    return hubCall(async () => {
+      requireBindingWorldAuth(this.env, world, worldKey);
+      await this.hub().reportPresence(world, entries, at);
+    });
   }
   presence(maxAgeMs: number, world?: string, worldKey?: string): Promise<Presence[]> {
-    requireBindingWorldAuth(this.env, world, worldKey);
-    return this.hub().presence(maxAgeMs);
+    return hubCall(() => {
+      requireBindingWorldAuth(this.env, world, worldKey);
+      return this.hub().presence(maxAgeMs);
+    });
   }
 }
 

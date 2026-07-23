@@ -1,3 +1,12 @@
+## v0.30.20
+
+- fix(world): reject cross-site WebSocket upgrades via Origin/Host check on `/ws` (#984 K3 wave 20).
+- fix(grid-hub): cap HTTP RPC JSON body at 64 KiB (#984 K3 wave 20).
+- fix(grid-hub): generic binding-path errors (no lease/world leakage) (#984 K3 wave 20).
+- fix(shared): strip bidi/zero-width Unicode format chars in `sanitizePlayerText` (#984 K3 wave 20).
+- docs(federation): document shared `GRID_RPC_TOKEN` as accepted closed-federation design (#984 K3 wave 20).
+- fix(grid-hub): clarify `register()` URL repoint guard for dev vs prod (#984 K3 wave 20).
+
 ## v0.30.19
 
 - fix(grid-hub): cap morality delta per commit; gold never decreases on commit (#984 K3 wave 19).
