@@ -1,3 +1,8 @@
+## v0.30.5
+
+- fix(auth): constant-time `verifyAdminToken` compare so keeper login fails closed (#984 K3).
+- fix(grid-hub): restrict `pruneLedgerKinds` to ambient kinds only; empty lease requires home world match (#984 K3).
+
 ## v0.30.4
 
 ### Security (K3 re-pass #90, #91)

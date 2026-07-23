@@ -229,9 +229,18 @@ export class GridHub extends DurableObject<Env> {
 
   private assertCharacterLease(name: string, world: string): void {
     const sql = this.ctx.storage.sql;
-    const row = sql.exec<{ lease_world: string }>("SELECT lease_world FROM characters WHERE name = ?", name).toArray()[0];
+    const row = sql
+      .exec<{ lease_world: string; home_world: string }>(
+        "SELECT lease_world, home_world FROM characters WHERE name = ?",
+        name,
+      )
+      .toArray()[0];
     const lease = row?.lease_world?.trim() ?? "";
     if (!lease) {
+      const home = row?.home_world?.trim() ?? "";
+      if (home && home !== world) {
+        throw new Error(`character ${name} home world is ${home}, cannot lease from ${world}`);
+      }
       sql.exec("UPDATE characters SET lease_world = ? WHERE name = ?", world, name);
       return;
     }
@@ -259,15 +268,17 @@ export class GridHub extends DurableObject<Env> {
     return sql.exec<Presence>("SELECT world, name, regard, title, at FROM presence ORDER BY world, name").toArray();
   }
 
-  // Maintenance: delete every trace of the given kinds and report how many went.
-  // The caller decides which kinds (the keeper command restricts this to ambient
-  // noise), so this stays a blunt-but-bounded tool. A no-op on an empty list.
+  // Maintenance: delete ambient ledger noise only. Worlds may request a subset of
+  // the ambient kinds, but arbitrary kinds are rejected at the hub.
+  private static readonly PRUNABLE_LEDGER_KINDS = new Set(["ghost", "passage", "recall"]);
+
   pruneLedgerKinds(kinds: string[]): { removed: number } {
-    if (!kinds.length) return { removed: 0 };
+    const allowed = kinds.filter((k) => GridHub.PRUNABLE_LEDGER_KINDS.has(k));
+    if (!allowed.length) return { removed: 0 };
     const sql = this.ctx.storage.sql;
     const before = sql.exec<{ c: number }>("SELECT COUNT(*) AS c FROM ledger").one().c;
-    const placeholders = kinds.map(() => "?").join(", ");
-    sql.exec(`DELETE FROM ledger WHERE kind IN (${placeholders})`, ...kinds);
+    const placeholders = allowed.map(() => "?").join(", ");
+    sql.exec(`DELETE FROM ledger WHERE kind IN (${placeholders})`, ...allowed);
     const after = sql.exec<{ c: number }>("SELECT COUNT(*) AS c FROM ledger").one().c;
     return { removed: before - after };
   }
