@@ -53,7 +53,7 @@ jobs:
         with:
           repository: skyphusion-labs/fleet-chezmoi
           # Pinned merge SHA; bump via fleet-chezmoi system/ci/adversarial-audit-public.yml
-          ref: 48ee0ed58594556afe9c255e41a3ff3a3f457228
+          ref: 71703007035eeda9ad2adf8f4ee7421fe54b59e4
           path: fleet-chezmoi
           ssh-key: ${{ secrets.FLEET_CHEZMOI_READ_TOKEN }}
 
@@ -61,7 +61,7 @@ jobs:
         working-directory: fleet-chezmoi
         run: |
           set -euo pipefail
-          expected="48ee0ed58594556afe9c255e41a3ff3a3f457228"
+          expected="71703007035eeda9ad2adf8f4ee7421fe54b59e4"
           actual="$(git rev-parse HEAD)"
           if [[ "$actual" != "$expected" ]]; then
             echo "::error::fleet-chezmoi pin mismatch: expected ${expected} got ${actual}"
