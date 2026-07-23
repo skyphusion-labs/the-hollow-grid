@@ -6,7 +6,8 @@ import { sanitizePlayerText } from "../../shared/sanitize-player-text";
 import { worldAuthRequired } from "./world-auth";
 import { finiteInt } from "./numeric";
 import { leaseExpiryCutoff } from "./character-lease";
-import { nextCommitWindow } from "./commit-rate-limit";
+import { nextCommitWindow, commitGainAllowed } from "./commit-rate-limit";
+import { nextTideShift } from "./tide-rate-limit";
 import { effectivePresenceMaxAge } from "./presence-age";
 import { clampRpcString, LIMIT_CHARACTER_NAME, LIMIT_LEDGER_KIND, LIMIT_WORLD_ID, requireRpcString } from "./rpc-limits";
 
@@ -30,6 +31,7 @@ const MAX_PRESENCE_ENTRIES = 256;
 const MAX_GOLD_DELTA = 500;
 const MAX_XP_DELTA = 500;
 const MAX_LEVEL_DELTA = 1;
+const MAX_MORALITY_DELTA = 50;
 
 // Notional sibling worlds, so the federation feels populated before others
 // actually connect. (A real world overwrites its entry when it registers.)
@@ -111,6 +113,8 @@ export class GridHub extends DurableObject<Env> {
         "lease_at INTEGER NOT NULL DEFAULT 0",
         "commit_window_at INTEGER NOT NULL DEFAULT 0",
         "commit_window_count INTEGER NOT NULL DEFAULT 0",
+        "commit_window_gold_gain INTEGER NOT NULL DEFAULT 0",
+        "commit_window_xp_gain INTEGER NOT NULL DEFAULT 0",
       ]) {
         try {
           sql.exec(`ALTER TABLE characters ADD COLUMN ${col}`);
@@ -160,6 +164,13 @@ export class GridHub extends DurableObject<Env> {
 
       // The world registry: who's on the Grid, and where to reach them.
       sql.exec("CREATE TABLE IF NOT EXISTS worlds (id TEXT PRIMARY KEY, url TEXT NOT NULL, last_seen INTEGER NOT NULL)");
+      sql.exec(`
+        CREATE TABLE IF NOT EXISTS tide_rate (
+          world TEXT PRIMARY KEY,
+          window_at INTEGER NOT NULL DEFAULT 0,
+          window_delta INTEGER NOT NULL DEFAULT 0
+        )
+      `);
       const worldCount = sql.exec<{ c: number }>("SELECT COUNT(*) AS c FROM worlds").one().c;
       if (worldCount === 0) {
         for (const w of SEED_WORLDS) {
@@ -257,10 +268,15 @@ export class GridHub extends DurableObject<Env> {
     const sql = this.ctx.storage.sql;
     sql.exec("DELETE FROM presence WHERE world = ?", world);
     for (const e of entries) {
+      const name = sanitizePlayerText(e.name, 32);
+      const leased = sql
+        .exec<{ lease_world: string }>("SELECT lease_world FROM characters WHERE name = ?", name)
+        .toArray()[0];
+      if (!leased || leased.lease_world !== world) continue;
       sql.exec(
         "INSERT OR REPLACE INTO presence (world, name, regard, title, at) VALUES (?, ?, ?, ?, ?)",
         world,
-        sanitizePlayerText(e.name, 32),
+        name,
         sanitizePlayerText(e.regard, 24),
         sanitizePlayerText(e.title, 40),
         Date.now(),
@@ -457,14 +473,33 @@ export class GridHub extends DurableObject<Env> {
   }
 
   shiftTide(delta: number, world?: string): number {
+    const sql = this.ctx.storage.sql;
     if (world) {
       world = clampRpcString(world, LIMIT_WORLD_ID);
       this.assertRegisteredWorld(world);
     }
     if (!Number.isFinite(delta)) return this.tide();
-    const bounded = clamp(Math.floor(delta), -MAX_TIDE_SHIFT, MAX_TIDE_SHIFT);
+    let bounded = clamp(Math.floor(delta), -MAX_TIDE_SHIFT, MAX_TIDE_SHIFT);
+    if (world && bounded !== 0) {
+      const now = Date.now();
+      const row = sql
+        .exec<{ window_at: number; window_delta: number }>(
+          "SELECT window_at, window_delta FROM tide_rate WHERE world = ?",
+          world,
+        )
+        .toArray()[0];
+      const rate = nextTideShift(row?.window_at ?? 0, row?.window_delta ?? 0, bounded, now);
+      if (!rate.ok) throw new Error(`tide shift rate limit exceeded for ${world}`);
+      sql.exec(
+        "INSERT OR REPLACE INTO tide_rate (world, window_at, window_delta) VALUES (?, ?, ?)",
+        world,
+        rate.windowAt,
+        rate.windowDelta,
+      );
+      bounded = rate.applied;
+    }
     const next = Math.max(-100, Math.min(100, this.tide() + bounded));
-    this.ctx.storage.sql.exec("UPDATE meta SET v = ? WHERE k = 'tide'", next);
+    sql.exec("UPDATE meta SET v = ? WHERE k = 'tide'", next);
     return next;
   }
 
@@ -472,11 +507,23 @@ export class GridHub extends DurableObject<Env> {
   gridcast(world: string, sender: string, text: string): void {
     world = clampRpcString(world, LIMIT_WORLD_ID);
     this.assertRegisteredWorld(world);
-    const sql = this.ctx.storage.sql;
     const safeSender = sanitizePlayerText(sender, 32);
+    this.assertCastSender(safeSender, world);
+    const sql = this.ctx.storage.sql;
     const safeText = sanitizePlayerText(text, 500);
     sql.exec("INSERT INTO casts (world, sender, text, at) VALUES (?, ?, ?, ?)", world, safeSender, safeText, Date.now());
     sql.exec("DELETE FROM casts WHERE id NOT IN (SELECT id FROM casts ORDER BY id DESC LIMIT 200)");
+  }
+
+  private assertCastSender(sender: string, world: string): void {
+    if (!sender) throw new Error("gridcast sender required");
+    this.expireStaleLeases();
+    const row = this.ctx.storage.sql
+      .exec<{ lease_world: string }>("SELECT lease_world FROM characters WHERE name = ?", sender)
+      .toArray()[0];
+    if (!row || row.lease_world !== world) {
+      throw new Error(`sender ${sender} is not leased to ${world}`);
+    }
   }
 
   // Worlds poll this each tick for casts newer than the last one they relayed.
@@ -517,8 +564,14 @@ export class GridHub extends DurableObject<Env> {
     const sql = this.ctx.storage.sql;
     const now = Date.now();
     const meta = sql
-      .exec<{ home_world: string; commit_window_at: number; commit_window_count: number }>(
-        "SELECT home_world, commit_window_at, commit_window_count FROM characters WHERE name = ?",
+      .exec<{
+        home_world: string;
+        commit_window_at: number;
+        commit_window_count: number;
+        commit_window_gold_gain: number;
+        commit_window_xp_gain: number;
+      }>(
+        "SELECT home_world, commit_window_at, commit_window_count, commit_window_gold_gain, commit_window_xp_gain FROM characters WHERE name = ?",
         name,
       )
       .toArray()[0];
@@ -531,21 +584,38 @@ export class GridHub extends DurableObject<Env> {
     }
     const rate = nextCommitWindow(meta?.commit_window_at ?? 0, meta?.commit_window_count ?? 0, now);
     if (!rate.ok) throw new Error(`character ${name} commit rate limit exceeded`);
-    sql.exec(
-      "UPDATE characters SET lease_at = ?, commit_window_at = ?, commit_window_count = ? WHERE name = ? AND lease_world = ?",
+    const cur = this.loadCharacter(name, world);
+    const proposedGold = clamp(finiteInt(p.gold, cur.gold), cur.gold, cur.gold + MAX_GOLD_DELTA);
+    const proposedXp = clamp(finiteInt(p.xp, cur.xp), cur.xp, cur.xp + MAX_XP_DELTA);
+    const gain = commitGainAllowed(
+      meta?.commit_window_at ?? 0,
+      meta?.commit_window_gold_gain ?? 0,
+      meta?.commit_window_xp_gain ?? 0,
+      proposedGold - cur.gold,
+      proposedXp - cur.xp,
       now,
-      rate.windowAt,
+    );
+    if (!gain.ok) throw new Error(`character ${name} commit gain limit exceeded`);
+    sql.exec(
+      "UPDATE characters SET lease_at = ?, commit_window_at = ?, commit_window_count = ?, commit_window_gold_gain = ?, commit_window_xp_gain = ? WHERE name = ? AND lease_world = ?",
+      now,
+      gain.windowAt,
       rate.windowCount,
+      gain.windowGoldGain,
+      gain.windowXpGain,
       name,
       world,
     );
-    const cur = this.loadCharacter(name, world);
     const next: CharSheet = {
       level: clamp(finiteInt(p.level, cur.level), cur.level, cur.level + MAX_LEVEL_DELTA), // never de-level; no big jumps
-      xp: clamp(finiteInt(p.xp, cur.xp), cur.xp, cur.xp + MAX_XP_DELTA),
-      gold: clamp(finiteInt(p.gold, cur.gold), 0, cur.gold + MAX_GOLD_DELTA), // bounded per commit
+      xp: proposedXp,
+      gold: proposedGold, // never decreases; bounded per commit and per window
       faction: ["none", "front", "ally"].includes(p.faction) ? p.faction : cur.faction,
-      morality: clamp(finiteInt(p.morality, cur.morality), -1000, 1000),
+      morality: clamp(
+        clamp(finiteInt(p.morality, cur.morality), cur.morality - MAX_MORALITY_DELTA, cur.morality + MAX_MORALITY_DELTA),
+        -1000,
+        1000,
+      ),
       title: sanitizePlayerText(String(p.title ?? ""), 40),
       // race: an opaque label, sanitized but not validated against any list (any
       // world may define races); set once, then sticky (a character cannot reroll

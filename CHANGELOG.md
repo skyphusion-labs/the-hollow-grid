@@ -1,3 +1,12 @@
+## v0.30.19
+
+- fix(grid-hub): cap morality delta per commit; gold never decreases on commit (#984 K3 wave 19).
+- fix(grid-hub): rolling gold/xp gain budget (500/window) and 6 commits/min per character (#984 K3 wave 19).
+- fix(grid-hub): per-world shiftTide rate window (+-10/min) (#984 K3 wave 19).
+- fix(grid-hub): gridcast sender must hold lease on calling world (#984 K3 wave 19).
+- fix(grid-hub): reportPresence drops names not leased to reporting world (#984 K3 wave 19).
+- fix(grid-hub): reject oversized world ids in HTTP RPC auth before key check (#984 K3 wave 19).
+
 ## v0.30.18
 
 - fix(grid-hub): reject oversized character names at RPC boundary instead of truncating (prevents prefix collision) (#984 K3 wave 17).
