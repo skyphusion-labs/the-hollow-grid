@@ -244,6 +244,9 @@ when keys and edge controls are live (fc#1007):
 | `register()` withdrawal | Empty URL deletes registry row without keys (dev) | **Prod FP:** `GRID_WORLD_KEYS` on hub; only authenticated worlds mutate registry (fc#1007) |
 | `loadCharacter` cross-world read | Returns canonical sheet to any authenticated world | **Closed federation FP:** read-only snapshot; commits require lease + home match (§9) |
 | `claimCharacterLease` without keys | Unauthenticated lease/squat in dev configs | **Prod FP:** per-world keys on hub; binding + `/rpc` enforce auth when `GRID_RPC_TOKEN` set (fc#1007) |
+| `claimCharacterLease` first-claim trust | Any keyed fleet world can pin `home_world` on first RPC without hub-side passphrase proof | **Accepted closed federation:** world keys attest fleet nodes; local login auth stays world-local; hub blocks cross-world active lease + live presence (wave 27) |
+| `register()` ws://localhost | Repo allows loopback ws: for local dev | **Prod FP:** fleet worlds register `wss://*.skyphusion.org` only; localhost rows are dev smoke/bootstrap (wave 23 host pin) |
+| `smoke.mjs` ADMIN_TOKEN | CI generates ephemeral token per run; `ALLOW_PROD_SMOKE=1` bypasses localhost guard | **CI-only FP:** prod deploy never sets `ALLOW_PROD_SMOKE`; smoke targets localhost unless operator explicitly opts in (wave 21/22) |
 | Seed world registry | Placeholder rows (`last_seen=0`) until real register | Intentional bootstrap; live worlds overwrite on authenticated register |
 
 Do not point `npm run smoke` at production hosts unless `ALLOW_PROD_SMOKE=1`.

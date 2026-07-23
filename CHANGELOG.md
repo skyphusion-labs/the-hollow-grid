@@ -1,3 +1,9 @@
+## v0.30.27
+
+- fix(world): sanitize player-authored comms (say/yell/emote/tell/wall/title/inscribe) via shared `sanitizePlayerText` (#984 K3 wave 27).
+- fix(grid-hub): keyed `claimCharacterLease` rejects active cross-world leases and live cross-world presence (#984 K3 wave 27).
+- docs(federation): triage first-claim world-key trust, ws://localhost registry, smoke ADMIN_TOKEN (#984 K3 wave 27).
+
 ## v0.30.26
 
 - fix(grid-hub): sanitize character names at `claimCharacterLease` / `loadCharacter` boundary (#984 K3 wave 26).

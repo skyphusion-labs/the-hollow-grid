@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LEASE_TTL_MS, assertClaimCharacterLeaseAllowed, isLegacyUntimestampedLease, leaseExpiryCutoff, requireActiveCharacterLease } from "./character-lease";
+import { LEASE_TTL_MS, assertClaimCharacterLeaseAllowed, assertNoCrossWorldPresence, hasActiveLeaseElsewhere, isLegacyUntimestampedLease, leaseExpiryCutoff, requireActiveCharacterLease } from "./character-lease";
 
 describe("character lease helpers", () => {
   it("leaseExpiryCutoff is LEASE_TTL_MS before now", () => {
@@ -43,5 +43,27 @@ describe("assertClaimCharacterLeaseAllowed", () => {
     expect(() => assertClaimCharacterLeaseAllowed("Mara", "Hollow", "Dustfall", "Dustfall")).toThrow(
       /leased to Hollow/,
     );
+  });
+});
+
+describe("hasActiveLeaseElsewhere", () => {
+  it("detects a fresh lease on another world", () => {
+    const now = 1_700_000_000_000;
+    expect(hasActiveLeaseElsewhere("Hollow", now, "Dustfall", now)).toBe(true);
+  });
+
+  it("ignores expired leases", () => {
+    const now = 1_700_000_000_000;
+    expect(hasActiveLeaseElsewhere("Hollow", leaseExpiryCutoff(now) - 1, "Dustfall", now)).toBe(false);
+  });
+});
+
+describe("assertNoCrossWorldPresence", () => {
+  it("blocks when another world reports the name online", () => {
+    expect(() => assertNoCrossWorldPresence("Mara", "Dustfall", "Hollow")).toThrow(/present on Hollow/);
+  });
+
+  it("allows same-world presence", () => {
+    expect(() => assertNoCrossWorldPresence("Mara", "Dustfall", "Dustfall")).not.toThrow();
   });
 });
