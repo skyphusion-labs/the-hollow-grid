@@ -5,6 +5,7 @@ import { assertRegisterUrl } from "./register-url";
 import { sanitizePlayerText } from "../../shared/sanitize-player-text";
 import { worldAuthRequired } from "./world-auth";
 import { finiteInt } from "./numeric";
+import { leaseExpiryCutoff } from "./character-lease";
 
 // The Grid Hub: the federation's shared state, as a single global Durable Object
 // (getByName("grid")). It holds the dead network's COLLECTIVE memory -- traces,
@@ -104,6 +105,7 @@ export class GridHub extends DurableObject<Env> {
         "ashsworn INTEGER NOT NULL DEFAULT 0",
         "home_world TEXT NOT NULL DEFAULT ''",
         "lease_world TEXT NOT NULL DEFAULT ''",
+        "lease_at INTEGER NOT NULL DEFAULT 0",
       ]) {
         try {
           sql.exec(`ALTER TABLE characters ADD COLUMN ${col}`);
@@ -261,7 +263,21 @@ export class GridHub extends DurableObject<Env> {
     if (!row.c) throw new Error(`unknown world: ${world}`);
   }
 
+  private expireStaleLeases(now = Date.now()): void {
+    const cutoff = leaseExpiryCutoff(now);
+    const sql = this.ctx.storage.sql;
+    sql.exec(
+      "UPDATE characters SET lease_world = '', lease_at = 0 WHERE lease_world != '' AND lease_at > 0 AND lease_at < ?",
+      cutoff,
+    );
+    // Pre-wave-13 rows: active lease with no timestamp (crash lockout recovery).
+    sql.exec(
+      "UPDATE characters SET lease_world = '', lease_at = 0 WHERE lease_world != '' AND lease_at = 0",
+    );
+  }
+
   private assertCharacterLease(name: string, world: string): void {
+    this.expireStaleLeases();
     const sql = this.ctx.storage.sql;
     const row = sql
       .exec<{ lease_world: string; home_world: string }>(
@@ -273,37 +289,48 @@ export class GridHub extends DurableObject<Env> {
       throw new Error(`character ${name} not found; claimCharacterLease first`);
     }
     const lease = row.lease_world?.trim() ?? "";
-    if (!lease) {
-      const home = row.home_world?.trim() ?? "";
-      if (!home) {
-        throw new Error(`character ${name} has no home world assigned`);
-      }
-      if (home !== world) {
-        throw new Error(`character ${name} home world is ${home}, cannot lease from ${world}`);
-      }
-      sql.exec("UPDATE characters SET lease_world = ? WHERE name = ?", world, name);
-      return;
+    const home = row.home_world?.trim() ?? "";
+    if (lease === world) return;
+    if (lease) {
+      throw new Error(`character ${name} is leased to ${lease}, not ${world}`);
     }
-    if (lease !== world) throw new Error(`character ${name} is leased to ${lease}, not ${world}`);
+    if (home && home !== world) {
+      throw new Error(`character ${name} home world is ${home}, cannot lease from ${world}`);
+    }
+    sql.exec("UPDATE characters SET lease_world = ?, lease_at = ? WHERE name = ?", world, Date.now(), name);
   }
 
   // Called by a world after local login auth succeeds; grants that world the commit lease.
+  // home_world is assigned on first commitCharacter, not here (blocks cross-world name squat).
   claimCharacterLease(name: string, world: string): void {
     this.assertRegisteredWorld(world);
+    this.expireStaleLeases();
     const sql = this.ctx.storage.sql;
-    const existed = sql.exec("SELECT 1 AS c FROM characters WHERE name = ?", name).toArray()[0];
-    sql.exec(
-      "INSERT OR IGNORE INTO characters (name, level, xp, gold, faction, morality, title, race, ashsworn, home_world, lease_world) VALUES (?, 1, 0, 20, 'none', 0, '', '', 0, ?, '')",
-      name,
-      world,
-    );
-    const home = sql
-      .exec<{ home_world: string }>("SELECT home_world FROM characters WHERE name = ?", name)
-      .toArray()[0]?.home_world?.trim();
-    if (existed && !home) {
-      throw new Error(`character ${name} is a legacy row without home_world; cannot claim`);
+    const row = sql
+      .exec<{ lease_world: string; home_world: string }>(
+        "SELECT lease_world, home_world FROM characters WHERE name = ?",
+        name,
+      )
+      .toArray()[0];
+    const now = Date.now();
+    if (!row) {
+      sql.exec(
+        "INSERT INTO characters (name, level, xp, gold, faction, morality, title, race, ashsworn, home_world, lease_world, lease_at) VALUES (?, 1, 0, 20, 'none', 0, '', '', 0, '', ?, ?)",
+        name,
+        world,
+        now,
+      );
+      return;
     }
-    this.assertCharacterLease(name, world);
+    const home = row.home_world?.trim() ?? "";
+    const lease = row.lease_world?.trim() ?? "";
+    if (home && home !== world) {
+      throw new Error(`character ${name} home world is ${home}, cannot claim from ${world}`);
+    }
+    if (lease && lease !== world) {
+      throw new Error(`character ${name} is leased to ${lease}, not ${world}`);
+    }
+    sql.exec("UPDATE characters SET lease_world = ?, lease_at = ? WHERE name = ?", world, now, name);
   }
 
   // Drop this world's commit lease on logout/disconnect so another world can claim.
@@ -318,7 +345,11 @@ export class GridHub extends DurableObject<Env> {
     if (lease && lease !== world) {
       throw new Error(`character ${name} is leased to ${lease}, not ${world}`);
     }
-    sql.exec("UPDATE characters SET lease_world = '' WHERE name = ? AND lease_world = ?", name, world);
+    sql.exec(
+      "UPDATE characters SET lease_world = '', lease_at = 0 WHERE name = ? AND lease_world = ?",
+      name,
+      world,
+    );
   }
 
   // The live roster across all worlds, dropping rows older than maxAgeMs (a world
@@ -452,6 +483,15 @@ export class GridHub extends DurableObject<Env> {
   commitCharacter(name: string, world: string, p: CharSheet): CharSheet {
     this.assertRegisteredWorld(world);
     this.assertCharacterLease(name, world);
+    const sql = this.ctx.storage.sql;
+    const homeRow = sql
+      .exec<{ home_world: string }>("SELECT home_world FROM characters WHERE name = ?", name)
+      .toArray()[0];
+    const home = homeRow?.home_world?.trim() ?? "";
+    if (!home) {
+      sql.exec("UPDATE characters SET home_world = ? WHERE name = ? AND home_world = ''", world, name);
+    }
+    sql.exec("UPDATE characters SET lease_at = ? WHERE name = ? AND lease_world = ?", Date.now(), name, world);
     const cur = this.loadCharacter(name, world);
     const next: CharSheet = {
       level: clamp(finiteInt(p.level, cur.level), cur.level, cur.level + MAX_LEVEL_DELTA), // never de-level; no big jumps

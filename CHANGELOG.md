@@ -1,3 +1,11 @@
+## v0.30.14
+
+- fix(grid-hub): character lease TTL (30m) and legacy lease_at=0 expiry so crash/disconnect cannot lock names forever (#984 K3 wave 13).
+- fix(grid-hub): `claimCharacterLease` no longer sets `home_world` on first RPC; home assigned on first authenticated `commitCharacter` (blocks cross-world name squat) (#984 K3 wave 13).
+- fix(webclient): Subresource Integrity pins for xterm.js CDN assets (#984 K3 wave 13).
+- docs(grid-hub): triage hub auth-disabled-without-keys as dev-only; prod keys on fc#1007 (#984 K3 wave 13).
+- fix(scripts): `ci-qa.sh` trap kills background wranglers on exit (#984 K3 wave 13).
+
 ## v0.30.13
 
 - fix(grid-hub): reject non-finite `shiftTide` delta (NaN no longer poisons faction tide) (#984 K3 wave 12).
