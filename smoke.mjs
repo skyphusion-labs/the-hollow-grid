@@ -12,9 +12,9 @@ const URL = process.env.MUD_URL ?? "ws://localhost:8787/ws";
 // fleet Go worlds (Rust Choir) as well as the TS reference world.
 const HTTP_BASE_FOR_NAME = URL.replace(/^ws/, "http").replace(/\/ws$/, "");
 {
-  const host = new URL(HTTP_BASE_FOR_NAME).hostname;
-  if (host !== "localhost" && host !== "127.0.0.1" && !process.env.ALLOW_PROD_SMOKE) {
-    throw new Error(`Refusing smoke against ${host} without ALLOW_PROD_SMOKE=1`);
+  const smokeHost = HTTP_BASE_FOR_NAME.replace(/^https?:\/\//, "").split(":")[0];
+  if (smokeHost !== "localhost" && smokeHost !== "127.0.0.1" && !process.env.ALLOW_PROD_SMOKE) {
+    throw new Error(`Refusing smoke against ${smokeHost} without ALLOW_PROD_SMOKE=1`);
   }
 }
 const WORLD_NAME =
