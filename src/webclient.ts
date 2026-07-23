@@ -5,9 +5,17 @@
 // the gradients) properly; the @event structured channel is filtered out so the
 // prose reads clean, and a tiny line editor echoes input and sends on Enter.
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function playPage(worldName: string): string {
-  // worldName comes from trusted config (WORLD_NAME), used only as the page title.
-  const title = worldName || "The Hollow Grid";
+  const title = escapeHtml(worldName || "The Hollow Grid");
   return `<!doctype html>
 <html lang="en">
 <head>

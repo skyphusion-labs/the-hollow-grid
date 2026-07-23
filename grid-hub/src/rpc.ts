@@ -1,6 +1,7 @@
 import type { Env } from "./types";
 import type { GridHub } from "./gridhub";
 import { verifyRpcWorldAuth } from "./rpc-auth";
+import { verifyRpcBearer } from "./world-auth";
 
 type HubStub = DurableObjectStub<GridHub>;
 
@@ -12,7 +13,7 @@ export async function handleRPC(req: Request, env: Env): Promise<Response> {
     return Response.json({ ok: false, error: "rpc disabled (GRID_RPC_TOKEN unset)" }, { status: 503 });
   }
   const auth = req.headers.get("Authorization") ?? "";
-  if (auth !== `Bearer ${env.GRID_RPC_TOKEN}`) {
+  if (!verifyRpcBearer(auth, env.GRID_RPC_TOKEN)) {
     return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 

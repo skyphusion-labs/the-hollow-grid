@@ -18,6 +18,9 @@ import { worldAuthRequired } from "./world-auth";
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+const MAX_TIDE_SHIFT = 10;
+const MAX_PRESENCE_ENTRIES = 256;
+
 // Per-commit caps on progression deltas (K3 #86: spam +1M gold minting).
 const MAX_GOLD_DELTA = 10_000;
 const MAX_XP_DELTA = 10_000;
@@ -221,6 +224,9 @@ export class GridHub extends DurableObject<Env> {
   // Caller must authenticate as that world when GRID_WORLD_KEYS is configured.
   reportPresence(world: string, entries: Array<{ name: string; regard: string; title: string }>, at: number): void {
     this.assertRegisteredWorld(world);
+    if (entries.length > MAX_PRESENCE_ENTRIES) {
+      throw new Error(`presence entries capped at ${MAX_PRESENCE_ENTRIES}`);
+    }
     const sql = this.ctx.storage.sql;
     sql.exec("DELETE FROM presence WHERE world = ?", world);
     for (const e of entries) {
@@ -384,7 +390,8 @@ export class GridHub extends DurableObject<Env> {
   }
 
   shiftTide(delta: number): number {
-    const next = Math.max(-100, Math.min(100, this.tide() + delta));
+    const bounded = clamp(Math.floor(delta), -MAX_TIDE_SHIFT, MAX_TIDE_SHIFT);
+    const next = Math.max(-100, Math.min(100, this.tide() + bounded));
     this.ctx.storage.sql.exec("UPDATE meta SET v = ? WHERE k = 'tide'", next);
     return next;
   }
