@@ -1,3 +1,10 @@
+## v0.30.24
+
+- fix(world): per-IP WebSocket cap (16) and 90s pre-auth idle close on shared World DO (#984 K3 wave 24).
+- fix(grid-hub): clamp `reportPresence` world id at hub boundary like other mutators (#984 K3 wave 24).
+- fix(ci): align vitest global `testTimeout` with smoke suite (600s) (#984 K3 wave 24).
+- docs(federation): triage register withdrawal, loadCharacter read, seed worlds as prod FP / intentional bootstrap (#984 K3 wave 24).
+
 ## v0.30.23
 
 - fix(grid-hub): strict commit lease — only active lease holder may `commitCharacter`; no implicit grant on commit (#984 K3 wave 23).

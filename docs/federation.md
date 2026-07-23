@@ -240,7 +240,10 @@ when keys and edge controls are live (fc#1007):
 | `register()` wss host allowlist | `wss://*.skyphusion.org` only (+ `ws://localhost` dev) | Blocks travel-handoff phishing to arbitrary hosts (wave 23) |
 | `shiftTide` / commit rate windows | Were gated on keys (fixed wave 22: tide always rate-limited) | Same code path with keys + RPC bearer |
 | RPC / login brute force | No in-worker throttle | `grid-hub.skyphusion.org/rpc` behind Cloudflare edge; keeper/passphrase bcrypt cost |
-| `/ws` connection volume | Capped at 512 concurrent (wave 22); no pre-auth | Same cap; Origin check (wave 20) blocks CSWSH |
+| `/ws` connection volume | 512 global + 16/IP (wave 24); 90s pre-auth idle close | Same caps; Origin check (wave 20) blocks CSWSH |
+| `register()` withdrawal | Empty URL deletes registry row without keys (dev) | **Prod FP:** `GRID_WORLD_KEYS` on hub; only authenticated worlds mutate registry (fc#1007) |
+| `loadCharacter` cross-world read | Returns canonical sheet to any authenticated world | **Closed federation FP:** read-only snapshot; commits require lease + home match (§9) |
+| Seed placeholder worlds | `SEED_WORLDS` with `last_seen=0` until real register | Intentional bootstrap so travel UI is alive before sibling worlds connect |
 
 Do not point `npm run smoke` at production hosts unless `ALLOW_PROD_SMOKE=1`.
 

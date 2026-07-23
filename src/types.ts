@@ -95,4 +95,8 @@ export interface Session {
   strayed?: boolean;
   /** you climbed back to real good after straying -- "the Returned" (write-once true) */
   redeemed?: boolean;
+  /** client address at connect (per-IP admission cap) */
+  clientIp?: string;
+  /** epoch ms when socket accepted (pre-auth idle sweep) */
+  connectedAt?: number;
 }
