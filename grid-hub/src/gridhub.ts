@@ -6,6 +6,8 @@ import { sanitizePlayerText } from "../../shared/sanitize-player-text";
 import { worldAuthRequired } from "./world-auth";
 import { finiteInt } from "./numeric";
 import { leaseExpiryCutoff } from "./character-lease";
+import { nextCommitWindow } from "./commit-rate-limit";
+import { effectivePresenceMaxAge } from "./presence-age";
 import { clampRpcString, LIMIT_CHARACTER_NAME, LIMIT_LEDGER_KIND, LIMIT_WORLD_ID } from "./rpc-limits";
 
 // The Grid Hub: the federation's shared state, as a single global Durable Object
@@ -107,6 +109,8 @@ export class GridHub extends DurableObject<Env> {
         "home_world TEXT NOT NULL DEFAULT ''",
         "lease_world TEXT NOT NULL DEFAULT ''",
         "lease_at INTEGER NOT NULL DEFAULT 0",
+        "commit_window_at INTEGER NOT NULL DEFAULT 0",
+        "commit_window_count INTEGER NOT NULL DEFAULT 0",
       ]) {
         try {
           sql.exec(`ALTER TABLE characters ADD COLUMN ${col}`);
@@ -169,14 +173,14 @@ export class GridHub extends DurableObject<Env> {
   }
 
   // A world reports a notable event into the shared Grid memory. RPC-callable.
-  record(world: string, node: string, kind: string, text: string, at: number): void {
+  record(world: string, node: string, kind: string, text: string, _at: number): void {
     world = clampRpcString(world, LIMIT_WORLD_ID);
     this.assertRegisteredWorld(world);
     const sql = this.ctx.storage.sql;
     const safeNode = sanitizePlayerText(node, 80);
     const safeKind = sanitizePlayerText(kind, LIMIT_LEDGER_KIND);
     const safeText = sanitizePlayerText(text, 500);
-    sql.exec("INSERT INTO ledger (world, node, kind, text, at) VALUES (?, ?, ?, ?, ?)", world, safeNode, safeKind, safeText, at);
+    sql.exec("INSERT INTO ledger (world, node, kind, text, at) VALUES (?, ?, ?, ?, ?)", world, safeNode, safeKind, safeText, Date.now());
     // Keep the collective memory long but bounded.
     sql.exec("DELETE FROM ledger WHERE id NOT IN (SELECT id FROM ledger ORDER BY id DESC LIMIT 1000)");
   }
@@ -200,7 +204,7 @@ export class GridHub extends DurableObject<Env> {
 
   // The memorial roll: record one of the fallen (best-effort on death), and read
   // the most recent fallen (newest first) so a world can list whom to remember.
-  recordFallen(world: string, name: string, room: string, at: number): void {
+  recordFallen(world: string, name: string, room: string, _at: number): void {
     world = clampRpcString(world, LIMIT_WORLD_ID);
     this.assertRegisteredWorld(world);
     const sql = this.ctx.storage.sql;
@@ -209,7 +213,7 @@ export class GridHub extends DurableObject<Env> {
       world,
       sanitizePlayerText(name, 32),
       sanitizePlayerText(room, 80),
-      at,
+      Date.now(),
     );
     // Keep the roll long but bounded; the dead are many on a dead network.
     sql.exec("DELETE FROM fallen WHERE id NOT IN (SELECT id FROM fallen ORDER BY id DESC LIMIT 500)");
@@ -223,7 +227,7 @@ export class GridHub extends DurableObject<Env> {
 
   // The rescued roll: record one of the saved (best-effort when cages are
   // freed), and read the most recent rescued (newest first).
-  recordRescued(world: string, name: string, savedBy: string, at: number): void {
+  recordRescued(world: string, name: string, savedBy: string, _at: number): void {
     world = clampRpcString(world, LIMIT_WORLD_ID);
     this.assertRegisteredWorld(world);
     const sql = this.ctx.storage.sql;
@@ -232,7 +236,7 @@ export class GridHub extends DurableObject<Env> {
       world,
       sanitizePlayerText(name, 32),
       sanitizePlayerText(savedBy, 32),
-      at,
+      Date.now(),
     );
     sql.exec("DELETE FROM rescued WHERE id NOT IN (SELECT id FROM rescued ORDER BY id DESC LIMIT 500)");
   }
@@ -245,7 +249,7 @@ export class GridHub extends DurableObject<Env> {
 
   // A world heartbeat: replace this world's whole roster (so disconnects clear).
   // Caller must authenticate as that world when GRID_WORLD_KEYS is configured.
-  reportPresence(world: string, entries: Array<{ name: string; regard: string; title: string }>, at: number): void {
+  reportPresence(world: string, entries: Array<{ name: string; regard: string; title: string }>, _at: number): void {
     this.assertRegisteredWorld(world);
     if (entries.length > MAX_PRESENCE_ENTRIES) {
       throw new Error(`presence entries capped at ${MAX_PRESENCE_ENTRIES}`);
@@ -259,7 +263,7 @@ export class GridHub extends DurableObject<Env> {
         sanitizePlayerText(e.name, 32),
         sanitizePlayerText(e.regard, 24),
         sanitizePlayerText(e.title, 40),
-        at,
+        Date.now(),
       );
     }
   }
@@ -309,7 +313,8 @@ export class GridHub extends DurableObject<Env> {
   }
 
   // Called by a world after local login auth succeeds; grants that world the commit lease.
-  // home_world is assigned on first commitCharacter, not here (blocks cross-world name squat).
+  // home_world pins at authenticated claim so a lease-expiry race cannot let another
+  // world commit first and steal the character (K3 wave 15).
   claimCharacterLease(name: string, world: string): void {
     name = clampRpcString(name, LIMIT_CHARACTER_NAME);
     world = clampRpcString(world, LIMIT_WORLD_ID);
@@ -325,8 +330,9 @@ export class GridHub extends DurableObject<Env> {
     const now = Date.now();
     if (!row) {
       sql.exec(
-        "INSERT INTO characters (name, level, xp, gold, faction, morality, title, race, ashsworn, home_world, lease_world, lease_at) VALUES (?, 1, 0, 20, 'none', 0, '', '', 0, '', ?, ?)",
+        "INSERT INTO characters (name, level, xp, gold, faction, morality, title, race, ashsworn, home_world, lease_world, lease_at) VALUES (?, 1, 0, 20, 'none', 0, '', '', 0, ?, ?, ?)",
         name,
+        world,
         world,
         now,
       );
@@ -340,7 +346,13 @@ export class GridHub extends DurableObject<Env> {
     if (lease && lease !== world) {
       throw new Error(`character ${name} is leased to ${lease}, not ${world}`);
     }
-    sql.exec("UPDATE characters SET lease_world = ?, lease_at = ? WHERE name = ?", world, now, name);
+    sql.exec(
+      "UPDATE characters SET lease_world = ?, lease_at = ?, home_world = CASE WHEN home_world = '' THEN ? ELSE home_world END WHERE name = ?",
+      world,
+      now,
+      world,
+      name,
+    );
   }
 
   // Drop this world's commit lease on logout/disconnect so another world can claim.
@@ -366,7 +378,7 @@ export class GridHub extends DurableObject<Env> {
   // that stopped sending heartbeats). Also opportunistically prunes the stale.
   presence(maxAgeMs: number): Presence[] {
     const sql = this.ctx.storage.sql;
-    const cutoff = Date.now() - Math.max(0, maxAgeMs);
+    const cutoff = Date.now() - effectivePresenceMaxAge(maxAgeMs);
     sql.exec("DELETE FROM presence WHERE at < ?", cutoff);
     return sql.exec<Presence>("SELECT world, name, regard, title, at FROM presence ORDER BY world, name").toArray();
   }
@@ -501,14 +513,30 @@ export class GridHub extends DurableObject<Env> {
     this.assertRegisteredWorld(world);
     this.assertCharacterLease(name, world);
     const sql = this.ctx.storage.sql;
-    const homeRow = sql
-      .exec<{ home_world: string }>("SELECT home_world FROM characters WHERE name = ?", name)
+    const now = Date.now();
+    const meta = sql
+      .exec<{ home_world: string; commit_window_at: number; commit_window_count: number }>(
+        "SELECT home_world, commit_window_at, commit_window_count FROM characters WHERE name = ?",
+        name,
+      )
       .toArray()[0];
-    const home = homeRow?.home_world?.trim() ?? "";
+    const home = meta?.home_world?.trim() ?? "";
+    if (home && home !== world) {
+      throw new Error(`character ${name} home world is ${home}, cannot commit from ${world}`);
+    }
     if (!home) {
       sql.exec("UPDATE characters SET home_world = ? WHERE name = ? AND home_world = ''", world, name);
     }
-    sql.exec("UPDATE characters SET lease_at = ? WHERE name = ? AND lease_world = ?", Date.now(), name, world);
+    const rate = nextCommitWindow(meta?.commit_window_at ?? 0, meta?.commit_window_count ?? 0, now);
+    if (!rate.ok) throw new Error(`character ${name} commit rate limit exceeded`);
+    sql.exec(
+      "UPDATE characters SET lease_at = ?, commit_window_at = ?, commit_window_count = ? WHERE name = ? AND lease_world = ?",
+      now,
+      rate.windowAt,
+      rate.windowCount,
+      name,
+      world,
+    );
     const cur = this.loadCharacter(name, world);
     const next: CharSheet = {
       level: clamp(finiteInt(p.level, cur.level), cur.level, cur.level + MAX_LEVEL_DELTA), // never de-level; no big jumps
