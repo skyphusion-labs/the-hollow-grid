@@ -247,6 +247,8 @@ when keys and edge controls are live (fc#1007):
 | `claimCharacterLease` first-claim trust | Any keyed fleet world can pin `home_world` on first RPC without hub-side passphrase proof | **Accepted closed federation:** world keys attest fleet nodes; local login auth stays world-local; hub blocks cross-world active lease + live presence (wave 27) |
 | `register()` ws://localhost | Repo allows loopback ws: for local dev | **Prod FP:** fleet worlds register `wss://*.skyphusion.org` only; localhost rows are dev smoke/bootstrap (wave 23 host pin) |
 | `smoke.mjs` ADMIN_TOKEN | CI generates ephemeral token per run; `ALLOW_PROD_SMOKE=1` bypasses localhost guard | **CI-only FP:** prod deploy never sets `ALLOW_PROD_SMOKE`; smoke targets localhost unless operator explicitly opts in (wave 21/22) |
+| `smoke.test.ts` vitest import | Coverage job wraps `smoke.mjs` for Istanbul instrumentation | **CI-only FP:** runs only in GHA coverage job against localhost wrangler dev; not prod surface |
+| World `workers_dev` route | Hollow world wrangler omits `"workers_dev": false` (grid-hub sets it) | **Prod FP:** canonical ingress is `hollow.skyphusion.org` custom domain; workers.dev is CF default secondary URL, no secrets bound to hostname |
 | Seed world registry | Placeholder rows (`last_seen=0`) until real register | Intentional bootstrap; live worlds overwrite on authenticated register |
 
 Do not point `npm run smoke` at production hosts unless `ALLOW_PROD_SMOKE=1`.
