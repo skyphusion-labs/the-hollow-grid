@@ -481,6 +481,7 @@ export class World extends DurableObject<Env> {
     if (session?.name) {
       this.broadcast(session.room, `${session.name} flickers out of existence.`, ws);
       this.commitIdentity(session); // checkpoint the canonical character to the hub
+      this.releaseHubLease(session.name);
     }
     try {
       ws.close(code, reason);
@@ -741,6 +742,16 @@ export class World extends DurableObject<Env> {
     try {
       this.ctx.waitUntil(
         this.env.GRID.claimCharacterLease(name, this.worldName, this.env.GRID_WORLD_KEY).catch(() => {}),
+      );
+    } catch {
+      /* hub unavailable */
+    }
+  }
+
+  private releaseHubLease(name: string): void {
+    try {
+      this.ctx.waitUntil(
+        this.env.GRID.releaseCharacterLease(name, this.worldName, this.env.GRID_WORLD_KEY).catch(() => {}),
       );
     } catch {
       /* hub unavailable */

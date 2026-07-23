@@ -69,6 +69,8 @@ async function dispatch(hub: HubStub, method: string, params: unknown[], req: Re
       return hub.commitCharacter(String(params[0]), String(params[1]), params[2] as never);
     case "claimCharacterLease":
       return hub.claimCharacterLease(String(params[0]), String(params[1]));
+    case "releaseCharacterLease":
+      return hub.releaseCharacterLease(String(params[0]), String(params[1]));
     case "register":
       return hub.register(String(params[0]), String(params[1]));
     case "listWorlds":

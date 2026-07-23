@@ -1,3 +1,9 @@
+## v0.30.9
+
+- fix(grid-hub): `releaseCharacterLease` on disconnect so dead worlds do not lock characters forever (#984 K3 wave 8).
+- fix(grid-hub): sanitize gridcast sender/text at the hub.
+- ci: split coverage upload job so fork PRs run tests with `contents: read` only.
+
 ## v0.30.8
 
 - fix(grid-hub): sanitize federated character/presence titles (strip ANSI and control bytes) (#984 K3 wave 7).

@@ -7,6 +7,7 @@ export const WORLD_AUTH_METHODS = new Set([
   "reportPresence",
   "register",
   "claimCharacterLease",
+  "releaseCharacterLease",
   "record",
   "shiftTide",
   "gridcast",
@@ -23,6 +24,7 @@ export function worldFromRpcParams(method: string, params: unknown[], headerWorl
     case "commitCharacter":
       return String(params[1] ?? "");
     case "claimCharacterLease":
+    case "releaseCharacterLease":
       return String(params[1] ?? "");
     case "reportPresence":
     case "register":
