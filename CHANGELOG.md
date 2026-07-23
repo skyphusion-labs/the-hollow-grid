@@ -1,3 +1,8 @@
+## v0.30.26
+
+- fix(grid-hub): sanitize character names at `claimCharacterLease` / `loadCharacter` boundary (#984 K3 wave 26).
+- docs(federation): triage `claimCharacterLease` squatting as prod FP when keys unset (#984 K3 wave 26).
+
 ## v0.30.25
 
 - fix(world): schedule alarm for pre-auth sockets so 90s idle login timeout fires (#984 K3 wave 25).
