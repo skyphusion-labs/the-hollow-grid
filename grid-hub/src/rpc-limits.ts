@@ -7,3 +7,10 @@ export function clampRpcString(value: unknown, max: number): string {
   const s = String(value ?? "");
   return s.length <= max ? s : s.slice(0, max);
 }
+
+/** Reject (do not truncate) primary keys like character names — avoids prefix collisions (K3 wave 17). */
+export function requireRpcString(value: unknown, max: number, label = "value"): string {
+  const s = String(value ?? "");
+  if (s.length > max) throw new Error(`${label} exceeds ${max} characters`);
+  return s;
+}

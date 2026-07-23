@@ -8,7 +8,7 @@ import { finiteInt } from "./numeric";
 import { leaseExpiryCutoff } from "./character-lease";
 import { nextCommitWindow } from "./commit-rate-limit";
 import { effectivePresenceMaxAge } from "./presence-age";
-import { clampRpcString, LIMIT_CHARACTER_NAME, LIMIT_LEDGER_KIND, LIMIT_WORLD_ID } from "./rpc-limits";
+import { clampRpcString, LIMIT_CHARACTER_NAME, LIMIT_LEDGER_KIND, LIMIT_WORLD_ID, requireRpcString } from "./rpc-limits";
 
 // The Grid Hub: the federation's shared state, as a single global Durable Object
 // (getByName("grid")). It holds the dead network's COLLECTIVE memory -- traces,
@@ -316,7 +316,7 @@ export class GridHub extends DurableObject<Env> {
   // home_world pins at authenticated claim so a lease-expiry race cannot let another
   // world commit first and steal the character (K3 wave 15).
   claimCharacterLease(name: string, world: string): void {
-    name = clampRpcString(name, LIMIT_CHARACTER_NAME);
+    name = requireRpcString(name, LIMIT_CHARACTER_NAME, "character name");
     world = clampRpcString(world, LIMIT_WORLD_ID);
     this.assertRegisteredWorld(world);
     this.expireStaleLeases();
@@ -357,6 +357,7 @@ export class GridHub extends DurableObject<Env> {
 
   // Drop this world's commit lease on logout/disconnect so another world can claim.
   releaseCharacterLease(name: string, world: string): void {
+    name = requireRpcString(name, LIMIT_CHARACTER_NAME, "character name");
     this.assertRegisteredWorld(world);
     const sql = this.ctx.storage.sql;
     const row = sql
@@ -487,7 +488,7 @@ export class GridHub extends DurableObject<Env> {
 
   // --- Canonical identity: the character that follows you --------------------
   loadCharacter(name: string, _world: string): CharSheet {
-    name = clampRpcString(name, LIMIT_CHARACTER_NAME);
+    name = requireRpcString(name, LIMIT_CHARACTER_NAME, "character name");
     const row = this.ctx.storage.sql
       .exec<{
         level: number;
@@ -510,6 +511,7 @@ export class GridHub extends DurableObject<Env> {
   // world's absurd deltas get clamped (no de-leveling, no implausible jumps, no
   // minting gold). Returns the committed (possibly clamped) sheet.
   commitCharacter(name: string, world: string, p: CharSheet): CharSheet {
+    name = requireRpcString(name, LIMIT_CHARACTER_NAME, "character name");
     this.assertRegisteredWorld(world);
     this.assertCharacterLease(name, world);
     const sql = this.ctx.storage.sql;
