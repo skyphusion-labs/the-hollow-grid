@@ -42,7 +42,10 @@ const last = (name) => [...events].reverse().find((e) => e.name === name);
 const SLOW = Math.max(1, Number(process.env.SMOKE_SLOW ?? 1));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms * SLOW));
 const TEST_PASSPHRASE = process.env.TEST_PASSPHRASE ?? "smoke-test-passphrase";
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "ci-test-admin-token";
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
+if (!ADMIN_TOKEN) {
+  throw new Error("ADMIN_TOKEN env required (CI/dev scripts generate one per run)");
+}
 
 // K3 audit #85: login may require keeper token (ADMINS names) then secret phrase.
 async function completeAuth(client, ms = 6000) {
