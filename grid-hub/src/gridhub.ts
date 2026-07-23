@@ -26,10 +26,10 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 const MAX_TIDE_SHIFT = 10;
 const MAX_PRESENCE_ENTRIES = 256;
 
-// Per-commit caps on progression deltas (K3 #86: spam +1M gold minting).
-const MAX_GOLD_DELTA = 10_000;
-const MAX_XP_DELTA = 10_000;
-const MAX_LEVEL_DELTA = 5;
+// Per-commit caps on progression deltas (K3 #86 + wave 16: plausible gameplay gains only).
+const MAX_GOLD_DELTA = 500;
+const MAX_XP_DELTA = 500;
+const MAX_LEVEL_DELTA = 1;
 
 // Notional sibling worlds, so the federation feels populated before others
 // actually connect. (A real world overwrites its entry when it registers.)

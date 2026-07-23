@@ -1,6 +1,6 @@
 /** Rolling window cap on commitCharacter calls (K3 wave 15). */
 export const COMMIT_WINDOW_MS = 60_000;
-export const MAX_COMMITS_PER_WINDOW = 20;
+export const MAX_COMMITS_PER_WINDOW = 10;
 
 export type CommitWindow = { windowAt: number; windowCount: number };
 
