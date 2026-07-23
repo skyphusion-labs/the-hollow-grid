@@ -35,3 +35,28 @@ export function assertClaimCharacterLeaseAllowed(
     throw new Error(`character ${name} is leased to ${lease}, not ${callerWorld}`);
   }
 }
+
+/** True when another world still holds a non-expired commit lease. */
+export function hasActiveLeaseElsewhere(
+  leaseWorld: string,
+  leaseAt: number | null | undefined,
+  callerWorld: string,
+  now = Date.now(),
+): boolean {
+  const lease = leaseWorld.trim();
+  if (!lease || lease === callerWorld) return false;
+  if (leaseAt && leaseAt > 0 && leaseAt >= leaseExpiryCutoff(now)) return true;
+  return isLegacyUntimestampedLease(leaseWorld, leaseAt);
+}
+
+/** Block keyed-world claims while the name is live on another world's roster. */
+export function assertNoCrossWorldPresence(
+  name: string,
+  callerWorld: string,
+  presenceWorld: string | undefined,
+): void {
+  const world = presenceWorld?.trim() ?? "";
+  if (world && world !== callerWorld) {
+    throw new Error(`character ${name} is present on ${world}, cannot claim from ${callerWorld}`);
+  }
+}

@@ -17,6 +17,7 @@ import {
   shouldClosePreauth,
   wsClientIp,
 } from "./ws-connection-limit";
+import { sanitizePlayerText } from "../shared/sanitize-player-text";
 
 const NL = "\r\n"; // wscat / telnet-style clients render CRLF cleanly
 
@@ -29,6 +30,9 @@ const DEFAULT_WORLD_NAME = "The Hollow Grid";
 const ROUND_MS = 3_000; // combat + poison resolve one tick every 3 seconds
 /** Reject oversized client frames before decode (K3 wave 23). */
 const MAX_WS_MESSAGE_BYTES = 8192;
+const LIMIT_COMM_TEXT = 500;
+const LIMIT_TITLE = 40;
+const LIMIT_INSCRIBE = 120;
 const GRIDCAST_POLL_MS = 2_000; // cap hub RPC wait so a hung federation call cannot freeze combat
 const BASE_HP = 30;
 const POISON_DMG = 1; // hp lost per tick while poisoned
@@ -3165,15 +3169,7 @@ export class World extends DurableObject<Env> {
   // another -- can find them with `ping`. The new minds leaving voices the way the
   // old ones did. "The network outlived us"; now it will outlive you too.
   private inscribe(ws: WebSocket, s: Session, arg: string): void {
-    // Sanitize hard: this is player text bound for the shared, federated ledger
-    // and shown to others. No control chars, no newlines (which would let a
-    // player inject @event lines), printable ASCII only, bounded length.
-    const msg = arg
-      .replace(/[\r\n\t]+/g, " ")
-      .replace(/[^\x20-\x7E]/g, "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 120);
+    const msg = sanitizePlayerText(arg, LIMIT_INSCRIBE);
     if (msg.length < 2) {
       this.line(ws, "Carve what into the Grid? (inscribe <a few words for whoever comes next>)");
       this.prompt(ws);
@@ -3211,7 +3207,7 @@ export class World extends DurableObject<Env> {
       this.prompt(ws);
       return;
     }
-    const msg = arg.trim();
+    const msg = sanitizePlayerText(arg, LIMIT_COMM_TEXT);
     if (!msg) {
       this.line(ws, "Announce what?  (wall <message>)");
       this.prompt(ws);
@@ -3536,7 +3532,7 @@ export class World extends DurableObject<Env> {
   private tell(ws: WebSocket, s: Session, arg: string): void {
     const sp = arg.indexOf(" ");
     const who = sp === -1 ? arg.trim() : arg.slice(0, sp);
-    const msg = sp === -1 ? "" : arg.slice(sp + 1).trim();
+    const msg = sanitizePlayerText(sp === -1 ? "" : arg.slice(sp + 1), LIMIT_COMM_TEXT);
     if (!who || !msg) {
       this.line(ws, "Tell whom what?  (tell <player> <message>)");
       this.prompt(ws);
@@ -3569,7 +3565,7 @@ export class World extends DurableObject<Env> {
 
   // A free-form emote to the room: "Name <action>".
   private emote(ws: WebSocket, s: Session, arg: string): void {
-    const action = arg.trim();
+    const action = sanitizePlayerText(arg, LIMIT_COMM_TEXT);
     if (!action) {
       this.line(ws, "Emote what?  (emote <action>, e.g. emote spits in the dust)");
       this.prompt(ws);
@@ -3582,7 +3578,7 @@ export class World extends DurableObject<Env> {
 
   // Server-wide PLAYER chat (distinct from the admin `wall`).
   private yell(ws: WebSocket, s: Session, arg: string): void {
-    const msg = arg.trim();
+    const msg = sanitizePlayerText(arg, LIMIT_COMM_TEXT);
     if (!msg) {
       this.line(ws, "Yell what?  (yell <message>)");
       this.prompt(ws);
@@ -4517,7 +4513,7 @@ export class World extends DurableObject<Env> {
 
   // title <text>: a custom epithet shown after your name (blank to clear).
   private setTitle(ws: WebSocket, s: Session, arg: string): void {
-    const t = arg.trim().replace(/[\r\n]/g, "").slice(0, 40);
+    const t = sanitizePlayerText(arg, LIMIT_TITLE);
     s.title = t;
     ws.serializeAttachment(s);
     this.persistPlayer(s);
@@ -4617,12 +4613,13 @@ export class World extends DurableObject<Env> {
   }
 
   private say(ws: WebSocket, s: Session, message: string): void {
-    if (!message) {
+    const msg = sanitizePlayerText(message, LIMIT_COMM_TEXT);
+    if (!msg) {
       this.line(ws, "Say what?");
       return;
     }
-    this.line(ws, `You say, "${message}"`);
-    this.broadcast(s.room, `${s.name} says, "${message}"`, ws);
+    this.line(ws, `You say, "${msg}"`);
+    this.broadcast(s.room, `${s.name} says, "${msg}"`, ws);
   }
 
   private broadcast(roomId: string, text: string, exclude?: WebSocket): void {

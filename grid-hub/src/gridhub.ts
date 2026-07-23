@@ -5,7 +5,7 @@ import { assertRegisterUrl } from "./register-url";
 import { sanitizePlayerText } from "../../shared/sanitize-player-text";
 import { worldAuthRequired } from "./world-auth";
 import { finiteInt } from "./numeric";
-import { assertClaimCharacterLeaseAllowed, leaseExpiryCutoff, requireActiveCharacterLease } from "./character-lease";
+import { assertClaimCharacterLeaseAllowed, assertNoCrossWorldPresence, hasActiveLeaseElsewhere, leaseExpiryCutoff, requireActiveCharacterLease } from "./character-lease";
 import { nextCommitWindow, commitGainAllowed } from "./commit-rate-limit";
 import { nextTideShift } from "./tide-rate-limit";
 import { effectivePresenceMaxAge } from "./presence-age";
@@ -341,15 +341,38 @@ export class GridHub extends DurableObject<Env> {
     name = sanitizePlayerText(requireRpcString(name, LIMIT_CHARACTER_NAME, "character name"), LIMIT_CHARACTER_NAME);
     world = clampRpcString(world, LIMIT_WORLD_ID);
     this.assertRegisteredWorld(world);
-    this.expireStaleLeases();
     const sql = this.ctx.storage.sql;
+    const keysRequired = worldAuthRequired(this.env);
+    const now = Date.now();
+    const existing = sql
+      .exec<{ lease_world: string; home_world: string; lease_at: number }>(
+        "SELECT lease_world, home_world, lease_at FROM characters WHERE name = ?",
+        name,
+      )
+      .toArray()[0];
+    if (keysRequired) {
+      if (
+        existing &&
+        hasActiveLeaseElsewhere(existing.lease_world ?? "", existing.lease_at, world, now)
+      ) {
+        assertClaimCharacterLeaseAllowed(name, existing.lease_world ?? "", existing.home_world ?? "", world);
+      }
+      const presence = sql
+        .exec<{ world: string }>(
+          "SELECT world FROM presence WHERE name = ? AND at >= ?",
+          name,
+          now - effectivePresenceMaxAge(45_000),
+        )
+        .toArray()[0];
+      assertNoCrossWorldPresence(name, world, presence?.world);
+    }
+    this.expireStaleLeases(now);
     const row = sql
       .exec<{ lease_world: string; home_world: string }>(
         "SELECT lease_world, home_world FROM characters WHERE name = ?",
         name,
       )
       .toArray()[0];
-    const now = Date.now();
     if (!row) {
       sql.exec(
         "INSERT INTO characters (name, level, xp, gold, faction, morality, title, race, ashsworn, home_world, lease_world, lease_at) VALUES (?, 1, 0, 20, 'none', 0, '', '', 0, ?, ?, ?)",
