@@ -2,6 +2,8 @@ import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./types";
 import type { GridTrace, GridCast, CharSheet, WorldInfo, Fallen, Rescued, Presence } from "../../shared/grid";
 import { assertRegisterUrl } from "./register-url";
+import { sanitizePlayerText } from "./sanitize-player-text";
+import { worldAuthRequired } from "./world-auth";
 
 // The Grid Hub: the federation's shared state, as a single global Durable Object
 // (getByName("grid")). It holds the dead network's COLLECTIVE memory -- traces,
@@ -153,6 +155,9 @@ export class GridHub extends DurableObject<Env> {
           sql.exec("INSERT INTO worlds (id, url, last_seen) VALUES (?, ?, 0)", w.id, w.url);
         }
       }
+
+      // Legacy lease columns: copy active lease into home when home was never set.
+      sql.exec("UPDATE characters SET home_world = lease_world WHERE home_world = '' AND lease_world != ''");
     });
   }
 
@@ -217,7 +222,14 @@ export class GridHub extends DurableObject<Env> {
     const sql = this.ctx.storage.sql;
     sql.exec("DELETE FROM presence WHERE world = ?", world);
     for (const e of entries) {
-      sql.exec("INSERT OR REPLACE INTO presence (world, name, regard, title, at) VALUES (?, ?, ?, ?, ?)", world, e.name, e.regard, e.title, at);
+      sql.exec(
+        "INSERT OR REPLACE INTO presence (world, name, regard, title, at) VALUES (?, ?, ?, ?, ?)",
+        world,
+        e.name,
+        e.regard,
+        sanitizePlayerText(e.title, 40),
+        at,
+      );
     }
   }
 
@@ -242,7 +254,10 @@ export class GridHub extends DurableObject<Env> {
     const lease = row.lease_world?.trim() ?? "";
     if (!lease) {
       const home = row.home_world?.trim() ?? "";
-      if (home && home !== world) {
+      if (!home) {
+        throw new Error(`character ${name} has no home world assigned`);
+      }
+      if (home !== world) {
         throw new Error(`character ${name} home world is ${home}, cannot lease from ${world}`);
       }
       sql.exec("UPDATE characters SET lease_world = ? WHERE name = ?", world, name);
@@ -255,11 +270,18 @@ export class GridHub extends DurableObject<Env> {
   claimCharacterLease(name: string, world: string): void {
     this.assertRegisteredWorld(world);
     const sql = this.ctx.storage.sql;
+    const existed = sql.exec("SELECT 1 AS c FROM characters WHERE name = ?", name).toArray()[0];
     sql.exec(
       "INSERT OR IGNORE INTO characters (name, level, xp, gold, faction, morality, title, race, ashsworn, home_world, lease_world) VALUES (?, 1, 0, 20, 'none', 0, '', '', 0, ?, '')",
       name,
       world,
     );
+    const home = sql
+      .exec<{ home_world: string }>("SELECT home_world FROM characters WHERE name = ?", name)
+      .toArray()[0]?.home_world?.trim();
+    if (existed && !home) {
+      throw new Error(`character ${name} is a legacy row without home_world; cannot claim`);
+    }
     this.assertCharacterLease(name, world);
   }
 
@@ -397,7 +419,7 @@ export class GridHub extends DurableObject<Env> {
       gold: clamp(Math.floor(p.gold), 0, cur.gold + MAX_GOLD_DELTA), // bounded per commit
       faction: ["none", "front", "ally"].includes(p.faction) ? p.faction : cur.faction,
       morality: clamp(Math.floor(p.morality), -1000, 1000),
-      title: String(p.title ?? "").replace(/[\r\n]/g, "").slice(0, 40),
+      title: sanitizePlayerText(String(p.title ?? ""), 40),
       // race: an opaque label, sanitized but not validated against any list (any
       // world may define races); set once, then sticky (a character cannot reroll
       // their race across worlds).
@@ -429,6 +451,12 @@ export class GridHub extends DurableObject<Env> {
       return;
     }
     assertRegisterUrl(url);
+    const existing = this.ctx.storage.sql
+      .exec<{ last_seen: number }>("SELECT last_seen FROM worlds WHERE id = ?", world)
+      .toArray()[0];
+    if (existing && existing.last_seen > 0 && !worldAuthRequired(this.env)) {
+      throw new Error("register URL update requires GRID_WORLD_KEYS");
+    }
     this.ctx.storage.sql.exec(
       "INSERT INTO worlds (id, url, last_seen) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET url = excluded.url, last_seen = excluded.last_seen",
       world,

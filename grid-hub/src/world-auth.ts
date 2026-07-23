@@ -1,39 +1,31 @@
 import type { Env } from "./types";
 
-let parsedKeys: Record<string, string> | null | undefined;
-let keysParseError = false;
+type WorldKeysState = { keys: Record<string, string> | null; parseError: boolean };
 
-function worldKeys(env: Env): Record<string, string> | null {
-  if (parsedKeys !== undefined) return parsedKeys;
+function worldKeys(env: Env): WorldKeysState {
   const raw = env.GRID_WORLD_KEYS?.trim();
-  if (!raw) {
-    parsedKeys = null;
-    return parsedKeys;
-  }
+  if (!raw) return { keys: null, parseError: false };
   try {
     const obj = JSON.parse(raw) as Record<string, unknown>;
     const out: Record<string, string> = {};
     for (const [world, key] of Object.entries(obj)) {
       if (typeof key === "string" && key.length > 0) out[world] = key;
     }
-    parsedKeys = out;
-    return parsedKeys;
+    return { keys: out, parseError: false };
   } catch {
-    keysParseError = true;
-    parsedKeys = {};
-    return parsedKeys;
+    return { keys: {}, parseError: true };
   }
 }
 
 export function worldAuthRequired(env: Env): boolean {
-  const keys = worldKeys(env);
-  if (keysParseError) return true;
+  const { keys, parseError } = worldKeys(env);
+  if (parseError) return true;
   return !!keys && Object.keys(keys).length > 0;
 }
 
 export function assertWorldAuth(env: Env, world: string, key: string | undefined): void {
-  if (keysParseError) throw new Error("GRID_WORLD_KEYS invalid");
-  const keys = worldKeys(env);
+  const { keys, parseError } = worldKeys(env);
+  if (parseError) throw new Error("GRID_WORLD_KEYS invalid");
   if (!keys || Object.keys(keys).length === 0) return;
   const expected = keys[world];
   if (!expected || !timingSafeEqual(String(key ?? ""), expected)) {
@@ -41,11 +33,8 @@ export function assertWorldAuth(env: Env, world: string, key: string | undefined
   }
 }
 
-/** Test helper: reset module cache between cases. */
-export function resetWorldAuthCache(): void {
-  parsedKeys = undefined;
-  keysParseError = false;
-}
+/** Test helper: no-op (keys are read from env on each call). */
+export function resetWorldAuthCache(): void {}
 
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
