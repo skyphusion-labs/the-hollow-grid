@@ -10,3 +10,28 @@ export function leaseExpiryCutoff(now = Date.now()): number {
 export function isLegacyUntimestampedLease(leaseWorld: string, leaseAt: number | null | undefined): boolean {
   return !!leaseWorld.trim() && !leaseAt;
 }
+
+/** commitCharacter: caller must already hold the active lease (no implicit grant). */
+export function requireActiveCharacterLease(name: string, leaseWorld: string, callerWorld: string): void {
+  const lease = leaseWorld.trim();
+  if (lease === callerWorld) return;
+  if (lease) throw new Error(`character ${name} is leased to ${lease}, not ${callerWorld}`);
+  throw new Error(`character ${name} has no active lease on ${callerWorld}; claimCharacterLease first`);
+}
+
+/** claimCharacterLease: new row, same-world renewal, or home still unset only. */
+export function assertClaimCharacterLeaseAllowed(
+  name: string,
+  leaseWorld: string,
+  homeWorld: string,
+  callerWorld: string,
+): void {
+  const home = homeWorld.trim();
+  const lease = leaseWorld.trim();
+  if (home && home !== callerWorld) {
+    throw new Error(`character ${name} home world is ${home}, cannot claim from ${callerWorld}`);
+  }
+  if (lease && lease !== callerWorld) {
+    throw new Error(`character ${name} is leased to ${lease}, not ${callerWorld}`);
+  }
+}

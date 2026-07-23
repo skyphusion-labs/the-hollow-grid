@@ -16,3 +16,18 @@ export function requireRpcString(value: unknown, max: number, label = "value"): 
   if (s.length > max) throw new Error(`${label} exceeds ${max} characters`);
   return s;
 }
+
+/** JSON-RPC params must be plain objects (not arrays/null). */
+export function requireRpcObject(value: unknown, label = "param"): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+/** Bounded integer coercion for numeric RPC params (K3 wave 23). */
+export function clampRpcInt(value: unknown, lo: number, hi: number, fallback: number): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(lo, Math.min(hi, Math.floor(n)));
+}

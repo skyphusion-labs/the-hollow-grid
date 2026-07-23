@@ -3,11 +3,13 @@ import type { GridHub } from "./gridhub";
 import { verifyRpcWorldAuth } from "./rpc-auth";
 import { verifyRpcBearer } from "./world-auth";
 import {
+  clampRpcInt,
   clampRpcString,
   LIMIT_CHARACTER_NAME,
   LIMIT_LEDGER_KIND,
   LIMIT_WORLD_ID,
   MAX_RPC_BODY_BYTES,
+  requireRpcObject,
   requireRpcString,
 } from "./rpc-limits";
 
@@ -66,27 +68,27 @@ async function dispatch(hub: HubStub, method: string, params: unknown[], req: Re
     case "record":
       return hub.record(
         clampRpcString(params[0], LIMIT_WORLD_ID),
-        String(params[1]),
+        clampRpcString(params[1], 128),
         clampRpcString(params[2], LIMIT_LEDGER_KIND),
-        String(params[3]),
-        Number(params[4]),
+        clampRpcString(params[3], 500),
+        clampRpcInt(params[4], 0, Number.MAX_SAFE_INTEGER, Date.now()),
       );
     case "recent":
-      return hub.recent(Number(params[0]));
+      return hub.recent(clampRpcInt(params[0], 1, 200, 20));
     case "recentAcross":
-      return hub.recentAcross(clampRpcString(params[0], LIMIT_WORLD_ID), Number(params[1]));
+      return hub.recentAcross(clampRpcString(params[0], LIMIT_WORLD_ID), clampRpcInt(params[1], 1, 50, 20));
     case "tide":
       return hub.tide();
     case "shiftTide":
-      return hub.shiftTide(Number(params[0]), headerWorld || undefined);
+      return hub.shiftTide(clampRpcInt(params[0], -100, 100, 0), headerWorld || undefined);
     case "gridcast":
       return hub.gridcast(
         clampRpcString(params[0], LIMIT_WORLD_ID),
-        String(params[1]),
-        String(params[2]),
+        clampRpcString(params[1], LIMIT_CHARACTER_NAME),
+        clampRpcString(params[2], 500),
       );
     case "castsSince":
-      return hub.castsSince(Number(params[0]), Number(params[1]));
+      return hub.castsSince(clampRpcInt(params[0], 0, Number.MAX_SAFE_INTEGER, 0), clampRpcInt(params[1], 1, 50, 20));
     case "loadCharacter": {
       const world = clampRpcString(params[1] ?? headerWorld, LIMIT_WORLD_ID);
       if (!world) throw new Error("world required for loadCharacter");
@@ -96,7 +98,7 @@ async function dispatch(hub: HubStub, method: string, params: unknown[], req: Re
       return hub.commitCharacter(
         requireRpcString(params[0], LIMIT_CHARACTER_NAME, "character name"),
         clampRpcString(params[1], LIMIT_WORLD_ID),
-        params[2] as never,
+        requireRpcObject(params[2], "character sheet") as never,
       );
     case "claimCharacterLease":
       return hub.claimCharacterLease(
@@ -109,7 +111,7 @@ async function dispatch(hub: HubStub, method: string, params: unknown[], req: Re
         clampRpcString(params[1], LIMIT_WORLD_ID),
       );
     case "register":
-      return hub.register(clampRpcString(params[0], LIMIT_WORLD_ID), String(params[1]));
+      return hub.register(clampRpcString(params[0], LIMIT_WORLD_ID), clampRpcString(params[1], 512));
     case "listWorlds":
       return hub.listWorlds();
     case "ledgerStats":
@@ -120,24 +122,28 @@ async function dispatch(hub: HubStub, method: string, params: unknown[], req: Re
       return hub.recordFallen(
         clampRpcString(params[0], LIMIT_WORLD_ID),
         requireRpcString(params[1], LIMIT_CHARACTER_NAME, "character name"),
-        String(params[2]),
-        Number(params[3]),
+        clampRpcString(params[2], 64),
+        clampRpcInt(params[3], 0, Number.MAX_SAFE_INTEGER, Date.now()),
       );
     case "recentFallen":
-      return hub.recentFallen(Number(params[0]));
+      return hub.recentFallen(clampRpcInt(params[0], 1, 100, 20));
     case "recordRescued":
       return hub.recordRescued(
         clampRpcString(params[0], LIMIT_WORLD_ID),
         requireRpcString(params[1], LIMIT_CHARACTER_NAME, "character name"),
         requireRpcString(params[2], LIMIT_CHARACTER_NAME, "character name"),
-        Number(params[3]),
+        clampRpcInt(params[3], 0, Number.MAX_SAFE_INTEGER, Date.now()),
       );
     case "recentRescued":
-      return hub.recentRescued(Number(params[0]));
+      return hub.recentRescued(clampRpcInt(params[0], 1, 100, 20));
     case "reportPresence":
-      return hub.reportPresence(clampRpcString(params[0], LIMIT_WORLD_ID), params[1] as never, Number(params[2]));
+      return hub.reportPresence(
+        clampRpcString(params[0], LIMIT_WORLD_ID),
+        Array.isArray(params[1]) ? (params[1] as never) : [],
+        clampRpcInt(params[2], 0, Number.MAX_SAFE_INTEGER, Date.now()),
+      );
     case "presence":
-      return hub.presence(Number(params[0]));
+      return hub.presence(clampRpcInt(params[0], 60_000, 86_400_000, 300_000));
     default:
       throw new Error(`unknown method: ${method}`);
   }

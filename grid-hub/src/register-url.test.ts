@@ -25,4 +25,12 @@ describe("assertRegisterUrl", () => {
   it("rejects https handoff URLs", () => {
     expect(() => assertRegisterUrl("https://evil.example/ws")).toThrow(/ws: or wss:/);
   });
+
+  it("rejects arbitrary wss hosts (travel phishing)", () => {
+    expect(() => assertRegisterUrl("wss://evil.example/ws")).toThrow(/skyphusion.org/);
+  });
+
+  it("allows apex skyphusion.org wss", () => {
+    expect(() => assertRegisterUrl("wss://skyphusion.org/ws")).not.toThrow();
+  });
 });
