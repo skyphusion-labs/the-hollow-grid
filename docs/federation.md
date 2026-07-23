@@ -208,6 +208,25 @@ same shape as two separate production deployments binding one backend Worker.
   separate Workers. For a real deploy, set each world's `WORLD_URL` to its
   deployed hostname (the configs default to localhost for dev).
 
+## 9b. Fleet RPC credential (closed federation)
+
+External fleet nodes (Go/Rust Choir) reach the hub at `POST /rpc` with a shared
+`GRID_RPC_TOKEN` bearer plus per-world `X-Grid-World-Key` headers. This is an
+**accepted closed-federation design**, not a gap to close before third-party
+admission:
+
+- **Operator scope:** Skyphusion runs all live worlds today; the shared bearer
+  authenticates "a trusted fleet node" while per-world keys scope mutating calls.
+- **Why not per-node tokens yet:** `hollow-grid-go` and the hub RPC contract assume
+  one ingress secret; splitting tokens without breaking Go ingress is deferred
+  until open admission (section 10).
+- **Mitigations in place:** RPC disabled when token unset; constant-time bearer
+  compare; 64 KiB body cap; per-world key required when token is set; rate/bounds
+  validation on commits, tide, and gridcast; generic error responses on failure.
+
+Rotation: update `GRID_RPC_TOKEN` and `GRID_WORLD_KEYS` together via
+fleet-chezmoi (fc#1007); announce on `skyphusion-idp` per IdP rotation policy.
+
 ## 10. The honest caveats
 
 - This turns *a game* into *a platform for games.* That's a real commitment, a

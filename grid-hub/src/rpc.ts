@@ -2,7 +2,14 @@ import type { Env } from "./types";
 import type { GridHub } from "./gridhub";
 import { verifyRpcWorldAuth } from "./rpc-auth";
 import { verifyRpcBearer } from "./world-auth";
-import { clampRpcString, LIMIT_CHARACTER_NAME, LIMIT_LEDGER_KIND, LIMIT_WORLD_ID, requireRpcString } from "./rpc-limits";
+import {
+  clampRpcString,
+  LIMIT_CHARACTER_NAME,
+  LIMIT_LEDGER_KIND,
+  LIMIT_WORLD_ID,
+  MAX_RPC_BODY_BYTES,
+  requireRpcString,
+} from "./rpc-limits";
 
 type HubStub = DurableObjectStub<GridHub>;
 
@@ -18,9 +25,17 @@ export async function handleRPC(req: Request, env: Env): Promise<Response> {
     return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
+  const cl = req.headers.get("Content-Length");
+  if (cl !== null && Number(cl) > MAX_RPC_BODY_BYTES) {
+    return Response.json({ ok: false, error: "payload too large" }, { status: 413 });
+  }
+  const raw = await req.text();
+  if (raw.length > MAX_RPC_BODY_BYTES) {
+    return Response.json({ ok: false, error: "payload too large" }, { status: 413 });
+  }
   let body: { method?: string; params?: unknown[] };
   try {
-    body = await req.json();
+    body = JSON.parse(raw);
   } catch {
     return Response.json({ ok: false, error: "invalid json" }, { status: 400 });
   }
