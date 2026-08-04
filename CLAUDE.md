@@ -72,6 +72,27 @@ These come from the sibling `prism` repo and apply here too:
 
 ### Commits & release versioning
 
-- One scoped commit per change: subject is the scoped change, body is the why, footer lists files touched. Commit messages end with the `Co-Authored-By: Claude` trailer.
-- SemVer-style `0.MINOR.PATCH` while pre-1.0: PATCH for fixes/backend tweaks, MINOR for new features (a new system, command, or content set). Bump `package.json` `version` in the same commit.
-- A commit that ships a release ends its subject with the version in parens, e.g. `feat(combat): mob aggro (v0.4.0)`, and adds a top-of-file `CHANGELOG.md` entry (heading, one-line summary, the why, and a `### Code` section listing files touched and typecheck status). This repo has not started release discipline yet; adopt it when it does.
+- One scoped commit per change: subject is the scoped change, body is the why, footer lists files touched.
+- SemVer-style `0.MINOR.PATCH` while pre-1.0: PATCH for fixes/backend tweaks, MINOR for new features (a new system, command, or content set). Bump root `package.json` `version` in the release PR.
+- A commit that ships a release ends its subject with the version in parens, e.g. `feat(combat): mob aggro (v0.4.0)`, and adds a top-of-file `CHANGELOG.md` entry (heading, one-line summary, the why, and a `### Code` section listing files touched and typecheck status).
+
+### Release / tagging
+
+**TAG-GATED deploy.** `.github/workflows/ci.yml` deploys to Cloudflare **only** on a pushed `v*`
+tag (deploy job `if: startsWith(github.ref, 'refs/tags/v')`). A bare merge to `main` runs CI only
+and does **not** redeploy hollow/dustfall.
+
+Also see `docs/deploy.md` for the three Workers and env map.
+
+#### Cut a release
+
+1. **Release PR on `main`:** bump `package.json` version, add `CHANGELOG.md` `## vX.Y.Z`, land PR.
+2. **Tag:**
+
+```bash
+git fetch origin main && git checkout main && git pull --ff-only
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push origin vX.Y.Z
+```
+
+3. Confirm the tag CI run's deploy job green. Verify live worlds (artifact / play), not only a green check.
