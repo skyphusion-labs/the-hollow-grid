@@ -1,3 +1,7 @@
+## v0.30.28
+
+PATCH: dependency updates (cloudflare toolchain / types) and security CI follow-through on main since v0.30.27. Tag-gated deploy for hollow + dustfall.
+
 ## v0.30.27
 
 - fix(world): sanitize player-authored comms (say/yell/emote/tell/wall/title/inscribe) via shared `sanitizePlayerText` (#984 K3 wave 27).
