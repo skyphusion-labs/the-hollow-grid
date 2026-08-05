@@ -266,6 +266,6 @@ an AI player driven entirely by the `@event` channel lives in the separate
 `@event` channel, not the reference implementation, so it runs against ANY port:
 point it at your server with `MUD_URL=ws://host:port/ws node smoke.mjs` (set
 `DUSTFALL_URL` too, or it will SKIP the second-world federation phase). The suite
-ships **135 checks** (v0.29.9); a green run means your server honors the contract.
+ships **167 checks**; a green run means your server honors the contract.
 Build the port to pass it phase by phase; that is the definition of done. The
 suite is the fastest way to find where prose and the structured channel have drifted.
