@@ -22,7 +22,7 @@ shared memory ledger, global tide, cross-world chat, a canonical `CharSheet`
 (load/commit), and a world registry with `travel`. The hub is a `GridHub`
 Durable Object with SQLite, not D1. Crucially, the **trust hardening in sections
 2 and 4 (per-world keys, leased progression deltas, server-side validation) is
-NOT yet implemented**: the current federation trusts every world. That is fine
+IMPLEMENTED (closed federation with keys/leases)**: the current federation admits enrolled worlds with keys (see closed-federation section). That is fine
 while one operator runs all the worlds, and it is the single biggest open item
 before opening federation to third parties (see section 10).
 
@@ -269,7 +269,7 @@ Do not point `npm run smoke` at production hosts unless `ALLOW_PROD_SMOKE=1`.
 - **Load testing:** LLM agents (`mud-bots`, GHCR `mud-bots-hg`) soak all three
   worlds; findings in `*-bugs.jsonl`. Operational layout:
   `fleet-chezmoi/system/stacks/biafra/mud-bots/README.md`.
-- **Open admission / third-party members:** design only — see
+- **Open admission / third-party members:** design only -- see
   [`docs/federation-open-admission.md`](federation-open-admission.md)
   (the-hollow-grid#62). Conformance is the admission floor; hub authority,
   home-world character commits, rate/bounds validation, and revoke/quarantine

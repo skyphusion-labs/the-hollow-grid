@@ -7,7 +7,7 @@ intake assessment into an authority model we can implement without opening
 security holes.
 
 **North star.** Any server that passes the conformance suite can join the Grid,
-with admission as automated as we can safely make it — without giving every
+with admission as automated as we can safely make it -- without giving every
 member full write authority over shared state.
 
 **Non-goal.** Byzantine fault tolerance across hostile majorities. The bar is:
@@ -29,7 +29,7 @@ behavior. Today every member can:
 | Hub Worker + storage | Open members = our bill and DoS surface |
 
 So: **conformance = admission FLOOR.** Above it we need scoped authority,
-validation, and revocation — the fediverse lesson (scoped authority +
+validation, and revocation -- the fediverse lesson (scoped authority +
 defederation), not "trust the suite forever."
 
 ## 2. Authority model
@@ -45,7 +45,7 @@ defederation), not "trust the suite forever."
 ### 2.2 Home-world authority for character sheets
 
 Canonical progression (level, XP, gold, faction, morality, title) remains
-**Grid-owned** (`docs/federation.md` §2–3). Open admission tightens *who may
+**Grid-owned** (`docs/federation.md` §2-3). Open admission tightens *who may
 propose deltas*:
 
 1. **Home world** = the world that first created / last accepted the character
@@ -114,7 +114,7 @@ Ordered to keep the single-operator fleet safe while we harden:
 | D | Revoke / quarantine / defederation ops path | No |
 | E | Admission Worker + conformance attestation | **Yes (gated)** |
 
-Do not enable Phase E against the public internet until A–D are live and soaked
+Do not enable Phase E against the public internet until A-D are live and soaked
 on the existing TS / Go / Python members.
 
 ## 6. Relationship to as-built docs
@@ -137,4 +137,4 @@ design artifact so that GO has something concrete to approve.
 
 - [x] Captures vision, risks, and authority model in-repo.
 - [ ] Linked from `docs/federation.md` §10.
-- [ ] Implementation issues filed per phase A–E when Conrad authorizes build.
+- [ ] Implementation issues filed per phase A-E when Conrad authorizes build.

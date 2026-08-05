@@ -28,7 +28,7 @@ PATCH: dependency updates (cloudflare toolchain / types) and security CI follow-
 
 ## v0.30.23
 
-- fix(grid-hub): strict commit lease — only active lease holder may `commitCharacter`; no implicit grant on commit (#984 K3 wave 23).
+- fix(grid-hub): strict commit lease -- only active lease holder may `commitCharacter`; no implicit grant on commit (#984 K3 wave 23).
 - fix(grid-hub): `claimCharacterLease` blocks cross-world home takeover; sheet UPDATE requires matching `lease_world` (#984 K3 wave 23).
 - fix(grid-hub): pin `register()` wss hosts to `*.skyphusion.org` (blocks travel-handoff phishing) (#984 K3 wave 23).
 - fix(world): cap inbound WebSocket message size at 8 KiB (#984 K3 wave 23).
