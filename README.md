@@ -13,7 +13,7 @@ Read the writeup (the story, the design decisions, and how it was built):
 
 ## Play now
 
-Three live worlds on one shared Grid. Open any in a browser or connect with a raw
+Live worlds on the Grid on one shared Grid. Open any in a browser or connect with a raw
 WebSocket client at `/ws`. Make a character in one, `travel` to another, and your
 name, level, and standing come with you.
 
@@ -112,7 +112,7 @@ language. References in this repo:
 
 An AI player driven entirely by the `@event` channel lives in the separate
 [`mud-bots`](https://github.com/SkyPhusion/mud-bots) repo (`hollow-grid/bot.mjs`,
-GHCR `mud-bots-hg`). As of 2026-07-09 the fleet runs **11 LLM bots** (3 hollow +
+GHCR `mud-bots-hg`). As of 2026-07-09 the fleet runs **LLM bots (fleet **PARKED** 2026-07-15; see mud-bots CLAUDE)** (3 hollow +
 3 dustfall + 5 rustchoir) for load soak; layout in
 `fleet-chezmoi/system/stacks/biafra/mud-bots/README.md`.
 

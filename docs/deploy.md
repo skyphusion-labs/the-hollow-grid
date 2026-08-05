@@ -12,7 +12,7 @@ Actions pipeline that does it automatically.
 | `grid-hub` | the shared federation backend (tide, identity, ledger, registry) | no -- reached by both worlds over a service binding |
 
 Players connect to a world over WebSocket at `/ws`, or open the world's domain in
-a browser for the built-in xterm.js client. The hub has no public domain; it is
+a browser for the built-in xterm.js client. The hub is public at `grid-hub.skyphusion.org`; it is
 reached only by the worlds.
 
 ## Environment variables (per deployment)
@@ -39,7 +39,7 @@ and the smoke suite's localhost assertions hold.
 | `npm run dev:solo` | just World A + the hub on `:8787` (single-world hacking) |
 | `npm run dev:dustfall` | just Dustfall on `:8788` (binds a hub running elsewhere via the dev registry) |
 | `npm run typecheck` | `tsc --noEmit` on both Workers; the CI gate |
-| `npm run smoke` | the end-to-end suite against a running dev (**167 checks**) |
+| `npm run smoke` | the end-to-end suite against a running dev (**166 checks**) |
 | `npm run connect` | dependency-free terminal client (`-- ws://localhost:8788/ws` for Dustfall) |
 | `npm run deploy` | deploy hub, then World A, then Dustfall |
 
