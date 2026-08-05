@@ -39,7 +39,7 @@ and the smoke suite's localhost assertions hold.
 | `npm run dev:solo` | just World A + the hub on `:8787` (single-world hacking) |
 | `npm run dev:dustfall` | just Dustfall on `:8788` (binds a hub running elsewhere via the dev registry) |
 | `npm run typecheck` | `tsc --noEmit` on both Workers; the CI gate |
-| `npm run smoke` | the end-to-end suite against a running dev (**135 checks**) |
+| `npm run smoke` | the end-to-end suite against a running dev (**167 checks**) |
 | `npm run connect` | dependency-free terminal client (`-- ws://localhost:8788/ws` for Dustfall) |
 | `npm run deploy` | deploy hub, then World A, then Dustfall |
 
@@ -88,7 +88,7 @@ exposed to fork PRs).
 - **ci.yml** (push + PR, deploys on `main`):
   - **Install** -- `npm ci`.
   - **Typecheck** -- `npm run typecheck` (the gate).
-  - **Smoke** -- starts both worlds + the hub and runs the 135-check suite. Each
+  - **Smoke** -- starts both worlds + the hub and runs the 167-check suite. Each
     world runs under its own process group via `setsid`, and teardown kills
     exactly those groups (`kill -- -$PGID`). It does **not** use `npm run dev`
     (whose `kill 0` would reach the CI runner) and does **not** `pkill` broadly.

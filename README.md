@@ -73,7 +73,7 @@ npm run connect -- ws://localhost:8788/ws    # play Dustfall
 ```
 
 No global install needed (`scripts/connect.mjs` is dependency-free; `npx wscat`
-works too). Verify changes with `npm run typecheck` then `npm run smoke` (**135
+works too). Verify changes with `npm run typecheck` then `npm run smoke` (**167
 end-to-end checks** over the `@event` channel). See `docs/deploy.md`.
 
 ## The game
