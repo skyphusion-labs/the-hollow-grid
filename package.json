@@ -43,5 +43,9 @@
   },
   "dependencies": {
     "bcryptjs": "^3.0.3"
+  },
+  "overrides": {
+    "undici": "7.29.0",
+    "postcss": "8.5.23"
   }
 }
