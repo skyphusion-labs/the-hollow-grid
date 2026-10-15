@@ -238,6 +238,13 @@ to forge another world's local state. (See `docs/federation.md`.)
 unreachable a world runs on local state alone and reconciles on reconnect. A
 port should treat hub RPC failures as non-fatal.
 
+**The hub sheet wins at login.** `loadCharacter` for a name the hub has no row
+for returns the default sheet: level 1, xp 0, gold 20, faction `none`,
+morality 0, empty title. The world applies that sheet to the progression
+fields. Gold spent only in the world is not stored on the hub. A commit cannot
+lower hub gold, so that spent gold is back at the next login. Rooms, mobs,
+items, and quests stay on the world.
+
 ## 4. Porting checklist
 
 To reimplement a **world server** in another language, you need:
