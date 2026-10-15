@@ -317,6 +317,24 @@ check(
   `fresh character starts clean (addiction=${aff?.data.addiction}, faction=${JSON.stringify(aff?.data.faction)})`,
 );
 
+// A new character's race is committed after the lease claim, in the same
+// waitUntil. whoami reads the hub sheet. This has to run before any later
+// commit (ability, faction, logout), or those would write the race too and
+// the check would pass for the wrong reason. Poll: the commit is not on the
+// login response.
+let hubRace = null;
+const raceDeadline = Date.now() + 8000 * SLOW;
+while (Date.now() < raceDeadline && hubRace?.data?.race !== "human") {
+  ws.send("whoami");
+  hubRace = await waitFor(last, "char.identity", (d) => d?.race === "human", 1000);
+  if (hubRace?.data?.race === "human") break;
+  await sleep(200);
+}
+check(
+  hubRace?.data?.race === "human",
+  `a new character's race is on the hub after the lease claim (race=${JSON.stringify(hubRace?.data?.race ?? null)})`,
+);
+
 // Racial active ability: this character is Human, whose ability (Requisition)
 // pays out gold. It fires, then respects its cooldown on an immediate reuse.
 const goldBefore = vit?.data.gold ?? 0;
