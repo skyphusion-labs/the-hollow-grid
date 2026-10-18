@@ -87,6 +87,12 @@ This is the whole ballgame.
   caught and cut off."
 - **Local state is free.** A world's rooms, mobs, and in-progress quests are its
   own business; the Grid neither knows nor cares. Only *shared* fields round-trip.
+- **At login the hub sheet replaces local progression.** `loadCharacter` for a
+  name with no row returns the default sheet: level 1, xp 0, gold 20, faction
+  `none`, morality 0, empty title. The world applies that sheet. Gold spent
+  only on the world is not a hub delta. A commit cannot lower hub gold
+  (`commitCharacter` clamps gold to the current value or higher), so gold
+  spent locally is back at the next login.
 
 ## 3. What's canonical where
 
