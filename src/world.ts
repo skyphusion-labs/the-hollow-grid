@@ -795,11 +795,31 @@ export class World extends DurableObject<Env> {
 
   // ---- login ---------------------------------------------------------------
 
-  private claimHubLease(name: string): void {
+  private hubSheet(s: Session): CharSheet {
+    return {
+      level: s.level,
+      xp: s.xp,
+      gold: s.gold,
+      faction: s.faction,
+      morality: s.morality,
+      title: s.title ?? "",
+      race: s.race ?? "",
+      ashsworn: !!s.ashsworn,
+    };
+  }
+
+  // commitAfter is the new-character path: the lease does not exist until this
+  // call, so the race chosen before the passphrase can land only after it.
+  // One extra commit, inside the same waitUntil, still non-blocking.
+  private claimHubLease(name: string, commitAfter?: CharSheet): void {
     try {
-      this.ctx.waitUntil(
-        this.env.GRID.claimCharacterLease(name, this.worldName, this.env.GRID_WORLD_KEY).catch(() => {}),
-      );
+      const claimed = this.env.GRID.claimCharacterLease(name, this.worldName, this.env.GRID_WORLD_KEY);
+      const done = commitAfter
+        ? claimed.then(() =>
+            this.env.GRID.commitCharacter(name, this.worldName, commitAfter, this.env.GRID_WORLD_KEY),
+          )
+        : claimed;
+      this.ctx.waitUntil(done.catch(() => {}));
     } catch {
       /* hub unavailable */
     }
@@ -1105,7 +1125,7 @@ export class World extends DurableObject<Env> {
       /* hub unreachable */
     }
 
-    this.claimHubLease(session.name);
+    this.claimHubLease(session.name, isNew ? this.hubSheet(session) : undefined);
     this.finishSpawn(ws, session, isNew);
   }
 
@@ -1142,7 +1162,10 @@ export class World extends DurableObject<Env> {
     // A brand-new character (no local row) wakes with the starter weapon; a
     // character that predates the race system keeps what it already had.
     const existing = this.ctx.storage.sql.exec("SELECT 1 FROM players WHERE name = ?", session.name).toArray()[0];
-    this.commitIdentity(session); // persist the race to the hub now, so it sticks
+    // Local row only, for a brand-new character: the hub lease is claimed after
+    // the passphrase, and loadSessionFromRow commits this sheet once that lease
+    // exists. A character that already holds a lease still commits here.
+    this.commitIdentity(session);
     ws.serializeAttachment(session);
     this.persistPlayer(session);
     session.loginPhase = "passphrase";
@@ -2858,21 +2881,7 @@ export class World extends DurableObject<Env> {
     try {
       this.ctx.waitUntil(
         this.env.GRID
-          .commitCharacter(
-            s.name,
-            this.worldName,
-            {
-              level: s.level,
-              xp: s.xp,
-              gold: s.gold,
-              faction: s.faction,
-              morality: s.morality,
-              title: s.title ?? "",
-              race: s.race ?? "",
-              ashsworn: !!s.ashsworn,
-            },
-            this.env.GRID_WORLD_KEY,
-          )
+          .commitCharacter(s.name, this.worldName, this.hubSheet(s), this.env.GRID_WORLD_KEY)
           .catch(() => {}),
       );
     } catch {
