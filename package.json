@@ -36,7 +36,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261011.1",
     "@types/bcryptjs": "^3.0.0",
-    "@vitest/coverage-istanbul": "^5.0.3",
+    "@vitest/coverage-istanbul": "^5.0.5",
     "@vitest/coverage-v8": "^5.0.3",
     "typescript": "^7",
     "wrangler": "^4.149.0"
