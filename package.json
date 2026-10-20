@@ -34,12 +34,12 @@
     "cf-typegen": "wrangler types"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261011.1",
+    "@cloudflare/workers-types": "^5.20261016.1",
     "@types/bcryptjs": "^3.0.0",
     "@vitest/coverage-istanbul": "^5.0.3",
     "@vitest/coverage-v8": "^5.0.3",
     "typescript": "^7",
-    "wrangler": "^4.149.0"
+    "wrangler": "^4.151.1"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3"
