@@ -121,8 +121,7 @@ on the existing TS / Go / Python members.
 
 - Wire contract: `docs/protocol.md` §3 / `shared/grid.ts` (`GridHubApi`).
 - Topology and north-star trust: `docs/federation.md`.
-- Conformance gate (today): mud-bots `@event` suite; fleet layout in
-  `fleet-chezmoi` mud-bots stack docs.
+- Conformance gate (today): mud-bots `@event` suite. The old fleet layout is retired.
 - Ports: hollow-grid-go (Rust Choir), hollow-grid-py (Verdigris Spool) already
   speak the hub HTTP RPC; they become the first non-Workers members under
   scoped tokens in Phase A.

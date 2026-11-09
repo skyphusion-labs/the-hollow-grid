@@ -21,7 +21,7 @@ name, level, and standing come with you.
 | --- | --- | --- |
 | **The Hollow Grid** (dead neon city) | https://hollow.skyphusion.org | Cloudflare Workers |
 | **Dustfall** (open salt pan) | https://dustfall.skyphusion.org | Cloudflare Workers |
-| **Rust Choir** (memory / archivist node) | https://rustchoir.skyphusion.org | Go fleet container ([hollow-grid-go](https://github.com/SkyPhusion/hollow-grid-go)) |
+| **Rust Choir** (memory / archivist node) | public host retired | Go port you run ([hollow-grid-go](https://github.com/skyphusion-labs/hollow-grid-go)) |
 
 Each domain serves its own in-browser terminal (xterm.js on the TS worlds; Rust
 Choir is WebSocket-only today) and accepts any raw WebSocket client at `/ws`.
@@ -111,13 +111,12 @@ language. References in this repo:
 - `smoke.mjs` -- an assertion harness over the same events.
 
 An AI player driven entirely by the `@event` channel lives in the separate
-[`mud-bots`](https://github.com/SkyPhusion/mud-bots) repo (`hollow-grid/bot.mjs`,
-GHCR `mud-bots-hg`). As of 2026-07-09 the fleet runs **LLM bots (fleet **PARKED** 2026-07-15; see mud-bots CLAUDE)** (3 hollow +
-3 dustfall + 5 rustchoir) for load soak; layout in
-`fleet-chezmoi/system/stacks/biafra/mud-bots/README.md`.
+[`mud-bots`](https://github.com/skyphusion-labs/mud-bots) repo (`hollow-grid/bot.mjs`,
+GHCR `mud-bots-hg`). The always-on fleet population is retired. Point a bot
+at a world you run. Env vars are in that repo's `hollow-grid/README.md`.
 
-Ports in Go, Rust, Python, Elixir, and friends are welcome; **Rust Choir** (Go) is
-the first non-TS world on the live Grid. Any world that speaks the `GridHubApi`
+Ports in Go, Rust, Python, Elixir, and friends are welcome. **Rust Choir** (Go) was
+the first non-TS world on the live Grid. Its public host is retired. Any world that speaks the `GridHubApi`
 contract (`shared/grid.ts`) can join the same federation.
 
 ## Architecture, in one breath

@@ -144,8 +144,8 @@ scripts/connect.mjs   dependency-free terminal client
 ```
 
 The AI player (`bot.mjs`, driven by the @event channel) lives in the separate
-`mud-bots` repo under `hollow-grid/` (GHCR `mud-bots-hg`; fleet load layout in
-`fleet-chezmoi/system/stacks/biafra/mud-bots/README.md`).
+`mud-bots` repo under `hollow-grid/` (GHCR `mud-bots-hg`). The old fleet
+population is retired.
 
 ## Ports and alternate engines
 
