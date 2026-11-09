@@ -11,7 +11,7 @@ public host that is retired.
 | Rust Choir | retired | Go port ([hollow-grid-go](https://github.com/skyphusion-labs/hollow-grid-go)); public host is gone |
 
 Cross-world identity, a global faction tide, a shared ledger and chat, and
-`travel` work across all three when the hub is reachable. This document is the
+`travel` work across both when the hub is reachable. This document is the
 design and the trust model; for the contract see `docs/protocol.md` (section 3),
 for running and deploying see `docs/deploy.md`, and for building a second TS world
 see `docs/worlds.md`. The remaining open work is noted in section 10.
