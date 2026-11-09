@@ -1,13 +1,14 @@
 # The Hollow Grid Federation: design and status
 
-Status: **LIVE.** Federation phases 1-5 are built, merged, and deployed. **Three
-worlds** run on one shared Grid in production:
+Status: **LIVE.** Federation phases 1-5 are built, merged, and deployed. **Two
+worlds** run on the shared Grid in production. Rust Choir, the Go world, had a
+public host that is retired.
 
 | World | URL | Engine |
 | --- | --- | --- |
 | The Hollow Grid | hollow.skyphusion.org | Cloudflare Workers |
 | Dustfall | dustfall.skyphusion.org | Cloudflare Workers |
-| Rust Choir | rustchoir.skyphusion.org | Go container ([hollow-grid-go](https://github.com/SkyPhusion/hollow-grid-go)) |
+| Rust Choir | retired | Go port ([hollow-grid-go](https://github.com/skyphusion-labs/hollow-grid-go)); public host is gone |
 
 Cross-world identity, a global faction tide, a shared ledger and chat, and
 `travel` work across all three when the hub is reachable. This document is the
@@ -272,9 +273,9 @@ Do not point `npm run smoke` at production hosts unless `ALLOW_PROD_SMOKE=1`.
 - **Fleet nodes (Rust Choir)** cannot use Cloudflare service bindings. The hub
   exposes HTTP RPC at `grid-hub.skyphusion.org/rpc` for external world engines;
   see `grid-hub/wrangler.jsonc` and `hollow-grid-go/internal/grid/`.
-- **Load testing:** LLM agents (`mud-bots`, GHCR `mud-bots-hg`) soak all three
-  worlds; findings in `*-bugs.jsonl`. Operational layout:
-  `fleet-chezmoi/system/stacks/biafra/mud-bots/README.md`.
+- **Load testing:** LLM agents (`mud-bots`, GHCR `mud-bots-hg`) can soak a world
+  you run. The old fleet population is retired. Findings from that soak are in
+  `*-bugs.jsonl`.
 - **Open admission / third-party members:** design only -- see
   [`docs/federation-open-admission.md`](federation-open-admission.md)
   (the-hollow-grid#62). Conformance is the admission floor; hub authority,

@@ -112,28 +112,22 @@ Cloudflare Access app on the paths:
 | --- | --- | --- |
 | Hollow Grid | `https://hollow.skyphusion.org/health` | `/health/deep` |
 | Dustfall | `https://dustfall.skyphusion.org/health` | `/health/deep` |
-| Rust Choir (Go) | `https://rustchoir.skyphusion.org/health` | `/health/deep` |
+| Rust Choir (Go) | public host retired | run `hollow-grid-go` and use its `/health` |
 
 - **Monitoring** -- Gatus (status.skyphusion.org) polls `/health` (60s) and
   `/health/deep` (5min) with no Access headers.
 
-## Rust Choir (third world, Go fleet)
+## Rust Choir (third world, Go)
 
-Rust Choir is **not** a fourth Cloudflare Worker. It is the
-[`hollow-grid-go`](https://github.com/SkyPhusion/hollow-grid-go) container on
-biafra, tunneled at `wss://rustchoir.skyphusion.org/ws`. It registers with the
-same Grid Hub via HTTP RPC (`GRID_HUB_URL=https://grid-hub.skyphusion.org/rpc`).
-
-Deploy and roll are owned by `hollow-grid-go` CI → `fleet-chezmoi`
-`rust-choir-roll`, not `npm run deploy`. See
-`fleet-chezmoi/system/swarm/RUNBOOK-rust-choir-roll.md`.
-
-Score the Go port with the same suite this repo ships:
+Rust Choir is **not** a Cloudflare Worker. It is the
+[`hollow-grid-go`](https://github.com/skyphusion-labs/hollow-grid-go) port.
+Its public host is retired. Run that repo locally, then score it against
+live Dustfall with the suite this repo ships:
 
 ```bash
-MUD_URL=wss://rustchoir.skyphusion.org/ws \
+MUD_URL=ws://127.0.0.1:8790/ws \
 DUSTFALL_URL=wss://dustfall.skyphusion.org/ws \
 node smoke.mjs
 ```
 
-LLM load bots for all three worlds: `fleet-chezmoi/system/stacks/biafra/mud-bots/README.md`.
+LLM load bots live in the `mud-bots` repo. Point them at the world you run.

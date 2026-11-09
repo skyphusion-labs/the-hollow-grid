@@ -21,7 +21,7 @@ name, level, and standing come with you.
 | --- | --- | --- |
 | **The Hollow Grid** (dead neon city) | https://hollow.skyphusion.org | Cloudflare Workers |
 | **Dustfall** (open salt pan) | https://dustfall.skyphusion.org | Cloudflare Workers |
-| **Rust Choir** (memory / archivist node) | https://rustchoir.skyphusion.org | Go fleet container ([hollow-grid-go](https://github.com/SkyPhusion/hollow-grid-go)) |
+| **Rust Choir** (memory / archivist node) | public host retired | Go port you run ([hollow-grid-go](https://github.com/skyphusion-labs/hollow-grid-go)) |
 
 Each domain serves its own in-browser terminal (xterm.js on the TS worlds; Rust
 Choir is WebSocket-only today) and accepts any raw WebSocket client at `/ws`.
@@ -115,8 +115,8 @@ An AI player driven entirely by the `@event` channel lives in the separate
 GHCR `mud-bots-hg`). The always-on fleet population is retired. Point a bot
 at a world you run. Env vars are in that repo's `hollow-grid/README.md`.
 
-Ports in Go, Rust, Python, Elixir, and friends are welcome; **Rust Choir** (Go) is
-the first non-TS world on the live Grid. Any world that speaks the `GridHubApi`
+Ports in Go, Rust, Python, Elixir, and friends are welcome. **Rust Choir** (Go) was
+the first non-TS world on the live Grid. Its public host is retired. Any world that speaks the `GridHubApi`
 contract (`shared/grid.ts`) can join the same federation.
 
 ## Architecture, in one breath
