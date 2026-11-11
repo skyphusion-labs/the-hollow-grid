@@ -31,7 +31,8 @@
     "smoke": "node smoke.mjs",
     "connect": "node scripts/connect.mjs",
     "map": "node --experimental-strip-types scripts/render-map.mjs",
-    "cf-typegen": "wrangler types"
+    "cf-typegen": "wrangler types",
+    "test": "vitest run --exclude smoke.test.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261107.1",
@@ -39,6 +40,7 @@
     "@vitest/coverage-istanbul": "^5.1.0",
     "@vitest/coverage-v8": "^5.0.3",
     "typescript": "^7",
+    "vitest": "^5.1.0",
     "wrangler": "^4.158.0"
   },
   "dependencies": {
