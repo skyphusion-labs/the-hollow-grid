@@ -1,17 +1,18 @@
 # The Hollow Grid Federation: design and status
 
-Status: **LIVE.** Federation phases 1-5 are built, merged, and deployed. **Two
-worlds** run on the shared Grid in production. Rust Choir, the Go world, had a
-public host that is retired.
+Status: **LIVE.** Federation phases 1-5 are built, merged, and deployed.
+Six worlds run on one shared Grid.
 
 | World | URL | Engine |
 | --- | --- | --- |
 | The Hollow Grid | hollow.skyphusion.org | Cloudflare Workers |
 | Dustfall | dustfall.skyphusion.org | Cloudflare Workers |
-| Rust Choir | retired | Go port ([hollow-grid-go](https://github.com/skyphusion-labs/hollow-grid-go)); public host is gone |
+| Verdigris Spool | verdigris.skyphusion.org | Python Worker |
+| Ferrite Wastes | ferrite.skyphusion.org | C container |
+| Basalt Relay | basalt.skyphusion.org | Assembly container |
+| Rust Choir | rustchoir.skyphusion.org | Go container |
 
-Cross-world identity, a global faction tide, a shared ledger and chat, and
-`travel` work across both when the hub is reachable. This document is the
+Cross-world identity, the faction tide, the ledger, and travel use that Grid when the hub is reachable. This document is the
 design and the trust model; for the contract see `docs/protocol.md` (section 3),
 for running and deploying see `docs/deploy.md`, and for building a second TS world
 see `docs/worlds.md`. The remaining open work is noted in section 10.
