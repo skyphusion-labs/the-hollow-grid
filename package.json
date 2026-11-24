@@ -35,13 +35,13 @@
     "test": "vitest run --exclude smoke.test.ts"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261114.1",
+    "@cloudflare/workers-types": "^5.20261121.1",
     "@types/bcryptjs": "^3.0.0",
     "@vitest/coverage-istanbul": "^5.1.0",
     "@vitest/coverage-v8": "^5.0.3",
     "typescript": "^7",
     "vitest": "^5.1.0",
-    "wrangler": "^4.162.0"
+    "wrangler": "^4.166.0"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3"
