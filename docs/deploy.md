@@ -105,24 +105,27 @@ Node 24+ (the smoke suite uses the global `WebSocket`).
 ## Health endpoints
 
 The world serves `GET /health` (liveness) and `GET /health/deep` (deep check;
-see docs/protocol.md). All three public worlds expose these at the edge with no
+see docs/protocol.md). These worlds expose health at the edge with no
 Cloudflare Access app on the paths:
 
 | World | `/health` | `/health/deep` |
 | --- | --- | --- |
 | Hollow Grid | `https://hollow.skyphusion.org/health` | `/health/deep` |
 | Dustfall | `https://dustfall.skyphusion.org/health` | `/health/deep` |
-| Rust Choir (Go) | public host retired | run `hollow-grid-go` and use its `/health` |
+| Verdigris Spool | `https://verdigris.skyphusion.org/health` | `/health/deep` |
+| Ferrite Wastes | `https://ferrite.skyphusion.org/health` | `/health/deep` |
+| Basalt Relay | `https://basalt.skyphusion.org/health` | `/health/deep` |
+| Rust Choir | `https://rustchoir.skyphusion.org/health` | `/health/deep` |
 
 - **Monitoring** -- Gatus (status.skyphusion.org) polls `/health` (60s) and
   `/health/deep` (5min) with no Access headers.
 
-## Rust Choir (third world, Go)
+## Rust Choir (Go)
 
-Rust Choir is **not** a Cloudflare Worker. It is the
-[`hollow-grid-go`](https://github.com/skyphusion-labs/hollow-grid-go) port.
-Its public host is retired. Run that repo locally, then score it against
-live Dustfall with the suite this repo ships:
+Rust Choir runs as a Go container on Cloudflare.
+The play URL is `wss://rustchoir.skyphusion.org/ws`.
+The repo is [`hollow-grid-go`](https://github.com/skyphusion-labs/hollow-grid-go).
+Score a local build against live Dustfall with the suite this repo ships:
 
 ```bash
 MUD_URL=ws://127.0.0.1:8790/ws \
