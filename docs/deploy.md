@@ -3,17 +3,17 @@
 How to run The Hollow Grid locally, ship it to Cloudflare, and the GitHub
 Actions pipeline that does it automatically.
 
-## The three Workers
+## Workers deployed by this repository
 
 | Worker | Role | Public? |
 | --- | --- | --- |
 | `the-hollow-grid` | World A (the Hollow Grid map) | yes -- `hollow.skyphusion.org` |
 | `dustfall` | World B (the Dustfall salt pan), same code, `WORLD_MAP=dustfall` | yes -- `dustfall.skyphusion.org` |
-| `grid-hub` | the shared federation backend (tide, identity, ledger, registry) | no -- reached by both worlds over a service binding |
+| `grid-hub` | the shared federation backend (tide, identity, ledger, registry) | yes -- `grid-hub.skyphusion.org`; the TypeScript worlds use a service binding |
 
 Players connect to a world over WebSocket at `/ws`, or open the world's domain in
-a browser for the built-in xterm.js client. The hub is public at `grid-hub.skyphusion.org`; it is
-reached only by the worlds.
+a browser for the built-in xterm.js client. Remote worlds use the hub’s HTTP RPC endpoint.
+The [public world list](../README.md#play-now) links to the separately deployed ports.
 
 ## Environment variables (per deployment)
 
@@ -39,7 +39,7 @@ and the smoke suite's localhost assertions hold.
 | `npm run dev:solo` | just World A + the hub on `:8787` (single-world hacking) |
 | `npm run dev:dustfall` | just Dustfall on `:8788` (binds a hub running elsewhere via the dev registry) |
 | `npm run typecheck` | `tsc --noEmit` on both Workers; the CI gate |
-| `npm run smoke` | the end-to-end suite against a running dev (**166 checks**) |
+| `npm run smoke` | the end-to-end suite against a running dev |
 | `npm run connect` | dependency-free terminal client (`-- ws://localhost:8788/ws` for Dustfall) |
 | `npm run deploy` | deploy hub, then World A, then Dustfall |
 
@@ -76,7 +76,8 @@ provisions the TLS cert in the zone automatically:
 ```
 
 For a fresh deploy to a different domain, set each world's `WORLD_URL` and
-`routes[].pattern` to your hostnames. The hub needs no domain.
+`routes[].pattern` to your hostnames. Set the hub’s custom domain for worlds that
+use HTTP RPC. Service bindings address the hub by Worker name.
 
 ## CI/CD (GitHub Actions)
 
@@ -85,21 +86,21 @@ was retired in the Jenkins->GHA migration (#41). This repo is PUBLIC, so the
 deploy job runs on a GitHub-hosted runner (fork-safe; no self-hosted build box
 exposed to fork PRs).
 
-- **ci.yml** (push + PR, deploys on `main`):
+- **ci.yml** (push, pull request, and version tags):
   - **Install** -- `npm ci`.
   - **Typecheck** -- `npm run typecheck` (the gate).
-  - **Smoke** -- starts both worlds + the hub and runs the 167-check suite. Each
+  - **Smoke** -- starts both worlds + the hub and runs the current suite. Each
     world runs under its own process group via `setsid`, and teardown kills
     exactly those groups (`kill -- -$PGID`). It does **not** use `npm run dev`
     (whose `kill 0` would reach the CI runner) and does **not** `pkill` broadly.
     This safety is deliberate; preserve it.
-  - **Deploy** -- on `main` only, runs `npm run deploy` (which chains hub ->
+  - **Deploy** -- on a pushed `v*` tag whose commit is on `origin/main`, runs `npm run deploy` (which chains hub ->
     hollow -> dustfall in the correct bind order). wrangler authenticates via the
     `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` GitHub Actions secrets
     (the token scoped to Workers Scripts/Routes + DNS + SSL on the zone).
 - **typecheck.yml** -- the always-on hosted typecheck path.
 
-A push to `main` runs the full pipeline and, on green, deploys. The runner uses
+A push to `main` runs CI. The runner uses
 Node 24+ (the smoke suite uses the global `WebSocket`).
 
 ## Health endpoints

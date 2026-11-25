@@ -4,9 +4,9 @@ This file is the guide for any coding agent and any contributor. Follow it.
 
 ## What this project is
 
-The Hollow Grid is a text MUD. It runs on Cloudflare Workers and Durable Objects. Players connect over WebSocket at `/ws`. They play with plain-text commands. Any raw WebSocket client can play. This repo ships one client: `npm run connect`.
+The Hollow Grid is a text MUD. It runs on Cloudflare Workers and Durable Objects. Players connect over WebSocket at `/ws`. They play with plain-text commands. Any raw WebSocket client can play. This repo ships a browser terminal at `/` and a command-line client via `npm run connect`.
 
-A world is content on a generic engine. `WORLD_MAP` selects that content. Separate deployments share one Grid Hub. Live worlds are [hollow.skyphusion.org](https://hollow.skyphusion.org) and [dustfall.skyphusion.org](https://dustfall.skyphusion.org).
+A world is content on a generic engine. `WORLD_MAP` selects that content. Separate deployments share one Grid Hub. This repo deploys [hollow.skyphusion.org](https://hollow.skyphusion.org) and [dustfall.skyphusion.org](https://dustfall.skyphusion.org). See the [public world list](README.md#play-now) for the sibling deployments.
 
 [docs/protocol.md](docs/protocol.md) is the wire contract. Ports and bots build to it. They do not invent a parallel protocol. Check player-facing behavior on the live worlds. Also check it on local `wrangler dev`.
 
