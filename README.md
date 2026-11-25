@@ -13,18 +13,18 @@ Read the writeup (the story, the design decisions, and how it was built):
 
 ## Play now
 
-Live worlds on the Grid on one shared Grid. Open any in a browser or connect with a raw
-WebSocket client at `/ws`. Make a character in one, `travel` to another, and your
-name, level, and standing come with you.
+Six worlds are publicly reachable. Every world accepts WebSocket clients at `/ws`.
+On federated worlds, `travel` carries your name, level, and standing across the Grid.
+The public Verdigris Worker uses a local hub, so its characters stay there.
 
-| World | URL | Engine |
-| --- | --- | --- |
-| **The Hollow Grid** (dead neon city) | https://hollow.skyphusion.org | Cloudflare Workers |
-| **Dustfall** (open salt pan) | https://dustfall.skyphusion.org | Cloudflare Workers |
-| **Rust Choir** (memory / archivist node) | public host retired | Go port you run ([hollow-grid-go](https://github.com/skyphusion-labs/hollow-grid-go)) |
-
-Each domain serves its own in-browser terminal (xterm.js on the TS worlds; Rust
-Choir is WebSocket-only today) and accepts any raw WebSocket client at `/ws`.
+| World | Browser | WebSocket | Runtime |
+| --- | --- | --- | --- |
+| The Hollow Grid | [Play](https://hollow.skyphusion.org/) | `wss://hollow.skyphusion.org/ws` | TypeScript Worker |
+| Dustfall | [Play](https://dustfall.skyphusion.org/) | `wss://dustfall.skyphusion.org/ws` | TypeScript Worker |
+| Verdigris Spool | [Play](https://verdigris.skyphusion.org/) | `wss://verdigris.skyphusion.org/ws` | [Python Worker](https://github.com/skyphusion-labs/hollow-grid-py) |
+| Ferrite Wastes | [Play](https://ferrite.skyphusion.org/) | `wss://ferrite.skyphusion.org/ws` | [C container](https://github.com/skyphusion-labs/hollow-grid-c) |
+| Basalt Relay | [Play](https://basalt.skyphusion.org/) | `wss://basalt.skyphusion.org/ws` | [Assembly container](https://github.com/skyphusion-labs/hollow-grid-asm) |
+| Rust Choir | [Play](https://rustchoir.skyphusion.org/) | `wss://rustchoir.skyphusion.org/ws` | [Go container](https://github.com/skyphusion-labs/hollow-grid-go) |
 
 ## The map
 
@@ -115,9 +115,8 @@ An AI player driven entirely by the `@event` channel lives in the separate
 GHCR `mud-bots-hg`). The always-on fleet population is retired. Point a bot
 at a world you run. Env vars are in that repo's `hollow-grid/README.md`.
 
-Ports in Go, Rust, Python, Elixir, and friends are welcome. **Rust Choir** (Go) was
-the first non-TS world on the live Grid. Its public host is retired. Any world that speaks the `GridHubApi`
-contract (`shared/grid.ts`) can join the same federation.
+Ports in Go, C, Python, and assembly are on the live Grid.
+Any world that speaks the `GridHubApi` contract (`shared/grid.ts`) can join the same federation.
 
 ## Architecture, in one breath
 

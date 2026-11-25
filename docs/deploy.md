@@ -3,17 +3,17 @@
 How to run The Hollow Grid locally, ship it to Cloudflare, and the GitHub
 Actions pipeline that does it automatically.
 
-## The three Workers
+## Workers deployed by this repository
 
 | Worker | Role | Public? |
 | --- | --- | --- |
 | `the-hollow-grid` | World A (the Hollow Grid map) | yes -- `hollow.skyphusion.org` |
 | `dustfall` | World B (the Dustfall salt pan), same code, `WORLD_MAP=dustfall` | yes -- `dustfall.skyphusion.org` |
-| `grid-hub` | the shared federation backend (tide, identity, ledger, registry) | no -- reached by both worlds over a service binding |
+| `grid-hub` | the shared federation backend (tide, identity, ledger, registry) | yes -- `grid-hub.skyphusion.org`; the TypeScript worlds use a service binding |
 
 Players connect to a world over WebSocket at `/ws`, or open the world's domain in
-a browser for the built-in xterm.js client. The hub is public at `grid-hub.skyphusion.org`; it is
-reached only by the worlds.
+a browser for the built-in xterm.js client. Remote worlds use the hub’s HTTP RPC endpoint.
+The [public world list](../README.md#play-now) links to the separately deployed ports.
 
 ## Environment variables (per deployment)
 
@@ -39,7 +39,7 @@ and the smoke suite's localhost assertions hold.
 | `npm run dev:solo` | just World A + the hub on `:8787` (single-world hacking) |
 | `npm run dev:dustfall` | just Dustfall on `:8788` (binds a hub running elsewhere via the dev registry) |
 | `npm run typecheck` | `tsc --noEmit` on both Workers; the CI gate |
-| `npm run smoke` | the end-to-end suite against a running dev (**166 checks**) |
+| `npm run smoke` | the end-to-end suite against a running dev |
 | `npm run connect` | dependency-free terminal client (`-- ws://localhost:8788/ws` for Dustfall) |
 | `npm run deploy` | deploy hub, then World A, then Dustfall |
 
@@ -76,7 +76,8 @@ provisions the TLS cert in the zone automatically:
 ```
 
 For a fresh deploy to a different domain, set each world's `WORLD_URL` and
-`routes[].pattern` to your hostnames. The hub needs no domain.
+`routes[].pattern` to your hostnames. Set the hub’s custom domain for worlds that
+use HTTP RPC. Service bindings address the hub by Worker name.
 
 ## CI/CD (GitHub Actions)
 
@@ -85,44 +86,47 @@ was retired in the Jenkins->GHA migration (#41). This repo is PUBLIC, so the
 deploy job runs on a GitHub-hosted runner (fork-safe; no self-hosted build box
 exposed to fork PRs).
 
-- **ci.yml** (push + PR, deploys on `main`):
+- **ci.yml** (push, pull request, and version tags):
   - **Install** -- `npm ci`.
   - **Typecheck** -- `npm run typecheck` (the gate).
-  - **Smoke** -- starts both worlds + the hub and runs the 167-check suite. Each
+  - **Smoke** -- starts both worlds + the hub and runs the current suite. Each
     world runs under its own process group via `setsid`, and teardown kills
     exactly those groups (`kill -- -$PGID`). It does **not** use `npm run dev`
     (whose `kill 0` would reach the CI runner) and does **not** `pkill` broadly.
     This safety is deliberate; preserve it.
-  - **Deploy** -- on `main` only, runs `npm run deploy` (which chains hub ->
+  - **Deploy** -- on a pushed `v*` tag whose commit is on `origin/main`, runs `npm run deploy` (which chains hub ->
     hollow -> dustfall in the correct bind order). wrangler authenticates via the
     `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` GitHub Actions secrets
     (the token scoped to Workers Scripts/Routes + DNS + SSL on the zone).
 - **typecheck.yml** -- the always-on hosted typecheck path.
 
-A push to `main` runs the full pipeline and, on green, deploys. The runner uses
+A push to `main` runs CI. The runner uses
 Node 24+ (the smoke suite uses the global `WebSocket`).
 
 ## Health endpoints
 
 The world serves `GET /health` (liveness) and `GET /health/deep` (deep check;
-see docs/protocol.md). All three public worlds expose these at the edge with no
+see docs/protocol.md). These worlds expose health at the edge with no
 Cloudflare Access app on the paths:
 
 | World | `/health` | `/health/deep` |
 | --- | --- | --- |
 | Hollow Grid | `https://hollow.skyphusion.org/health` | `/health/deep` |
 | Dustfall | `https://dustfall.skyphusion.org/health` | `/health/deep` |
-| Rust Choir (Go) | public host retired | run `hollow-grid-go` and use its `/health` |
+| Verdigris Spool | `https://verdigris.skyphusion.org/health` | `/health/deep` |
+| Ferrite Wastes | `https://ferrite.skyphusion.org/health` | `/health/deep` |
+| Basalt Relay | `https://basalt.skyphusion.org/health` | `/health/deep` |
+| Rust Choir | `https://rustchoir.skyphusion.org/health` | `/health/deep` |
 
 - **Monitoring** -- Gatus (status.skyphusion.org) polls `/health` (60s) and
   `/health/deep` (5min) with no Access headers.
 
-## Rust Choir (third world, Go)
+## Rust Choir (Go)
 
-Rust Choir is **not** a Cloudflare Worker. It is the
-[`hollow-grid-go`](https://github.com/skyphusion-labs/hollow-grid-go) port.
-Its public host is retired. Run that repo locally, then score it against
-live Dustfall with the suite this repo ships:
+Rust Choir runs as a Go container on Cloudflare.
+The play URL is `wss://rustchoir.skyphusion.org/ws`.
+The repo is [`hollow-grid-go`](https://github.com/skyphusion-labs/hollow-grid-go).
+Score a local build against live Dustfall with the suite this repo ships:
 
 ```bash
 MUD_URL=ws://127.0.0.1:8790/ws \
