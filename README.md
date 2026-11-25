@@ -14,8 +14,7 @@ Read the writeup (the story, the design decisions, and how it was built):
 ## Play now
 
 Six worlds are publicly reachable. Every world accepts WebSocket clients at `/ws`.
-On federated worlds, `travel` carries your name, level, and standing across the Grid.
-The public Verdigris Worker uses a local hub, so its characters stay there.
+All six worlds connect to the shared Grid Hub. Use `travel` to look up another world and `gridcast` to message players across the Grid.
 
 | World | Browser | WebSocket | Runtime |
 | --- | --- | --- | --- |
