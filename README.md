@@ -22,8 +22,8 @@ The public Verdigris Worker uses a local hub, so its characters stay there.
 | The Hollow Grid | [Play](https://hollow.skyphusion.org/) | `wss://hollow.skyphusion.org/ws` | TypeScript Worker |
 | Dustfall | [Play](https://dustfall.skyphusion.org/) | `wss://dustfall.skyphusion.org/ws` | TypeScript Worker |
 | Verdigris Spool | [Play](https://verdigris.skyphusion.org/) | `wss://verdigris.skyphusion.org/ws` | [Python Worker](https://github.com/skyphusion-labs/hollow-grid-py) |
-| Ferrite Wastes | [Play](https://ferrite.skyphusion.org/) | `wss://ferrite.skyphusion.org/ws` | [C container](https://github.com/skyphusion-labs/hollow-grid-c) |
-| Basalt Relay | [Play](https://basalt.skyphusion.org/) | `wss://basalt.skyphusion.org/ws` | [Assembly container](https://github.com/skyphusion-labs/hollow-grid-asm) |
+| Ferrite Wastes | Pending Worker rollout | `wss://ferrite.skyphusion.org/ws` | [C container](https://github.com/skyphusion-labs/hollow-grid-c) |
+| Basalt Relay | Pending Worker rollout | `wss://basalt.skyphusion.org/ws` | [Assembly container](https://github.com/skyphusion-labs/hollow-grid-asm) |
 | Rust Choir | [Play](https://rustchoir.skyphusion.org/) | `wss://rustchoir.skyphusion.org/ws` | [Go container](https://github.com/skyphusion-labs/hollow-grid-go) |
 
 ## The map
